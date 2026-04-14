@@ -1,4 +1,11 @@
-# Logs
+node_modules
+.env
+backend/.env
+dist
+build
+.vscode 
+
+
 logs
 *.log
 npm-debug.log*
