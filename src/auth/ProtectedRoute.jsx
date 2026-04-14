@@ -1,0 +1,17 @@
+import React from "react";
+import { Navigate } from "react-router-dom";
+import { useAuth } from "./AuthContext";
+
+const ProtectedRoute = ({ children }) => {
+  const { user } = useAuth();
+
+  const storedUser = localStorage.getItem("user");
+
+  if (!user && !storedUser) {
+    return <Navigate to="/login" replace />;
+  }
+
+  return children;
+};
+
+export default ProtectedRoute;
