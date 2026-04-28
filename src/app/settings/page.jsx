@@ -1,0 +1,412 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import { Save, Upload, RefreshCcw, Building2 } from "lucide-react";
+
+export default function SettingsPage() {
+  const logoInputRef = useRef(null);
+  const [loading, setLoading] = useState(false);
+
+  const [form, setForm] = useState({
+    companyName: "",
+    companyAddress: "",
+    companyPhone: "",
+    companyEmail: "",
+
+    ownerName: "",
+    ownerRole: "",
+
+    currency: "৳",
+    vatPercent: 0,
+    aitPercent: 0,
+    lowStockLimit: 5,
+    businessType: "shop",
+
+    themeColor: "blue",
+    invoiceFooter: "",
+    logo: "",
+  });
+
+  const update = (field, value) => {
+    setForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const fetchSettings = async () => {
+    try {
+      setLoading(true);
+
+      const res = await fetch("/api/settings");
+      const data = await res.json();
+
+      if (data.success) {
+        setForm((prev) => ({
+          ...prev,
+          companyName: data.data.companyName || prev.companyName,
+          companyAddress: data.data.companyAddress || prev.companyAddress,
+          companyPhone: data.data.companyPhone || prev.companyPhone,
+          companyEmail: data.data.companyEmail || prev.companyEmail,
+
+          ownerName: data.data.ownerName || "Company User",
+          ownerRole: data.data.ownerRole || "Admin / Owner",
+
+          currency: data.data.currency || "৳",
+          vatPercent: Number(data.data.vatPercent || 0),
+          aitPercent: Number(data.data.aitPercent || 0),
+          lowStockLimit: Number(data.data.lowStockLimit || 5),
+
+          themeColor: data.data.themeColor || "blue",
+          invoiceFooter: data.data.invoiceFooter || "",
+          logo: data.data.logo || "",
+        }));
+      }
+    } catch (error) {
+      console.error("SETTINGS_LOAD_ERROR:", error);
+      alert("Settings load failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchCompany = async () => {
+    try {
+      const res = await fetch("/api/company");
+      const data = await res.json();
+
+      if (data.success) {
+        setForm((prev) => ({
+          ...prev,
+          companyName: data.data.name || prev.companyName,
+          companyAddress: data.data.address || prev.companyAddress,
+          companyPhone: data.data.phone || prev.companyPhone,
+          companyEmail: data.data.email || prev.companyEmail,
+          businessType: data.data.businessType || "shop",
+        }));
+      }
+    } catch (error) {
+      console.error("COMPANY_LOAD_ERROR:", error);
+    }
+  };
+
+  useEffect(() => {
+    fetchSettings();
+    fetchCompany();
+  }, []);
+
+  const saveSettings = async () => {
+    try {
+      setLoading(true);
+
+      const settingsRes = await fetch("/api/settings", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(form),
+      });
+
+      const settingsData = await settingsRes.json();
+
+      if (!settingsRes.ok || !settingsData.success) {
+        throw new Error(settingsData.message || "Settings save failed");
+      }
+
+      const companyRes = await fetch("/api/company", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name: form.companyName,
+          address: form.companyAddress,
+          phone: form.companyPhone,
+          email: form.companyEmail,
+          businessType: form.businessType,
+        }),
+      });
+
+      const companyData = await companyRes.json();
+
+      if (!companyRes.ok || !companyData.success) {
+        throw new Error(companyData.message || "Company save failed");
+      }
+
+      alert("Settings saved ✅");
+    } catch (error) {
+      console.error("SETTINGS_SAVE_ERROR:", error);
+      alert(error.message || "Settings save failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const uploadLogo = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      setLoading(true);
+
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const res = await fetch("/api/upload", {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = await res.json();
+
+      if (data.success) {
+        setForm((prev) => ({ ...prev, logo: data.url }));
+        alert("Logo uploaded ✅");
+      } else {
+        alert("Logo upload failed");
+      }
+    } catch (error) {
+      console.error("LOGO_UPLOAD_ERROR:", error);
+      alert("Logo upload failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="space-y-5">
+      <div className="bg-white border rounded-[30px] p-5 md:p-7 shadow-sm">
+        <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center">
+              <Building2 size={22} />
+            </div>
+
+            <div>
+              <h1 className="text-2xl md:text-3xl font-bold">
+                Company Settings
+              </h1>
+              <p className="text-sm text-gray-500 mt-1">
+                Company profile, tax, stock limit, business type and invoice
+                settings
+              </p>
+            </div>
+          </div>
+
+          <button
+            onClick={() => {
+              fetchSettings();
+              fetchCompany();
+            }}
+            className="px-4 py-2 rounded-xl border flex items-center justify-center gap-2 hover:bg-gray-50"
+          >
+            <RefreshCcw size={16} className={loading ? "animate-spin" : ""} />
+            Refresh
+          </button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
+        <div className="xl:col-span-2 bg-white border rounded-[30px] p-5 md:p-7 shadow-sm space-y-5">
+          <SectionTitle title="Company Information" />
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <Input
+              label="Company Name"
+              value={form.companyName}
+              onChange={(v) => update("companyName", v)}
+              placeholder="Company name"
+            />
+
+            <Input
+              label="Phone"
+              value={form.companyPhone}
+              onChange={(v) => update("companyPhone", v)}
+              placeholder="Phone number"
+            />
+
+            <Input
+              label="Email"
+              value={form.companyEmail}
+              onChange={(v) => update("companyEmail", v)}
+              placeholder="Email address"
+            />
+
+            <Input
+              label="Owner/Admin Name"
+              value={form.ownerName}
+              onChange={(v) => update("ownerName", v)}
+              placeholder="Owner name"
+            />
+
+            <Input
+              label="Owner Role"
+              value={form.ownerRole}
+              onChange={(v) => update("ownerRole", v)}
+              placeholder="Admin / Owner"
+            />
+
+            <Input
+              label="Currency"
+              value={form.currency}
+              onChange={(v) => update("currency", v)}
+              placeholder="৳"
+            />
+
+            <div className="md:col-span-2">
+              <label className="text-xs text-gray-500">Address</label>
+              <textarea
+                value={form.companyAddress}
+                onChange={(e) => update("companyAddress", e.target.value)}
+                placeholder="Company address"
+                className="w-full mt-1 border rounded-xl p-3 outline-none focus:ring-4 focus:ring-blue-100 min-h-[90px]"
+              />
+            </div>
+          </div>
+
+          <SectionTitle title="Tax & ERP Rules" />
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            <Input
+              type="number"
+              label="Default VAT %"
+              value={form.vatPercent}
+              onChange={(v) => update("vatPercent", Number(v) || 0)}
+            />
+
+            <Input
+              type="number"
+              label="Default AIT %"
+              value={form.aitPercent}
+              onChange={(v) => update("aitPercent", Number(v) || 0)}
+            />
+
+            <Input
+              type="number"
+              label="Low Stock Limit"
+              value={form.lowStockLimit}
+              onChange={(v) => update("lowStockLimit", Number(v) || 5)}
+            />
+
+            <div>
+              <label className="text-xs text-gray-500">Business Type</label>
+              <select
+                value={form.businessType}
+                onChange={(e) => update("businessType", e.target.value)}
+                className="w-full mt-1 border rounded-xl p-3 outline-none focus:ring-4 focus:ring-blue-100"
+              >
+                <option value="shop">Manufacturing</option>
+                <option value="wholesale">Wholesale</option>
+                <option value="manufacturing">Shop</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="text-xs text-gray-500">Theme Color</label>
+              <select
+                value={form.themeColor}
+                onChange={(e) => update("themeColor", e.target.value)}
+                className="w-full mt-1 border rounded-xl p-3 outline-none focus:ring-4 focus:ring-blue-100"
+              >
+                <option value="blue">Blue</option>
+                <option value="green">Green</option>
+                <option value="purple">Purple</option>
+                <option value="red">Red</option>
+                <option value="orange">Orange</option>
+              </select>
+            </div>
+          </div>
+
+          <SectionTitle title="Invoice Footer" />
+
+          <textarea
+            value={form.invoiceFooter}
+            onChange={(e) => update("invoiceFooter", e.target.value)}
+            placeholder="Invoice footer text"
+            className="w-full border rounded-xl p-3 outline-none focus:ring-4 focus:ring-blue-100 min-h-[100px]"
+          />
+
+          <button
+            onClick={saveSettings}
+            disabled={loading}
+            className="inline-flex items-center gap-2 bg-blue-500 text-white px-6 py-3 rounded-xl hover:bg-blue-600 disabled:opacity-60"
+          >
+            <Save size={17} />
+            {loading ? "Saving..." : "Save Settings"}
+          </button>
+        </div>
+
+        <div className="bg-white border rounded-[30px] p-5 md:p-7 shadow-sm h-fit">
+          <SectionTitle title="Company Logo" />
+
+          <div className="mt-4 rounded-[28px] border bg-gray-50 p-5 flex flex-col items-center justify-center text-center">
+            {form.logo ? (
+              <img
+                src={form.logo}
+                alt="Company Logo"
+                className="w-28 h-28 rounded-3xl object-cover border bg-white"
+              />
+            ) : (
+              <div className="w-28 h-28 rounded-3xl bg-blue-50 text-blue-600 flex items-center justify-center border">
+                <Building2 size={42} />
+              </div>
+            )}
+
+            <h3 className="font-bold mt-4">
+              {form.companyName || "Company Name"}
+            </h3>
+
+            <p className="text-sm text-gray-500 mt-1">
+              {form.companyPhone || "Phone number"}
+            </p>
+
+            <p className="text-xs text-blue-600 mt-2 capitalize">
+              {form.businessType} ERP
+            </p>
+
+            <input
+              ref={logoInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={uploadLogo}
+            />
+
+            <button
+              onClick={() => logoInputRef.current?.click()}
+              className="mt-5 inline-flex items-center gap-2 px-4 py-2 rounded-xl border hover:bg-blue-50 hover:text-blue-600"
+            >
+              <Upload size={16} />
+              Upload Logo
+            </button>
+          </div>
+
+          <div className="mt-5 bg-blue-50 text-blue-700 rounded-2xl p-4 text-sm">
+            Business Type save করলে Sidebar automatically feature change করবে।
+            Manufacturing দিলে Production menu show হবে।
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SectionTitle({ title }) {
+  return (
+    <div className="border-b pb-2">
+      <h2 className="font-bold text-gray-900">{title}</h2>
+    </div>
+  );
+}
+
+function Input({ label, value, onChange, placeholder, type = "text" }) {
+  return (
+    <div>
+      <label className="text-xs text-gray-500">{label}</label>
+      <input
+        type={type}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className="w-full mt-1 border rounded-xl p-3 outline-none focus:ring-4 focus:ring-blue-100"
+      />
+    </div>
+  );
+}

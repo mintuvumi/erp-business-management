@@ -1,0 +1,243 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import {
+  X,
+  Search,
+  CalendarDays,
+  RefreshCcw,
+  Printer,
+  Download,
+  Share2,
+} from "lucide-react";
+
+export default function ProfitModal({ open, onClose }) {
+  const [data, setData] = useState({});
+  const [date, setDate] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const fetchProfit = async () => {
+    try {
+      setLoading(true);
+
+      const params = new URLSearchParams();
+      if (date) params.set("date", date);
+
+      const res = await fetch(`/api/dashboard/profit?${params.toString()}`);
+      const json = await res.json();
+
+      if (json.success) {
+        setData(json.data);
+      }
+    } catch (error) {
+      console.error(error);
+      alert("Profit data load failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (open) fetchProfit();
+  }, [open]);
+
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-[120] bg-black/30 backdrop-blur-[3px] flex items-center justify-center p-3 md:p-6">
+      <div className="w-full max-w-6xl max-h-[88vh] overflow-hidden bg-white/95 backdrop-blur-xl rounded-[32px] border shadow-[0_30px_80px_rgba(15,23,42,0.25)] animate-profitFloat">
+        <div className="p-5 md:p-7 border-b flex items-start justify-between">
+          <div>
+            <h2 className="text-xl md:text-2xl font-bold">Profit Analysis</h2>
+            <p className="text-sm text-gray-500 mt-1">
+              Company Name • Company Address • Phone Number
+            </p>
+          </div>
+
+          <button
+            onClick={onClose}
+            className="w-10 h-10 rounded-full border flex items-center justify-center hover:bg-red-50 hover:text-red-500"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="p-5 md:p-7 space-y-5 overflow-y-auto max-h-[calc(88vh-100px)]">
+          {data.message && (
+            <div
+              className={`rounded-3xl p-5 border ${
+                data.celebrationType?.includes("loss")
+                  ? "bg-red-50 text-red-700 border-red-100"
+                  : "bg-blue-50 text-blue-700 border-blue-100"
+              }`}
+            >
+              <h3 className="text-lg font-bold">{data.profitCardTitle}</h3>
+              <p className="font-semibold mt-1">{data.profitCardValue}</p>
+              <p className="text-sm mt-2">{data.message}</p>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 md:grid-cols-[1fr_190px_auto] gap-3">
+            <div className="flex items-center gap-2 border rounded-2xl px-4 py-3 bg-white shadow-sm">
+              <Search size={18} className="text-gray-400" />
+              <input
+                placeholder="Search profit statement..."
+                className="w-full outline-none text-sm bg-transparent"
+              />
+            </div>
+
+            <div className="flex items-center gap-2 border rounded-2xl px-4 py-3 bg-white shadow-sm">
+              <CalendarDays size={18} className="text-gray-400" />
+              <input
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                className="w-full outline-none text-sm bg-transparent"
+              />
+            </div>
+
+            <button
+              onClick={fetchProfit}
+              className="h-12 px-5 rounded-2xl bg-blue-500 text-white flex items-center justify-center hover:bg-blue-600"
+            >
+              <RefreshCcw size={18} className={loading ? "animate-spin" : ""} />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <ProfitCard title="Today Profit" value={data.todayProfit} />
+            <ProfitCard title="Monthly Profit" value={data.monthlyProfit} />
+            <ProfitCard title="Yearly Profit" value={data.yearlyProfit} />
+            <ProfitCard title="Net Profit" value={data.netProfit} highlight />
+            <ProfitCard title="Sales Profit" value={data.salesProfit} />
+            <ProfitCard title="Total Expense" value={data.totalExpense} danger />
+            <ProfitCard title="Monthly Expense" value={data.monthlyExpense} danger />
+            <ProfitCard title="Yearly Expense" value={data.yearlyExpense} danger />
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => window.print()}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border hover:bg-gray-50"
+            >
+              <Printer size={16} />
+              Print
+            </button>
+
+            <button className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border hover:bg-gray-50">
+              <Download size={16} />
+              PDF
+            </button>
+
+            <button className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border hover:bg-gray-50">
+              <Share2 size={16} />
+              Share
+            </button>
+          </div>
+
+          <div className="bg-white border rounded-3xl overflow-hidden">
+            <div className="p-4 border-b flex justify-between">
+              <h3 className="font-semibold">Product-wise Profit</h3>
+              <span className="text-xs text-gray-500">
+                {data.productWiseProfit?.length || 0} items
+              </span>
+            </div>
+
+            <div className="overflow-x-auto max-h-[320px]">
+              <table className="w-full min-w-[780px] text-sm">
+                <thead className="bg-gray-50 sticky top-0">
+                  <tr>
+                    <th className="p-3 text-left">Product</th>
+                    <th className="p-3 text-right">Qty</th>
+                    <th className="p-3 text-right">Sales</th>
+                    <th className="p-3 text-right">Cost</th>
+                    <th className="p-3 text-right">Profit</th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {data.productWiseProfit?.length === 0 ? (
+                    <tr>
+                      <td colSpan="5" className="p-5 text-center text-gray-500">
+                        No profit data found
+                      </td>
+                    </tr>
+                  ) : (
+                    data.productWiseProfit?.map((item) => (
+                      <tr key={item.name} className="border-t hover:bg-blue-50/40">
+                        <td className="p-3">{item.name}</td>
+                        <td className="p-3 text-right">{item.qty}</td>
+                        <td className="p-3 text-right">৳ {money(item.sales)}</td>
+                        <td className="p-3 text-right">৳ {money(item.cost)}</td>
+                        <td
+                          className={`p-3 text-right font-bold ${
+                            Number(item.profit) >= 0
+                              ? "text-green-600"
+                              : "text-red-500"
+                          }`}
+                        >
+                          ৳ {money(item.profit)}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <style jsx>{`
+        @keyframes profitFloat {
+          from {
+            opacity: 0;
+            transform: translateY(28px) scale(0.96);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+          }
+        }
+
+        .animate-profitFloat {
+          animation: profitFloat 0.35s ease-out;
+        }
+      `}</style>
+    </div>
+  );
+}
+
+function ProfitCard({ title, value, highlight, danger }) {
+  const isLoss = Number(value || 0) < 0;
+
+  return (
+    <div
+      className={`rounded-3xl border p-4 md:p-5 transition-all duration-300 hover:-translate-y-1 ${
+        highlight
+          ? isLoss
+            ? "bg-red-500 text-white shadow-[0_18px_40px_rgba(239,68,68,0.25)]"
+            : "bg-blue-500 text-white shadow-[0_18px_40px_rgba(59,130,246,0.28)]"
+          : danger || isLoss
+          ? "bg-red-50 text-red-600"
+          : "bg-white hover:shadow-[0_14px_36px_rgba(59,130,246,0.12)]"
+      }`}
+    >
+      <p
+        className={`text-xs md:text-sm ${
+          highlight ? "text-white/90" : "text-gray-500"
+        }`}
+      >
+        {title}
+      </p>
+
+      <h3 className="text-xl md:text-2xl font-bold mt-3">
+        ৳ {money(value)}
+      </h3>
+    </div>
+  );
+}
+
+function money(value) {
+  return Number(value || 0).toFixed(2);
+}
