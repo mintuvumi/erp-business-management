@@ -9,6 +9,7 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "bcryptjs": "^3.0.3",
     "daisyui": "^5.5.19",
     "html2canvas": "^1.4.1",
     "jsonwebtoken": "^9.0.3",
