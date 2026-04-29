@@ -1,12 +1,19 @@
-import { createContext, useContext, useState } from "react";
+import { createContext, useContext, useState, useEffect } from "react";
 import { login as loginApi, register as registerApi } from "../api/authApi";
 
 const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(
-    JSON.parse(localStorage.getItem("user")) || null
-  );
+  const [user, setUser] = useState(null);
+  const [isClient, setIsClient] = useState(false);
+
+  // ✅ CLIENT CHECK
+  useEffect(() => {
+    setIsClient(true);
+
+    const storedUser = localStorage.getItem("user");
+    setUser(storedUser ? JSON.parse(storedUser) : null);
+  }, []);
 
   // ================= LOGIN =================
   const login = async (identifier, password) => {
@@ -15,8 +22,10 @@ export const AuthProvider = ({ children }) => {
     if (res.success) {
       setUser(res.user);
 
-      localStorage.setItem("user", JSON.stringify(res.user));
-      localStorage.setItem("token", res.token);
+      if (typeof window !== "undefined") {
+        localStorage.setItem("user", JSON.stringify(res.user));
+        localStorage.setItem("token", res.token);
+      }
     }
 
     return res;
@@ -25,16 +34,21 @@ export const AuthProvider = ({ children }) => {
   // ================= REGISTER =================
   const register = async (name, email, phone, password) => {
     const res = await registerApi(name, email, phone, password);
-
     return res;
   };
 
   // ================= LOGOUT =================
   const logout = () => {
     setUser(null);
-    localStorage.removeItem("user");
-    localStorage.removeItem("token");
+
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("user");
+      localStorage.removeItem("token");
+    }
   };
+
+  // 👉 important (optional but safe)
+  if (!isClient) return null;
 
   return (
     <AuthContext.Provider value={{ user, login, register, logout }}>

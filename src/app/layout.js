@@ -1,4 +1,4 @@
-import "./globals.css";
+import "../styles/globals.css";
 import LayoutClient from "@/components/LayoutClient";
 
 export default function RootLayout({ children }) {

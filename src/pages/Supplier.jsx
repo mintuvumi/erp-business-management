@@ -1,30 +1,38 @@
 import React, { useState, useEffect } from "react";
+import dynamic from "next/dynamic";
 import { useCompany } from "../context/CompanyContext";
 
 const Supplier = () => {
   const { activeCompany } = useCompany();
 
+  const [isClient, setIsClient] = useState(false);
   const [suppliers, setSuppliers] = useState([]);
   const [name, setName] = useState("");
 
-  if (!activeCompany) {
-    return <h1 className="p-6">Select a company first</h1>;
-  }
-
-  // Load
   useEffect(() => {
-    const saved =
-      JSON.parse(localStorage.getItem(`suppliers_${activeCompany.id}`)) || [];
-    setSuppliers(saved);
-  }, [activeCompany]);
+    setIsClient(true);
+  }, []);
 
-  // Save
   useEffect(() => {
+    if (!isClient || !activeCompany) return;
+
+    try {
+      const saved = localStorage.getItem(`suppliers_${activeCompany.id}`);
+      setSuppliers(saved ? JSON.parse(saved) : []);
+    } catch (error) {
+      console.error("SUPPLIER_LOAD_ERROR:", error);
+      setSuppliers([]);
+    }
+  }, [isClient, activeCompany]);
+
+  useEffect(() => {
+    if (!isClient || !activeCompany) return;
+
     localStorage.setItem(
       `suppliers_${activeCompany.id}`,
       JSON.stringify(suppliers)
     );
-  }, [suppliers, activeCompany]);
+  }, [suppliers, activeCompany, isClient]);
 
   const addSupplier = () => {
     if (!name) return alert("Enter supplier name");
@@ -33,9 +41,16 @@ const Supplier = () => {
     setName("");
   };
 
+  if (!isClient) {
+    return null;
+  }
+
+  if (!activeCompany) {
+    return <h1 className="p-6">Select a company first</h1>;
+  }
+
   return (
     <div className="p-6">
-
       <h1 className="text-2xl font-bold mb-4">
         Supplier ({activeCompany.name})
       </h1>
@@ -61,9 +76,10 @@ const Supplier = () => {
           </li>
         ))}
       </ul>
-
     </div>
   );
 };
 
-export default Supplier;
+export default dynamic(() => Promise.resolve(Supplier), {
+  ssr: false,
+});

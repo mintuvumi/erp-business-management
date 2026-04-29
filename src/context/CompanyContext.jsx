@@ -1,8 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
 
-const CompanyContext = createContext();
+const CompanyContext = createContext(null);
 
-// ✅ SAFE HOOK
 export const useCompany = () => {
   const context = useContext(CompanyContext);
 
@@ -14,44 +13,42 @@ export const useCompany = () => {
 };
 
 export const CompanyProvider = ({ children }) => {
-  // ✅ Companies
-  const [companies, setCompanies] = useState(() => {
-    try {
-      const saved = localStorage.getItem("companies");
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
-  });
+  const [companies, setCompanies] = useState([]);
+  const [activeCompany, setActiveCompany] = useState(null);
 
-  // ✅ Active Company
-  const [activeCompany, setActiveCompany] = useState(() => {
-    try {
-      const saved = localStorage.getItem("activeCompany");
-      return saved ? JSON.parse(saved) : null;
-    } catch {
-      return null;
-    }
-  });
-
-  // ✅ Save companies
   useEffect(() => {
-    localStorage.setItem("companies", JSON.stringify(companies));
+    try {
+      const savedCompanies = localStorage.getItem("companies");
+      const savedActiveCompany = localStorage.getItem("activeCompany");
+
+      setCompanies(savedCompanies ? JSON.parse(savedCompanies) : []);
+      setActiveCompany(
+        savedActiveCompany ? JSON.parse(savedActiveCompany) : null
+      );
+    } catch {
+      setCompanies([]);
+      setActiveCompany(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      localStorage.setItem("companies", JSON.stringify(companies));
+    }
   }, [companies]);
 
-  // ✅ Save active company
   useEffect(() => {
-    localStorage.setItem("activeCompany", JSON.stringify(activeCompany));
+    if (typeof window !== "undefined") {
+      localStorage.setItem("activeCompany", JSON.stringify(activeCompany));
+    }
   }, [activeCompany]);
 
-  // 🔥 AUTO FIX (important)
   useEffect(() => {
     if (companies.length > 0 && !activeCompany) {
       setActiveCompany(companies[0]);
     }
   }, [companies, activeCompany]);
 
-  // ✅ Add Company
   const addCompany = (name) => {
     if (!name.trim()) return;
 
@@ -72,12 +69,9 @@ export const CompanyProvider = ({ children }) => {
 
     const updated = [...companies, newCompany];
     setCompanies(updated);
-
-    // ✅ auto select
     setActiveCompany(newCompany);
   };
 
-  // ✅ Delete Company
   const deleteCompany = (id) => {
     const updated = companies.filter((c) => c.id !== id);
     setCompanies(updated);
@@ -86,15 +80,15 @@ export const CompanyProvider = ({ children }) => {
       setActiveCompany(updated[0] || null);
     }
 
-    // 🔥 Clean related data
-    localStorage.removeItem(`sales_${id}`);
-    localStorage.removeItem(`expenses_${id}`);
-    localStorage.removeItem(`banks_${id}`);
-    localStorage.removeItem(`products_${id}`);
-    localStorage.removeItem(`purchases_${id}`);
+    if (typeof window !== "undefined") {
+      localStorage.removeItem(`sales_${id}`);
+      localStorage.removeItem(`expenses_${id}`);
+      localStorage.removeItem(`banks_${id}`);
+      localStorage.removeItem(`products_${id}`);
+      localStorage.removeItem(`purchases_${id}`);
+    }
   };
 
-  // ✅ Switch Company (NEW FEATURE 🔥)
   const switchCompany = (id) => {
     const selected = companies.find((c) => c.id === id);
     if (selected) {
@@ -110,7 +104,7 @@ export const CompanyProvider = ({ children }) => {
         deleteCompany,
         activeCompany,
         setActiveCompany,
-        switchCompany, // 🔥 new
+        switchCompany,
       }}
     >
       {children}

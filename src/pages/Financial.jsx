@@ -1,19 +1,23 @@
 import React, { useEffect, useState } from "react";
+import dynamic from "next/dynamic";
 import { useCompany } from "../context/CompanyContext";
 
 const Financial = () => {
   const { activeCompany } = useCompany();
 
+  const [isClient, setIsClient] = useState(false);
+
   const [sales, setSales] = useState([]);
   const [expenses, setExpenses] = useState([]);
   const [banks, setBanks] = useState([]);
 
-  // ✅ Company না থাকলে stop
-  if (!activeCompany) {
-    return <h1 className="p-6">Please select a company first</h1>;
-  }
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
 
   useEffect(() => {
+    if (!isClient || !activeCompany) return;
+
     const savedSales =
       JSON.parse(localStorage.getItem(`sales_${activeCompany.id}`)) || [];
 
@@ -26,38 +30,36 @@ const Financial = () => {
     setSales(savedSales);
     setExpenses(savedExpenses);
     setBanks(savedBanks);
-  }, [activeCompany]);
+  }, [isClient, activeCompany]);
 
-  // 👉 SALES
+  if (!isClient) {
+    return null;
+  }
+
+  if (!activeCompany) {
+    return <h1 className="p-6">Please select a company first</h1>;
+  }
+
   const totalSales = sales.reduce((sum, s) => sum + s.total, 0);
   const totalPaid = sales.reduce((sum, s) => sum + s.paid, 0);
   const totalDue = sales.reduce((sum, s) => sum + s.due, 0);
 
-  // 👉 EXPENSE
   const totalExpense = expenses.reduce((sum, e) => sum + e.amount, 0);
-
-  // 👉 BANK হিসাব
   const bankTotal = banks.reduce((sum, b) => sum + b.balance, 0);
 
-  // 👉 CASH (payment method based)
   const cash = sales
     .filter((s) => s.paymentMethod === "cash")
     .reduce((sum, s) => sum + s.paid, 0);
 
-  // 👉 BANK (sales + bank accounts)
   const bank =
     bankTotal +
     sales
       .filter((s) => s.paymentMethod === "bank")
       .reduce((sum, s) => sum + s.paid, 0);
 
-  // 👉 STOCK (later dynamic হবে inventory থেকে)
   const stock = 50000;
-
-  // 👉 PAYABLE (future feature)
   const payable = 0;
 
-  // 👉 FINAL CALCULATION
   const assets = cash + bank + stock + totalDue;
   const liabilities = payable + totalExpense;
 
@@ -65,14 +67,11 @@ const Financial = () => {
 
   return (
     <div className="p-6 bg-[#f5f7fb] min-h-screen">
-
       <h1 className="text-2xl font-bold mb-6 text-gray-700">
         Financial Position ({activeCompany.name})
       </h1>
 
-      {/* 🔹 Summary Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-
         <div className="bg-white p-4 rounded-xl shadow">
           <p className="text-sm text-gray-500">Cash</p>
           <h2 className="font-bold text-lg">৳ {cash}</h2>
@@ -92,12 +91,9 @@ const Financial = () => {
           <p className="text-sm text-gray-500">Due Receivable</p>
           <h2 className="font-bold text-lg text-red-500">৳ {totalDue}</h2>
         </div>
-
       </div>
 
-      {/* 🔹 Extra Summary */}
       <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
-
         <div className="bg-white p-4 rounded-xl shadow">
           <p className="text-sm text-gray-500">Total Sales</p>
           <h2 className="font-bold text-blue-600">৳ {totalSales}</h2>
@@ -112,15 +108,10 @@ const Financial = () => {
           <p className="text-sm text-gray-500">Received</p>
           <h2 className="font-bold text-green-600">৳ {totalPaid}</h2>
         </div>
-
       </div>
 
-      {/* 🔹 FINAL RESULT */}
       <div className="bg-white p-6 rounded-2xl shadow text-center">
-
-        <h2 className="text-lg text-gray-500">
-          Total Financial Position
-        </h2>
+        <h2 className="text-lg text-gray-500">Total Financial Position</h2>
 
         <p
           className={`text-3xl font-bold mt-2 ${
@@ -133,11 +124,11 @@ const Financial = () => {
         <p className="text-sm text-gray-400 mt-2">
           {financialPosition >= 0 ? "Profit" : "Loss"}
         </p>
-
       </div>
-
     </div>
   );
 };
 
-export default Financial;
+export default dynamic(() => Promise.resolve(Financial), {
+  ssr: false,
+});
