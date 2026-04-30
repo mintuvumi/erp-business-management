@@ -1,8 +1,25 @@
 "use client";
 
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 import Dashboard from "@/components/dashboard/Dashboard";
 
 export default function DashboardPage() {
+  const router = useRouter();
+
+  useEffect(() => {
+    const checkAuth = async () => {
+      const res = await fetch("/api/auth/me");
+      const data = await res.json();
+
+      if (!data.success) {
+        router.push("/login");
+      }
+    };
+
+    checkAuth();
+  }, [router]);
+
   return (
     <div className="w-full">
       <Dashboard />
