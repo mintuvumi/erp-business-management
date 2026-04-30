@@ -39,41 +39,54 @@ export default function Dashboard() {
   useEffect(() => {
     const fetchAll = async () => {
       try {
-        const [bank, cash, purchase, stock, profit, expense, employee] =
-          await Promise.all([
-            fetch("/api/bank").then((r) => r.json()),
-            fetch("/api/cash").then((r) => r.json()),
-            fetch("/api/dashboard/purchase").then((r) => r.json()),
-            fetch("/api/dashboard/stock").then((r) => r.json()),
-            fetch("/api/dashboard/profit").then((r) => r.json()),
-            fetch("/api/dashboard/expense").then((r) => r.json()),
-            fetch("/api/employees").then((r) => r.json()),
-          ]);
+        const safeFetch = async (url) => {
+          try {
+            const res = await fetch(url);
+            return await res.json();
+          } catch (error) {
+            console.error("DASHBOARD_API_ERROR:", url, error);
+            return { success: false };
+          }
+        };
 
-        if (bank.success) setBankBalance(bank.data.totalBankBalance || 0);
-        if (cash.success) setCashInHand(cash.data.cashInHand || 0);
-        if (purchase.success)
-          setPurchaseDue(purchase.data.totalDuePurchase || 0);
-        if (stock.success) setStockValue(stock.data.totalValue || 0);
+        const bank = await safeFetch("/api/bank");
+        const cash = await safeFetch("/api/cash");
+        const purchase = await safeFetch("/api/dashboard/purchase");
+        const stock = await safeFetch("/api/dashboard/stock");
+        const profit = await safeFetch("/api/dashboard/profit");
+        const expense = await safeFetch("/api/dashboard/expense");
+        const employee = await safeFetch("/api/employees");
+
+        if (bank.success) setBankBalance(bank.data?.totalBankBalance || 0);
+        if (cash.success) setCashInHand(cash.data?.cashInHand || 0);
+
+        if (purchase.success) {
+          setPurchaseDue(purchase.data?.totalDuePurchase || 0);
+        }
+
+        if (stock.success) {
+          setStockValue(stock.data?.totalValue || 0);
+        }
 
         if (profit.success) {
           setProfitCard({
-            title: profit.data.profitCardTitle || "Profit",
-            value: profit.data.profitCardValue || "৳ 0.00",
+            title: profit.data?.profitCardTitle || "Profit",
+            value: profit.data?.profitCardValue || "৳ 0.00",
           });
         }
 
         if (expense.success) {
           setExpenseCard({
-            title: expense.data.cardTitle || "Expense",
-            value: expense.data.cardValue || "৳ 0.00",
+            title: "Expense",
+            value: expense.data?.cardValue || "৳ 0.00",
           });
         }
 
-        if (employee.success)
-          setEmployeeCount(employee.data.totalEmployee || 0);
+        if (employee.success) {
+          setEmployeeCount(employee.data?.totalEmployee || 0);
+        }
       } catch (err) {
-        console.error(err);
+        console.error("DASHBOARD_LOAD_ERROR:", err);
       }
     };
 
@@ -132,7 +145,6 @@ export default function Dashboard() {
 
   return (
     <>
-      {/* Cards */}
       <div className="w-full grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-5">
         {cards.map((card, i) => (
           <div
@@ -151,7 +163,6 @@ export default function Dashboard() {
         ))}
       </div>
 
-      {/* 🔥 FIX: ALL MODALS WRAPPED */}
       <div className="relative z-[999999]">
         <CashInHandModal
           open={openCashModal}
