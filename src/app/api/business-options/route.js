@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import dbConnect from "@/lib/dbConnect";
+import connectDB from "@/lib/db";
 import BusinessOption from "@/models/BusinessOption";
 
 const DEFAULT_OPTIONS = {
@@ -21,7 +21,7 @@ const DEFAULT_OPTIONS = {
 
 export async function GET(req) {
   try {
-    await dbConnect();
+    await connectDB();
 
     const { searchParams } = new URL(req.url);
     const type = searchParams.get("type");
