@@ -22,14 +22,25 @@ export default function ExpenseModal({ open, onClose }) {
     rows: [],
   });
 
+  const [employees, setEmployees] = useState([]);
+  const [expenseHeads, setExpenseHeads] = useState([]);
+  const [paymentTypes, setPaymentTypes] = useState([]);
+
+  const [newHead, setNewHead] = useState("");
+  const [newPaymentType, setNewPaymentType] = useState("");
+
   const [search, setSearch] = useState("");
   const [date, setDate] = useState("");
   const [loading, setLoading] = useState(false);
-
   const [showAdd, setShowAdd] = useState(false);
+
   const [form, setForm] = useState({
     type: "out",
     category: "expense",
+    head: "",
+    employeeId: "",
+    employeeName: "",
+    paymentType: "Cash",
     title: "",
     amount: "",
     note: "",
@@ -46,9 +57,7 @@ export default function ExpenseModal({ open, onClose }) {
       const res = await fetch(`/api/dashboard/expense?${params.toString()}`);
       const json = await res.json();
 
-      if (json.success) {
-        setData(json.data);
-      }
+      if (json.success) setData(json.data);
     } catch (error) {
       console.error(error);
       alert("Expense data load failed");
@@ -57,12 +66,74 @@ export default function ExpenseModal({ open, onClose }) {
     }
   };
 
+  const fetchEmployees = async () => {
+    try {
+      const res = await fetch("/api/employees");
+      const json = await res.json();
+
+      if (json.success) {
+        setEmployees(json.data?.employees || json.data?.rows || json.data || []);
+      }
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  const fetchOptions = async () => {
+    try {
+      const [headsRes, paymentsRes] = await Promise.all([
+        fetch("/api/business-options?type=expense_head").then((r) => r.json()),
+        fetch("/api/business-options?type=payment_type").then((r) => r.json()),
+      ]);
+
+      if (headsRes.success) setExpenseHeads(headsRes.data || []);
+      if (paymentsRes.success) setPaymentTypes(paymentsRes.data || []);
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
   useEffect(() => {
-    if (open) fetchExpense();
+    if (open) {
+      fetchExpense();
+      fetchEmployees();
+      fetchOptions();
+    }
   }, [open]);
 
+  const addOption = async (type, name, reset) => {
+    if (!name.trim()) return alert("Option name required");
+
+    try {
+      setLoading(true);
+
+      const res = await fetch("/api/business-options", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ type, name }),
+      });
+
+      const json = await res.json();
+
+      if (!res.ok || !json.success) {
+        throw new Error(json.message || "Option add failed");
+      }
+
+      reset("");
+      fetchOptions();
+    } catch (error) {
+      alert(error.message || "Option add failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const saveExpense = async () => {
-    if (!form.title.trim()) return alert("Title required");
+    if (!form.head) return alert("Expense Head required");
+    if (!form.paymentType) return alert("Payment Type required");
+    if (!form.title.trim()) return alert("Expense Title required");
     if (!form.amount || Number(form.amount) <= 0) {
       return alert("Valid amount required");
     }
@@ -79,6 +150,7 @@ export default function ExpenseModal({ open, onClose }) {
           ...form,
           amount: Number(form.amount),
           refType: "manual",
+          category: form.head.toLowerCase().replaceAll(" ", "_"),
         }),
       });
 
@@ -92,6 +164,10 @@ export default function ExpenseModal({ open, onClose }) {
       setForm({
         type: "out",
         category: "expense",
+        head: "",
+        employeeId: "",
+        employeeName: "",
+        paymentType: "Cash",
         title: "",
         amount: "",
         note: "",
@@ -127,17 +203,6 @@ export default function ExpenseModal({ open, onClose }) {
         </div>
 
         <div className="p-5 md:p-7 space-y-5 overflow-y-auto max-h-[calc(88vh-100px)]">
-          {data.message && (
-            <div className="rounded-3xl p-5 border bg-blue-50 text-blue-700 border-blue-100">
-              <h3 className="font-bold">
-                {data.celebrationType === "yearly"
-                  ? "Yearly Expense Review"
-                  : "Monthly Expense Review"}
-              </h3>
-              <p className="text-sm mt-2">{data.message}</p>
-            </div>
-          )}
-
           <div className="grid grid-cols-1 md:grid-cols-[1fr_190px_auto] gap-3">
             <div className="flex items-center gap-2 border rounded-2xl px-4 py-3 bg-white shadow-sm">
               <Search size={18} className="text-gray-400" />
@@ -204,17 +269,107 @@ export default function ExpenseModal({ open, onClose }) {
 
           {showAdd && (
             <div className="bg-gray-50 border rounded-3xl p-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <select
+                  value={form.head}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      head: e.target.value,
+                      title: form.title || e.target.value,
+                    })
+                  }
+                  className="w-full border rounded-xl px-3 py-3 outline-none"
+                >
+                  <option value="">Select Expense Head</option>
+                  {expenseHeads.map((head) => (
+                    <option key={head._id} value={head.name}>
+                      {head.name}
+                    </option>
+                  ))}
+                </select>
+
+                <div className="flex gap-2">
+                  <input
+                    value={newHead}
+                    onChange={(e) => setNewHead(e.target.value)}
+                    placeholder="New Head"
+                    className="w-full border rounded-xl px-3 py-2 outline-none text-sm"
+                  />
+                  <button
+                    type="button"
+                    onClick={() =>
+                      addOption("expense_head", newHead, setNewHead)
+                    }
+                    className="px-4 rounded-xl bg-blue-500 text-white text-sm"
+                  >
+                    Add
+                  </button>
+                </div>
+              </div>
+
               <select
-                value={form.category}
-                onChange={(e) =>
-                  setForm({ ...form, category: e.target.value })
-                }
+                value={form.employeeId}
+                onChange={(e) => {
+                  const emp = employees.find(
+                    (item) => String(item._id || item.id) === e.target.value
+                  );
+
+                  setForm({
+                    ...form,
+                    employeeId: e.target.value,
+                    employeeName:
+                      emp?.name || emp?.employeeName || emp?.fullName || "",
+                  });
+                }}
                 className="border rounded-xl px-3 py-3 outline-none"
               >
-                <option value="expense">General Expense</option>
-                <option value="salary_payment">Salary Payment</option>
-                <option value="refund_paid">Refund Paid</option>
+                <option value="">Select Employee</option>
+                {employees.map((emp) => (
+                  <option key={emp._id || emp.id} value={emp._id || emp.id}>
+                    {emp.name || emp.employeeName || emp.fullName}
+                  </option>
+                ))}
               </select>
+
+              <div className="space-y-2">
+                <select
+                  value={form.paymentType}
+                  onChange={(e) =>
+                    setForm({ ...form, paymentType: e.target.value })
+                  }
+                  className="w-full border rounded-xl px-3 py-3 outline-none"
+                >
+                  <option value="">Select Payment Type</option>
+                  {paymentTypes.map((payment) => (
+                    <option key={payment._id} value={payment.name}>
+                      {payment.name}
+                    </option>
+                  ))}
+                </select>
+
+                <div className="flex gap-2">
+                  <input
+                    value={newPaymentType}
+                    onChange={(e) => setNewPaymentType(e.target.value)}
+                    placeholder="New Payment Type"
+                    className="w-full border rounded-xl px-3 py-2 outline-none text-sm"
+                  />
+                  <button
+                    type="button"
+                    onClick={() =>
+                      addOption(
+                        "payment_type",
+                        newPaymentType,
+                        setNewPaymentType
+                      )
+                    }
+                    className="px-4 rounded-xl bg-blue-500 text-white text-sm"
+                  >
+                    Add
+                  </button>
+                </div>
+              </div>
 
               <input
                 value={form.title}
@@ -251,13 +406,13 @@ export default function ExpenseModal({ open, onClose }) {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             <div className="bg-white border rounded-3xl overflow-hidden">
               <div className="p-4 border-b">
-                <h3 className="font-semibold">Category-wise Expense</h3>
+                <h3 className="font-semibold">Head-wise Expense</h3>
               </div>
 
               <div className="divide-y">
                 {data.categoryWise?.length === 0 ? (
                   <div className="p-4 text-sm text-gray-500">
-                    No category found
+                    No expense head found
                   </div>
                 ) : (
                   data.categoryWise?.map((cat) => (
@@ -288,13 +443,14 @@ export default function ExpenseModal({ open, onClose }) {
               </div>
 
               <div className="overflow-x-auto max-h-[360px]">
-                <table className="w-full min-w-[780px] text-sm">
+                <table className="w-full min-w-[900px] text-sm">
                   <thead className="bg-gray-50 sticky top-0">
                     <tr>
                       <th className="p-3 text-left">Date</th>
-                      <th className="p-3 text-left">Source</th>
+                      <th className="p-3 text-left">Head</th>
+                      <th className="p-3 text-left">Employee</th>
+                      <th className="p-3 text-left">Payment</th>
                       <th className="p-3 text-left">Title</th>
-                      <th className="p-3 text-left">Category</th>
                       <th className="p-3 text-right">Amount</th>
                       <th className="p-3 text-left">Note</th>
                     </tr>
@@ -303,7 +459,7 @@ export default function ExpenseModal({ open, onClose }) {
                   <tbody>
                     {data.rows?.length === 0 ? (
                       <tr>
-                        <td colSpan="6" className="p-5 text-center text-gray-500">
+                        <td colSpan="7" className="p-5 text-center text-gray-500">
                           No expense found
                         </td>
                       </tr>
@@ -311,11 +467,20 @@ export default function ExpenseModal({ open, onClose }) {
                       data.rows?.map((row) => (
                         <tr key={row._id} className="border-t hover:bg-blue-50/40">
                           <td className="p-3">{row.date}</td>
-                          <td className="p-3 capitalize">{row.source}</td>
-                          <td className="p-3">{row.title}</td>
                           <td className="p-3 capitalize">
-                            {row.category?.replaceAll("_", " ")}
+                            {(row.head || row.category || "-")
+                              ?.toString()
+                              .replaceAll("_", " ")}
                           </td>
+                          <td className="p-3">
+                            {row.employeeName || row.employee?.name || "-"}
+                          </td>
+                          <td className="p-3 capitalize">
+                            {(row.paymentType || row.source || "-")
+                              ?.toString()
+                              .replaceAll("_", " ")}
+                          </td>
+                          <td className="p-3">{row.title}</td>
                           <td className="p-3 text-right text-red-500 font-semibold">
                             ৳ {money(row.amount)}
                           </td>

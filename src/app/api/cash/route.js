@@ -19,8 +19,18 @@ export async function POST(req) {
     }
 
     const transaction = await CashTransaction.create({
-      ...body,
+      type: body.type,
+      category: body.category,
+      title: body.title,
       amount: Number(body.amount) || 0,
+      note: body.note || "",
+
+      // new ERP fields
+      head: body.head || body.category || "",
+      employeeId: body.employeeId || null,
+      employeeName: body.employeeName || "",
+      paymentType: body.paymentType || "Cash",
+
       date: body.date || new Date().toISOString().slice(0, 10),
 
       // reference system
@@ -62,6 +72,11 @@ export async function GET(req) {
         { category: { $regex: search, $options: "i" } },
         { note: { $regex: search, $options: "i" } },
         { refType: { $regex: search, $options: "i" } },
+
+        // new searchable fields
+        { head: { $regex: search, $options: "i" } },
+        { employeeName: { $regex: search, $options: "i" } },
+        { paymentType: { $regex: search, $options: "i" } },
       ];
     }
 

@@ -9,12 +9,19 @@ import {
   Printer,
   Download,
   Share2,
+  Plus,
 } from "lucide-react";
 
 export default function ProfitModal({ open, onClose }) {
   const [data, setData] = useState({});
+  const [owners, setOwners] = useState([]);
   const [date, setDate] = useState("");
   const [loading, setLoading] = useState(false);
+
+  const [newOwner, setNewOwner] = useState({
+    name: "",
+    sharePercent: "",
+  });
 
   const fetchProfit = async () => {
     try {
@@ -26,9 +33,7 @@ export default function ProfitModal({ open, onClose }) {
       const res = await fetch(`/api/dashboard/profit?${params.toString()}`);
       const json = await res.json();
 
-      if (json.success) {
-        setData(json.data);
-      }
+      if (json.success) setData(json.data);
     } catch (error) {
       console.error(error);
       alert("Profit data load failed");
@@ -37,9 +42,60 @@ export default function ProfitModal({ open, onClose }) {
     }
   };
 
+  const fetchOwners = async () => {
+    try {
+      const res = await fetch("/api/owners");
+      const json = await res.json();
+
+      if (json.success) setOwners(json.data || []);
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
   useEffect(() => {
-    if (open) fetchProfit();
+    if (open) {
+      fetchProfit();
+      fetchOwners();
+    }
   }, [open]);
+
+  const addOwner = async () => {
+    if (!newOwner.name.trim()) return alert("Owner name required");
+    if (!newOwner.sharePercent || Number(newOwner.sharePercent) <= 0) {
+      return alert("Valid share percent required");
+    }
+
+    try {
+      setLoading(true);
+
+      const res = await fetch("/api/owners", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name: newOwner.name,
+          sharePercent: Number(newOwner.sharePercent),
+        }),
+      });
+
+      const json = await res.json();
+
+      if (!res.ok || !json.success) {
+        throw new Error(json.message || "Owner save failed");
+      }
+
+      setNewOwner({ name: "", sharePercent: "" });
+      fetchOwners();
+    } catch (error) {
+      alert(error.message || "Owner save failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const netProfit = Number(data.netProfit || 0);
 
   if (!open) return null;
 
@@ -133,6 +189,88 @@ export default function ProfitModal({ open, onClose }) {
               <Share2 size={16} />
               Share
             </button>
+          </div>
+
+          <div className="bg-white border rounded-3xl overflow-hidden">
+            <div className="p-4 border-b flex justify-between">
+              <h3 className="font-semibold">Owner Profit Share</h3>
+              <span className="text-xs text-gray-500">
+                Net Profit ৳ {money(netProfit)}
+              </span>
+            </div>
+
+            <div className="bg-gray-50 border-b p-4 grid grid-cols-1 md:grid-cols-[1fr_180px_auto] gap-3">
+              <input
+                value={newOwner.name}
+                onChange={(e) =>
+                  setNewOwner({ ...newOwner, name: e.target.value })
+                }
+                placeholder="Owner Name"
+                className="border rounded-xl px-3 py-3 outline-none"
+              />
+
+              <input
+                type="number"
+                value={newOwner.sharePercent}
+                onChange={(e) =>
+                  setNewOwner({ ...newOwner, sharePercent: e.target.value })
+                }
+                placeholder="Share %"
+                className="border rounded-xl px-3 py-3 outline-none"
+              />
+
+              <button
+                onClick={addOwner}
+                disabled={loading}
+                className="inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-60"
+              >
+                <Plus size={16} />
+                Add Owner
+              </button>
+            </div>
+
+            <div className="overflow-x-auto max-h-[260px]">
+              <table className="w-full min-w-[650px] text-sm">
+                <thead className="bg-gray-50 sticky top-0">
+                  <tr>
+                    <th className="p-3 text-left">Owner Name</th>
+                    <th className="p-3 text-right">Share %</th>
+                    <th className="p-3 text-right">Profit Amount</th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {owners.length === 0 ? (
+                    <tr>
+                      <td colSpan="3" className="p-5 text-center text-gray-500">
+                        No owner found
+                      </td>
+                    </tr>
+                  ) : (
+                    owners.map((owner) => {
+                      const shareAmount =
+                        (netProfit * Number(owner.sharePercent || 0)) / 100;
+
+                      return (
+                        <tr key={owner._id} className="border-t hover:bg-blue-50/40">
+                          <td className="p-3 font-medium">{owner.name}</td>
+                          <td className="p-3 text-right">
+                            {Number(owner.sharePercent || 0).toFixed(2)}%
+                          </td>
+                          <td
+                            className={`p-3 text-right font-bold ${
+                              shareAmount >= 0 ? "text-green-600" : "text-red-500"
+                            }`}
+                          >
+                            ৳ {money(shareAmount)}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
 
           <div className="bg-white border rounded-3xl overflow-hidden">

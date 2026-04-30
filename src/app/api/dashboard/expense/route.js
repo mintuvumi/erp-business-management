@@ -22,34 +22,6 @@ function isSameYear(dateString, now) {
   return date.getFullYear() === now.getFullYear();
 }
 
-function isLastDayOfMonth(date) {
-  const nextDay = new Date(date);
-  nextDay.setDate(date.getDate() + 1);
-  return nextDay.getDate() === 1;
-}
-
-function getDaysAfterMonthEnd(now) {
-  const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-  const today = new Date(now);
-  today.setHours(0, 0, 0, 0);
-  monthEnd.setHours(0, 0, 0, 0);
-
-  return Math.floor((today - monthEnd) / (1000 * 60 * 60 * 24));
-}
-
-function getDaysAfterYearEnd(now) {
-  const yearEnd = new Date(now.getFullYear() - 1, 11, 31);
-  const today = new Date(now);
-  today.setHours(0, 0, 0, 0);
-  yearEnd.setHours(0, 0, 0, 0);
-
-  return Math.floor((today - yearEnd) / (1000 * 60 * 60 * 24));
-}
-
-function getMonthName(date) {
-  return date.toLocaleString("en-US", { month: "long" });
-}
-
 export async function GET(req) {
   try {
     await connectDB();
@@ -80,15 +52,30 @@ export async function GET(req) {
         date: e.date,
         title: e.title,
         category: e.category,
+
+        // 🔥 NEW ERP FIELDS
+        head: e.head || e.category,
+        employeeId: e.employeeId || null,
+        employeeName: e.employeeName || "",
+        paymentType: e.paymentType || "Cash",
+
         amount: Number(e.amount || 0),
         note: e.note || "",
       })),
+
       ...bankExpenses.map((e) => ({
         _id: e._id,
         source: e.bankId?.bankName || "bank",
         date: e.date,
         title: e.title,
         category: e.category,
+
+        // 🔥 NEW ERP FIELDS
+        head: e.head || e.category,
+        employeeId: e.employeeId || null,
+        employeeName: e.employeeName || "",
+        paymentType: e.paymentType || "Bank",
+
         amount: Number(e.amount || 0),
         note: e.note || "",
       })),
@@ -102,7 +89,10 @@ export async function GET(req) {
           r.title?.toLowerCase().includes(search.toLowerCase()) ||
           r.category?.toLowerCase().includes(search.toLowerCase()) ||
           r.note?.toLowerCase().includes(search.toLowerCase()) ||
-          r.source?.toLowerCase().includes(search.toLowerCase())
+          r.source?.toLowerCase().includes(search.toLowerCase()) ||
+          r.head?.toLowerCase().includes(search.toLowerCase()) ||
+          r.employeeName?.toLowerCase().includes(search.toLowerCase()) ||
+          r.paymentType?.toLowerCase().includes(search.toLowerCase())
       );
     }
 
@@ -124,63 +114,33 @@ export async function GET(req) {
 
     const totalExpense = allExpenses.reduce((sum, e) => sum + e.amount, 0);
 
-    const categoryMap = {};
+    // 🔥 Head-wise grouping (updated)
+    const headMap = {};
 
     allExpenses.forEach((e) => {
-      if (!categoryMap[e.category]) {
-        categoryMap[e.category] = {
-          category: e.category,
+      const key = e.head || "others";
+
+      if (!headMap[key]) {
+        headMap[key] = {
+          category: key,
           amount: 0,
           count: 0,
         };
       }
 
-      categoryMap[e.category].amount += e.amount;
-      categoryMap[e.category].count += 1;
+      headMap[key].amount += e.amount;
+      headMap[key].count += 1;
     });
 
-    const categoryWise = Object.values(categoryMap).sort(
+    const categoryWise = Object.values(headMap).sort(
       (a, b) => b.amount - a.amount
     );
-
-    let cardTitle = "Expense";
-    let cardValue = `৳ ${Number(totalExpense || 0).toFixed(2)}`;
-    let message = "";
-    let celebrationType = "normal";
-
-    const daysAfterYearEnd = getDaysAfterYearEnd(new Date());
-    const daysAfterMonthEnd = getDaysAfterMonthEnd(new Date());
-
-    if (daysAfterYearEnd >= 1 && daysAfterYearEnd <= 7) {
-      cardTitle = "Yearly Expense";
-      cardValue = `${now.getFullYear() - 1} সালের খরচ ৳ ${Number(
-        yearlyExpense
-      ).toFixed(2)}`;
-      message =
-        "বছরের খরচ বিশ্লেষণ করে আগামী বছরের জন্য আরও ভালো বাজেট পরিকল্পনা করুন।";
-      celebrationType = "yearly";
-    } else if (
-      isLastDayOfMonth(new Date()) ||
-      (daysAfterMonthEnd >= 1 && daysAfterMonthEnd <= 3)
-    ) {
-      const monthName = getMonthName(new Date());
-
-      cardTitle = "Monthly Expense";
-      cardValue = `${monthName} মাসের খরচ ৳ ${Number(monthlyExpense).toFixed(
-        2
-      )}`;
-      message =
-        "মাসের খরচ দেখুন, অপ্রয়োজনীয় খরচ কমান এবং লাভ বাড়ানোর পরিকল্পনা করুন।";
-      celebrationType = "monthly";
-    }
 
     return NextResponse.json({
       success: true,
       data: {
-        cardTitle,
-        cardValue,
-        message,
-        celebrationType,
+        cardTitle: "Expense",
+        cardValue: `৳ ${Number(totalExpense || 0).toFixed(2)}`,
 
         todayExpense,
         monthlyExpense,

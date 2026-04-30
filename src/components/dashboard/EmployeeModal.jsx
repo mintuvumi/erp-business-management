@@ -1,7 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { X, Search, RefreshCcw, Wallet, Landmark, Gift, Clock } from "lucide-react";
+import {
+  X,
+  Search,
+  RefreshCcw,
+  Wallet,
+  Landmark,
+  Clock,
+} from "lucide-react";
 
 export default function EmployeeModal({ open, onClose }) {
   const [data, setData] = useState({
@@ -147,13 +154,18 @@ export default function EmployeeModal({ open, onClose }) {
       <div className="w-full max-w-7xl max-h-[88vh] overflow-hidden bg-white/95 backdrop-blur-xl rounded-[32px] border shadow-[0_30px_80px_rgba(15,23,42,0.25)] animate-employeeFloat">
         <div className="p-5 md:p-7 border-b flex items-start justify-between">
           <div>
-            <h2 className="text-xl md:text-2xl font-bold">Employee Dashboard</h2>
+            <h2 className="text-xl md:text-2xl font-bold">
+              Employee Dashboard
+            </h2>
             <p className="text-sm text-gray-500 mt-1">
               Company Name • Company Address • Phone Number
             </p>
           </div>
 
-          <button onClick={onClose} className="w-10 h-10 rounded-full border flex items-center justify-center hover:bg-red-50 hover:text-red-500">
+          <button
+            onClick={onClose}
+            className="w-10 h-10 rounded-full border flex items-center justify-center hover:bg-red-50 hover:text-red-500"
+          >
             <X size={18} />
           </button>
         </div>
@@ -170,7 +182,10 @@ export default function EmployeeModal({ open, onClose }) {
               />
             </div>
 
-            <button onClick={fetchEmployees} className="h-12 px-5 rounded-2xl bg-blue-500 text-white flex items-center justify-center hover:bg-blue-600">
+            <button
+              onClick={fetchEmployees}
+              className="h-12 px-5 rounded-2xl bg-blue-500 text-white flex items-center justify-center hover:bg-blue-600"
+            >
               <RefreshCcw size={18} className={loading ? "animate-spin" : ""} />
             </button>
           </div>
@@ -182,14 +197,24 @@ export default function EmployeeModal({ open, onClose }) {
             <Stat title="Monthly Leave" value={data.totalMonthlyLeave} />
             <Stat title="Yearly Leave" value={data.totalYearlyLeave} />
             <Stat title="Salary Paid" value={`৳ ${money(data.salaryPaid)}`} />
-            <Stat title="Salary Due" value={`৳ ${money(data.salaryDue)}`} danger />
-            <Stat title="Open Advance" value={`৳ ${money(data.advanceOpen)}`} danger />
+            <Stat
+              title="Salary Due"
+              value={`৳ ${money(data.salaryDue)}`}
+              danger
+            />
+            <Stat
+              title="Open Advance"
+              value={`৳ ${money(data.advanceOpen)}`}
+              danger
+            />
           </div>
 
           <div className="bg-white border rounded-3xl overflow-hidden">
             <div className="p-4 border-b flex justify-between">
               <h3 className="font-semibold">Employee Details</h3>
-              <span className="text-xs text-gray-500">{data.employees?.length || 0} employee</span>
+              <span className="text-xs text-gray-500">
+                {data.employees?.length || 0} employee
+              </span>
             </div>
 
             <div className="overflow-x-auto">
@@ -221,7 +246,9 @@ export default function EmployeeModal({ open, onClose }) {
                       <tr key={e._id} className="border-t hover:bg-blue-50/40">
                         <td className="p-3 font-medium">{e.name}</td>
                         <td className="p-3">{e.designation || "-"}</td>
-                        <td className="p-3 text-right">৳ {money(e.basicSalary)}</td>
+                        <td className="p-3 text-right">
+                          ৳ {money(e.basicSalary)}
+                        </td>
                         <td className="p-3 capitalize">{e.paymentMethod}</td>
                         <td className="p-3">{e.bankAccountNo || "-"}</td>
                         <td className="p-3 text-center">
@@ -255,25 +282,97 @@ export default function EmployeeModal({ open, onClose }) {
               <div>
                 <h3 className="text-lg font-bold">{selectedEmployee.name}</h3>
                 <p className="text-sm text-gray-500">
-                  {selectedEmployee.designation} • ৳ {money(selectedEmployee.basicSalary)}
+                  {selectedEmployee.designation} • ৳{" "}
+                  {money(selectedEmployee.basicSalary)}
                 </p>
               </div>
 
-              <button onClick={() => setSelectedEmployee(null)} className="w-9 h-9 rounded-full border flex items-center justify-center hover:bg-red-50 hover:text-red-500">
+              <button
+                onClick={() => setSelectedEmployee(null)}
+                className="w-9 h-9 rounded-full border flex items-center justify-center hover:bg-red-50 hover:text-red-500"
+              >
                 <X size={17} />
               </button>
             </div>
 
             <div className="p-5 space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <input type="month" value={salaryForm.month} onChange={(e) => setSalaryForm({ ...salaryForm, month: e.target.value })} className="border rounded-xl p-3" />
-                <input type="number" placeholder="Overtime" value={salaryForm.overtimeAmount} onChange={(e) => setSalaryForm({ ...salaryForm, overtimeAmount: e.target.value })} className="border rounded-xl p-3" />
-                <input type="number" placeholder="Bonus / Eid Bonus" value={salaryForm.bonusAmount} onChange={(e) => setSalaryForm({ ...salaryForm, bonusAmount: e.target.value })} className="border rounded-xl p-3" />
-                <input type="number" placeholder="Absent Deduction" value={salaryForm.absentDeduction} onChange={(e) => setSalaryForm({ ...salaryForm, absentDeduction: e.target.value })} className="border rounded-xl p-3" />
-                <input type="number" placeholder="Advance Deduction" value={salaryForm.advanceDeduction} onChange={(e) => setSalaryForm({ ...salaryForm, advanceDeduction: e.target.value })} className="border rounded-xl p-3" />
-                <input type="number" placeholder="Loan Deduction" value={salaryForm.loanDeduction} onChange={(e) => setSalaryForm({ ...salaryForm, loanDeduction: e.target.value })} className="border rounded-xl p-3" />
+                <input
+                  type="month"
+                  value={salaryForm.month}
+                  onChange={(e) =>
+                    setSalaryForm({ ...salaryForm, month: e.target.value })
+                  }
+                  className="border rounded-xl p-3"
+                />
+                <input
+                  type="number"
+                  placeholder="Overtime"
+                  value={salaryForm.overtimeAmount}
+                  onChange={(e) =>
+                    setSalaryForm({
+                      ...salaryForm,
+                      overtimeAmount: e.target.value,
+                    })
+                  }
+                  className="border rounded-xl p-3"
+                />
+                <input
+                  type="number"
+                  placeholder="Bonus / Eid Bonus"
+                  value={salaryForm.bonusAmount}
+                  onChange={(e) =>
+                    setSalaryForm({
+                      ...salaryForm,
+                      bonusAmount: e.target.value,
+                    })
+                  }
+                  className="border rounded-xl p-3"
+                />
+                <input
+                  type="number"
+                  placeholder="Absent Deduction"
+                  value={salaryForm.absentDeduction}
+                  onChange={(e) =>
+                    setSalaryForm({
+                      ...salaryForm,
+                      absentDeduction: e.target.value,
+                    })
+                  }
+                  className="border rounded-xl p-3"
+                />
+                <input
+                  type="number"
+                  placeholder="Advance Deduction"
+                  value={salaryForm.advanceDeduction}
+                  onChange={(e) =>
+                    setSalaryForm({
+                      ...salaryForm,
+                      advanceDeduction: e.target.value,
+                    })
+                  }
+                  className="border rounded-xl p-3"
+                />
+                <input
+                  type="number"
+                  placeholder="Loan Deduction"
+                  value={salaryForm.loanDeduction}
+                  onChange={(e) =>
+                    setSalaryForm({
+                      ...salaryForm,
+                      loanDeduction: e.target.value,
+                    })
+                  }
+                  className="border rounded-xl p-3"
+                />
 
-                <select value={salaryForm.bankId} onChange={(e) => setSalaryForm({ ...salaryForm, bankId: e.target.value })} className="md:col-span-3 border rounded-xl p-3">
+                <select
+                  value={salaryForm.bankId}
+                  onChange={(e) =>
+                    setSalaryForm({ ...salaryForm, bankId: e.target.value })
+                  }
+                  className="md:col-span-3 border rounded-xl p-3"
+                >
                   <option value="">Select Company Bank For Bank Salary</option>
                   {banks.map((b) => (
                     <option key={b._id} value={b._id}>
@@ -282,16 +381,29 @@ export default function EmployeeModal({ open, onClose }) {
                   ))}
                 </select>
 
-                <textarea placeholder="Salary note" value={salaryForm.note} onChange={(e) => setSalaryForm({ ...salaryForm, note: e.target.value })} className="md:col-span-3 border rounded-xl p-3" />
+                <textarea
+                  placeholder="Salary note"
+                  value={salaryForm.note}
+                  onChange={(e) =>
+                    setSalaryForm({ ...salaryForm, note: e.target.value })
+                  }
+                  className="md:col-span-3 border rounded-xl p-3"
+                />
               </div>
 
               <div className="flex flex-wrap gap-2">
-                <button onClick={() => paySalary(selectedEmployee, "cash")} className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-green-500 text-white hover:bg-green-600">
+                <button
+                  onClick={() => paySalary(selectedEmployee, "cash")}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-green-500 text-white hover:bg-green-600"
+                >
                   <Wallet size={16} />
                   Pay Cash Salary
                 </button>
 
-                <button onClick={() => paySalary(selectedEmployee, "bank")} className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-500 text-white hover:bg-blue-600">
+                <button
+                  onClick={() => paySalary(selectedEmployee, "bank")}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-500 text-white hover:bg-blue-600"
+                >
                   <Landmark size={16} />
                   Pay Bank Salary
                 </button>
@@ -301,14 +413,43 @@ export default function EmployeeModal({ open, onClose }) {
                 <h4 className="font-semibold mb-3">Advance Salary</h4>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  <input type="number" placeholder="Advance Amount" value={advanceForm.amount} onChange={(e) => setAdvanceForm({ ...advanceForm, amount: e.target.value })} className="border rounded-xl p-3" />
+                  <input
+                    type="number"
+                    placeholder="Advance Amount"
+                    value={advanceForm.amount}
+                    onChange={(e) =>
+                      setAdvanceForm({
+                        ...advanceForm,
+                        amount: e.target.value,
+                      })
+                    }
+                    className="border rounded-xl p-3"
+                  />
 
-                  <select value={advanceForm.paidBy} onChange={(e) => setAdvanceForm({ ...advanceForm, paidBy: e.target.value })} className="border rounded-xl p-3">
+                  <select
+                    value={advanceForm.paidBy}
+                    onChange={(e) =>
+                      setAdvanceForm({
+                        ...advanceForm,
+                        paidBy: e.target.value,
+                      })
+                    }
+                    className="border rounded-xl p-3"
+                  >
                     <option value="cash">Cash</option>
                     <option value="bank">Bank</option>
                   </select>
 
-                  <select value={advanceForm.bankId} onChange={(e) => setAdvanceForm({ ...advanceForm, bankId: e.target.value })} className="border rounded-xl p-3">
+                  <select
+                    value={advanceForm.bankId}
+                    onChange={(e) =>
+                      setAdvanceForm({
+                        ...advanceForm,
+                        bankId: e.target.value,
+                      })
+                    }
+                    className="border rounded-xl p-3"
+                  >
                     <option value="">Select Bank</option>
                     {banks.map((b) => (
                       <option key={b._id} value={b._id}>
@@ -317,10 +458,20 @@ export default function EmployeeModal({ open, onClose }) {
                     ))}
                   </select>
 
-                  <textarea placeholder="Advance note" value={advanceForm.note} onChange={(e) => setAdvanceForm({ ...advanceForm, note: e.target.value })} className="md:col-span-3 border rounded-xl p-3" />
+                  <textarea
+                    placeholder="Advance note"
+                    value={advanceForm.note}
+                    onChange={(e) =>
+                      setAdvanceForm({ ...advanceForm, note: e.target.value })
+                    }
+                    className="md:col-span-3 border rounded-xl p-3"
+                  />
                 </div>
 
-                <button onClick={() => payAdvance(selectedEmployee)} className="mt-3 inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-orange-500 text-white hover:bg-orange-600">
+                <button
+                  onClick={() => payAdvance(selectedEmployee)}
+                  className="mt-3 inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-orange-500 text-white hover:bg-orange-600"
+                >
                   <Clock size={16} />
                   Pay Advance
                 </button>
@@ -352,7 +503,11 @@ export default function EmployeeModal({ open, onClose }) {
 
 function Stat({ title, value, danger }) {
   return (
-    <div className={`rounded-3xl border p-4 md:p-5 ${danger ? "bg-red-50 text-red-600" : "bg-white"}`}>
+    <div
+      className={`rounded-3xl border p-4 md:p-5 ${
+        danger ? "bg-red-50 text-red-600" : "bg-white"
+      }`}
+    >
       <p className="text-xs md:text-sm text-gray-500">{title}</p>
       <h3 className="text-xl md:text-2xl font-bold mt-3">{value}</h3>
     </div>

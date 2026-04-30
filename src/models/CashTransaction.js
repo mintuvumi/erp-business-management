@@ -36,8 +36,30 @@ const CashTransactionSchema = new mongoose.Schema(
 
     note: { type: String, default: "" },
 
-    // 🔥 NEW (IMPORTANT)
-    refType: { type: String, default: "" }, // sale / purchase / manual
+    // 🔥 ERP NEW FIELDS
+    head: {
+      type: String,
+      default: "",
+    },
+
+    employeeId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Employee",
+      default: null,
+    },
+
+    employeeName: {
+      type: String,
+      default: "",
+    },
+
+    paymentType: {
+      type: String,
+      default: "Cash",
+    },
+
+    // 🔗 Reference system
+    refType: { type: String, default: "" },
     refId: { type: String, default: "" },
 
     // optional future optimization
