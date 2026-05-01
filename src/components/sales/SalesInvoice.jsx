@@ -15,7 +15,7 @@ export default function SalesInvoice({ sale }) {
     fetch("/api/settings")
       .then((res) => res.json())
       .then((data) => data.success && setSettings(data.data))
-      .catch((error) => console.error(error));
+      .catch(console.error);
   }, []);
 
   const calc = useMemo(() => {
@@ -82,115 +82,71 @@ export default function SalesInvoice({ sale }) {
 
       <div
         id="sales-invoice-pdf"
-        className="bg-white p-5 md:p-8 rounded-3xl border shadow-sm print:shadow-none print:border-0"
+        className="bg-white p-6 md:p-8 rounded-3xl border shadow-sm print:shadow-none print:border-0"
       >
-        <CompanyHeader
-          title="Sales Invoice"
-          rightContent={
-            <div className="text-sm space-y-1">
-              <p>
-                <span className="text-gray-500">Invoice No:</span>{" "}
-                <b>{sale.manualBillNo || sale.billNo}</b>
-              </p>
-              <p>
-                <span className="text-gray-500">PO / Work Order:</span>{" "}
-                <b>{sale.poWoNo || "-"}</b>
-              </p>
-              <p>
-                <span className="text-gray-500">Date:</span>{" "}
-                <b>{formatDate(sale.date)}</b>
-              </p>
-              <p>
-                <span className="text-gray-500">Time:</span>{" "}
-                <b>{formatTime(sale.createdAt)}</b>
-              </p>
-            </div>
-          }
-        />
+        <CompanyHeader title="Sales Invoice" />
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mt-6">
+        <div className="grid md:grid-cols-2 gap-5 mt-6">
           <div className="border rounded-2xl p-4">
-            <h3 className="font-bold mb-3 text-gray-800">Bill To</h3>
+            <h3 className="font-bold mb-3">Bill To</h3>
             <p className="font-semibold">{sale.customerName}</p>
-            <p className="text-sm text-gray-500 mt-1">
-              {sale.customerPhone || "No phone"}
-            </p>
-            <p className="text-sm text-gray-500 mt-1">
-              {sale.customerAddress || "No address"}
-            </p>
+            <p className="text-sm text-gray-500">{sale.customerPhone || "No phone"}</p>
+            <p className="text-sm text-gray-500">{sale.customerAddress || "No address"}</p>
           </div>
 
-          <div className="border rounded-2xl p-4 md:text-right">
-            <h3 className="font-bold mb-3 text-gray-800">Invoice Summary</h3>
-            <p className="text-sm">
-              Payment Type: <b className="capitalize">{sale.paymentType}</b>
-            </p>
-            <p className="text-sm mt-1">
-              Status:{" "}
-              <b
-                className={
-                  sale.status === "completed"
-                    ? "text-green-600"
-                    : "text-red-500"
-                }
-              >
-                {sale.status || "completed"}
-              </b>
-            </p>
+          <div className="border rounded-2xl p-4 text-sm md:text-right">
+            <p>Invoice: <b>{sale.manualBillNo || sale.billNo}</b></p>
+            <p>PO / Work Order: <b>{sale.poWoNo || "-"}</b></p>
+            <p>Date: <b>{formatDate(sale.date)}</b></p>
+            <p>Payment: <b className="capitalize">{sale.paymentType || "-"}</b></p>
           </div>
         </div>
 
         <div className="mt-6 border rounded-3xl overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[980px] text-sm">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="p-3 text-left border-b">SL</th>
-                  <th className="p-3 text-left border-b">Product Description</th>
-                  <th className="p-3 text-right border-b">Qty</th>
-                  <th className="p-3 text-left border-b">Unit</th>
-                  <th className="p-3 text-right border-b">Unit Price</th>
-                  <th className="p-3 text-right border-b">Total Price</th>
-                </tr>
-              </thead>
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="p-3 text-left">SL</th>
+                <th className="p-3 text-left">Description</th>
+                <th className="p-3 text-right">Qty</th>
+                <th className="p-3 text-left">Unit</th>
+                <th className="p-3 text-right">Price</th>
+                <th className="p-3 text-right">Total</th>
+              </tr>
+            </thead>
 
-              <tbody>
-                {sale.items?.map((item, index) => (
-                  <tr key={index} className="border-t">
-                    <td className="p-3">{index + 1}</td>
-                    <td className="p-3">
-                      <p className="font-semibold">{item.name}</p>
-                      {item.description && (
-                        <p className="text-xs text-gray-500 mt-1">
-                          {item.description}
-                        </p>
-                      )}
-                    </td>
-                    <td className="p-3 text-right">{Number(item.qty || 0)}</td>
-                    <td className="p-3">{item.unit || "pcs"}</td>
-                    <td className="p-3 text-right">৳ {money(item.price)}</td>
-                    <td className="p-3 text-right font-semibold">
-                      ৳ {money(item.total)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+            <tbody>
+              {sale.items?.map((i, idx) => (
+                <tr key={idx} className="border-t">
+                  <td className="p-3">{idx + 1}</td>
+                  <td className="p-3">
+                    <p className="font-semibold">{i.name}</p>
+                    {i.description && (
+                      <p className="text-xs text-gray-500">{i.description}</p>
+                    )}
+                  </td>
+                  <td className="p-3 text-right">{Number(i.qty || 0)}</td>
+                  <td className="p-3">{i.unit || "pcs"}</td>
+                  <td className="p-3 text-right">৳ {money(i.price)}</td>
+                  <td className="p-3 text-right font-semibold">৳ {money(i.total)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-[1fr_380px] gap-5 mt-6">
+        <div className="grid md:grid-cols-[1fr_380px] mt-6 gap-5">
           <div className="space-y-4">
-            <div className="border rounded-2xl p-4">
-              <h3 className="font-bold">Amount in Words</h3>
-              <p className="text-sm text-gray-600 mt-2 font-semibold">
+            <div className="border rounded-2xl p-4 bg-blue-50">
+              <h4 className="font-bold">Amount in Words</h4>
+              <p className="text-sm font-semibold text-blue-700 mt-1">
                 {numberToWordsBD(calc.invoiceTotal)}
               </p>
             </div>
 
             <div className="border rounded-2xl p-4">
-              <h3 className="font-bold">Terms & Notes</h3>
-              <p className="text-sm text-gray-500 mt-2">
+              <h4 className="font-bold">Terms & Notes</h4>
+              <p className="text-sm text-gray-500 mt-1">
                 {sale.note ||
                   settings?.invoiceFooter ||
                   "Thank you for doing business with us."}
@@ -211,35 +167,52 @@ export default function SalesInvoice({ sale }) {
             </div>
 
             <div className="border-t pt-2 mt-2 bg-gray-50 rounded-xl p-3 space-y-2">
-              <p className="text-xs font-bold text-gray-500">
-                Statement Info
-              </p>
-              <Row
-                label={`AIT Deducted (${Number(sale.aitPercent || 0)}%)`}
-                value={calc.aitAmount}
-                danger
-              />
+              <p className="text-xs font-bold text-gray-500">Statement Info</p>
+              <Row label={`AIT Deducted (${Number(sale.aitPercent || 0)}%)`} value={calc.aitAmount} danger />
               <Row label="Net Receivable" value={calc.netReceivable} highlight />
             </div>
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-5 mt-10 text-sm">
-          <div className="pt-8 border-t text-center">
-            Customer Signature
-          </div>
-          <div className="pt-8 border-t text-center">
-            Authorized Signature
-          </div>
-        </div>
+        <div className="mt-12 border-t pt-8 space-y-8">
+          <div className="grid grid-cols-2 gap-8 text-sm">
+            <div className="text-center">
+              <div className="h-12 border-b border-dashed"></div>
+              <p className="mt-2 font-semibold">Customer Signature</p>
+            </div>
 
-        <div className="mt-8 border-t pt-4 text-center text-xs text-gray-500">
-          <p>{settings?.companyAddress || "Company Address"}</p>
-          <p className="mt-1">
-            {settings?.companySlogan ||
-              settings?.slogan ||
-              "Your trusted business partner"}
-          </p>
+            <div className="text-center">
+              <div className="h-12 border-b border-dashed"></div>
+              <p className="mt-2 font-semibold">Authorized Signature</p>
+            </div>
+          </div>
+
+          <div className="grid md:grid-cols-3 gap-6 items-center">
+            <div className="text-xs text-gray-600">
+              <p className="font-bold">{settings?.companyName || "Company Name"}</p>
+              <p>{settings?.companyAddress || "Company Address"}</p>
+              <p>{settings?.companyPhone || "Phone"}</p>
+              {settings?.companyEmail && <p>{settings.companyEmail}</p>}
+            </div>
+
+            <div className="flex justify-center">
+              <div className="w-24 h-24 border-2 border-dashed rounded-full flex items-center justify-center text-[10px] text-gray-400">
+                Company Seal
+              </div>
+            </div>
+
+            <div className="text-xs text-right">
+              <p className="font-semibold">Payment Terms</p>
+              <p>Payment within 7 days</p>
+              <p className="italic mt-2">
+                {settings?.companySlogan || "Your trusted business partner"}
+              </p>
+            </div>
+          </div>
+
+          <div className="text-center text-xs text-gray-400 border-t pt-3">
+            This is a system generated invoice.
+          </div>
         </div>
       </div>
 
@@ -283,12 +256,4 @@ function money(value) {
 function formatDate(date) {
   if (!date) return "-";
   return new Date(date).toLocaleDateString();
-}
-
-function formatTime(date) {
-  if (!date) return "-";
-  return new Date(date).toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
 }

@@ -108,7 +108,10 @@ export default function CustomerStatementPage() {
 
   return (
     <div className="space-y-5 print:bg-white">
-      <div id="customer-statement-pdf" className="space-y-5">
+      <div
+        id="customer-statement-pdf"
+        className="bg-white p-5 md:p-7 rounded-3xl border shadow-sm print:shadow-none print:border-0"
+      >
         <CompanyHeader
           title="Customer Statement"
           rightContent={
@@ -147,175 +150,198 @@ export default function CustomerStatementPage() {
           }
         />
 
-        <div className="bg-white border rounded-[28px] shadow-sm overflow-hidden">
-          <div className="p-5 md:p-7 space-y-5">
-            <div className="grid grid-cols-1 md:grid-cols-[1fr_170px_170px_52px] gap-3 print:hidden">
-              <div className="flex items-center gap-2 border rounded-2xl px-4 py-3 bg-white shadow-sm focus-within:ring-4 focus-within:ring-blue-100">
-                <Search size={18} className="text-gray-400" />
-                <input
-                  value={customer}
-                  onChange={(e) => setCustomer(e.target.value)}
-                  placeholder="Search customer name..."
-                  className="w-full outline-none text-sm"
-                />
-              </div>
+        <div className="grid grid-cols-1 md:grid-cols-[1fr_170px_170px_52px] gap-3 mt-5 print:hidden">
+          <div className="flex items-center gap-2 border rounded-2xl px-4 py-3 bg-white shadow-sm focus-within:ring-4 focus-within:ring-blue-100">
+            <Search size={18} className="text-gray-400" />
+            <input
+              value={customer}
+              onChange={(e) => setCustomer(e.target.value)}
+              placeholder="Search customer name..."
+              className="w-full outline-none text-sm"
+            />
+          </div>
 
-              <input
-                type="date"
-                value={from}
-                onChange={(e) => setFrom(e.target.value)}
-                className="border rounded-2xl px-3 py-3 outline-none focus:ring-4 focus:ring-blue-100"
-              />
+          <input
+            type="date"
+            value={from}
+            onChange={(e) => setFrom(e.target.value)}
+            className="border rounded-2xl px-3 py-3 outline-none focus:ring-4 focus:ring-blue-100"
+          />
 
-              <input
-                type="date"
-                value={to}
-                onChange={(e) => setTo(e.target.value)}
-                className="border rounded-2xl px-3 py-3 outline-none focus:ring-4 focus:ring-blue-100"
-              />
+          <input
+            type="date"
+            value={to}
+            onChange={(e) => setTo(e.target.value)}
+            className="border rounded-2xl px-3 py-3 outline-none focus:ring-4 focus:ring-blue-100"
+          />
 
-              <button
-                onClick={fetchStatement}
-                className="h-12 rounded-2xl bg-blue-600 text-white flex items-center justify-center hover:bg-blue-700"
-              >
-                <RefreshCcw
-                  size={18}
-                  className={loading ? "animate-spin" : ""}
-                />
-              </button>
+          <button
+            onClick={fetchStatement}
+            className="h-12 rounded-2xl bg-blue-600 text-white flex items-center justify-center hover:bg-blue-700"
+          >
+            <RefreshCcw size={18} className={loading ? "animate-spin" : ""} />
+          </button>
+        </div>
+
+        <div className="mt-5 border rounded-2xl p-4 bg-gray-50">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+            <p>
+              <b>Customer:</b> {customer || "All Customers"}
+            </p>
+            <p>
+              <b>From:</b> {from || "Beginning"}
+            </p>
+            <p>
+              <b>To:</b> {to || "Today"}
+            </p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-5">
+          <SummaryCard title="Total Sales" value={summary.salesTotal || summary.grossTotal} />
+          <SummaryCard title="VAT Deducted" value={summary.vatTotal} danger />
+          <SummaryCard title="AIT Deducted" value={summary.aitTotal} danger />
+          <SummaryCard title="Net Receivable" value={summary.netReceivableTotal} highlight />
+          <SummaryCard title="Received" value={summary.paidTotal} success />
+          <SummaryCard title="Current Due" value={summary.currentDueTotal || summary.dueTotal} danger />
+          <SummaryCard title="Outstanding Balance" value={summary.closingBalance} dark />
+        </div>
+
+        <div className="mt-6 border rounded-3xl overflow-hidden">
+          <div className="p-4 border-b flex flex-wrap gap-2 justify-between items-center">
+            <div>
+              <h2 className="font-semibold">Statement Details</h2>
+              <p className="text-xs text-gray-500 mt-1">
+                VAT/AIT বাদ দিয়ে customer receivable balance দেখানো হচ্ছে।
+              </p>
             </div>
 
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-              <SummaryCard title="Total Sales" value={summary.salesTotal || summary.grossTotal} />
-              <SummaryCard title="VAT Deducted" value={summary.vatTotal} danger />
-              <SummaryCard title="AIT Deducted" value={summary.aitTotal} danger />
-              <SummaryCard title="Net Receivable" value={summary.netReceivableTotal} highlight />
-              <SummaryCard title="Received" value={summary.paidTotal} success />
-              <SummaryCard title="Current Due" value={summary.currentDueTotal || summary.dueTotal} danger />
-              <SummaryCard title="Outstanding Balance" value={summary.closingBalance} dark />
-            </div>
+            <span className="text-xs text-gray-500">{rows.length} records</span>
+          </div>
 
-            <div className="border rounded-3xl overflow-hidden">
-              <div className="p-4 border-b flex flex-wrap gap-2 justify-between items-center">
-                <div>
-                  <h2 className="font-semibold">Statement Details</h2>
-                  <p className="text-xs text-gray-500 mt-1">
-                    VAT/AIT বাদ দিয়ে customer receivable balance দেখানো হচ্ছে।
-                  </p>
-                </div>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[1450px] text-sm">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="p-3 text-left">Date</th>
+                  <th className="p-3 text-left">Description</th>
+                  <th className="p-3 text-left">Invoice/Bill No</th>
+                  <th className="p-3 text-left">Customer</th>
+                  <th className="p-3 text-right">Sales Amount</th>
+                  <th className="p-3 text-right">VAT Deducted</th>
+                  <th className="p-3 text-right">AIT Deducted</th>
+                  <th className="p-3 text-right">Net Receivable</th>
+                  <th className="p-3 text-right">Received</th>
+                  <th className="p-3 text-right">Current Due</th>
+                  <th className="p-3 text-right">Balance</th>
+                  <th className="p-3 text-center print:hidden">Action</th>
+                </tr>
+              </thead>
 
-                <span className="text-xs text-gray-500">
-                  {rows.length} records
-                </span>
-              </div>
+              <tbody>
+                {rows.length === 0 ? (
+                  <tr>
+                    <td colSpan={12} className="p-8 text-center text-gray-400">
+                      No statement found. Search customer or select date range.
+                    </td>
+                  </tr>
+                ) : (
+                  rows.map((row) => (
+                    <tr key={row._id} className="border-t hover:bg-gray-50">
+                      <td className="p-3 whitespace-nowrap">{row.date}</td>
+                      <td className="p-3 min-w-[220px]">
+                        {row.description || row.note || "-"}
+                      </td>
+                      <td className="p-3 font-semibold whitespace-nowrap">
+                        {row.billNo}
+                      </td>
+                      <td className="p-3 whitespace-nowrap">
+                        <div className="font-medium">{row.customerName}</div>
+                        {row.customerPhone && (
+                          <div className="text-xs text-gray-500">
+                            {row.customerPhone}
+                          </div>
+                        )}
+                      </td>
 
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[1450px] text-sm">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="p-3 text-left">Date</th>
-                      <th className="p-3 text-left">Description</th>
-                      <th className="p-3 text-left">Invoice/Bill No</th>
-                      <th className="p-3 text-left">Customer</th>
-                      <th className="p-3 text-right">Sales Amount</th>
-                      <th className="p-3 text-right">VAT Deducted</th>
-                      <th className="p-3 text-right">AIT Deducted</th>
-                      <th className="p-3 text-right">Net Receivable</th>
-                      <th className="p-3 text-right">Received</th>
-                      <th className="p-3 text-right">Current Due</th>
-                      <th className="p-3 text-right">Balance</th>
-                      <th className="p-3 text-center print:hidden">Action</th>
+                      <td className="p-3 text-right">৳ {money(row.salesAmount)}</td>
+                      <td className="p-3 text-right text-red-500">৳ {money(row.vatAmount)}</td>
+                      <td className="p-3 text-right text-red-500">৳ {money(row.aitAmount)}</td>
+                      <td className="p-3 text-right font-bold text-blue-600">৳ {money(row.netReceivable)}</td>
+                      <td className="p-3 text-right text-green-600 font-semibold">৳ {money(row.paidAmount)}</td>
+                      <td className="p-3 text-right text-red-500 font-semibold">৳ {money(row.currentDue || row.dueAmount)}</td>
+                      <td className="p-3 text-right font-bold">৳ {money(row.balance)}</td>
+
+                      <td className="p-3 text-center print:hidden">
+                        {Number(row.currentDue || row.dueAmount || 0) > 0 ? (
+                          <button
+                            onClick={() => openPayment(row)}
+                            className="px-3 py-2 rounded-xl bg-blue-600 text-white inline-flex items-center gap-2 hover:bg-blue-700"
+                          >
+                            <Wallet size={15} />
+                            Collect
+                          </button>
+                        ) : (
+                          <span className="text-xs text-green-600 font-semibold">
+                            Paid
+                          </span>
+                        )}
+                      </td>
                     </tr>
-                  </thead>
+                  ))
+                )}
+              </tbody>
 
-                  <tbody>
-                    {rows.length === 0 ? (
-                      <tr>
-                        <td colSpan={12} className="p-8 text-center text-gray-400">
-                          No statement found. Search customer or select date range.
-                        </td>
-                      </tr>
-                    ) : (
-                      rows.map((row) => (
-                        <tr key={row._id} className="border-t hover:bg-gray-50">
-                          <td className="p-3 whitespace-nowrap">{row.date}</td>
-                          <td className="p-3 min-w-[220px]">
-                            {row.description || row.note || "-"}
-                          </td>
-                          <td className="p-3 font-semibold whitespace-nowrap">
-                            {row.billNo}
-                          </td>
-                          <td className="p-3 whitespace-nowrap">
-                            <div className="font-medium">{row.customerName}</div>
-                            {row.customerPhone && (
-                              <div className="text-xs text-gray-500">
-                                {row.customerPhone}
-                              </div>
-                            )}
-                          </td>
+              {rows.length > 0 && (
+                <tfoot className="bg-gray-50 border-t font-bold">
+                  <tr>
+                    <td className="p-3" colSpan={4}>Total</td>
+                    <td className="p-3 text-right">৳ {money(summary.salesTotal || summary.grossTotal)}</td>
+                    <td className="p-3 text-right text-red-500">৳ {money(summary.vatTotal)}</td>
+                    <td className="p-3 text-right text-red-500">৳ {money(summary.aitTotal)}</td>
+                    <td className="p-3 text-right text-blue-600">৳ {money(summary.netReceivableTotal)}</td>
+                    <td className="p-3 text-right text-green-600">৳ {money(summary.paidTotal)}</td>
+                    <td className="p-3 text-right text-red-500">৳ {money(summary.currentDueTotal || summary.dueTotal)}</td>
+                    <td className="p-3 text-right">৳ {money(summary.closingBalance)}</td>
+                    <td className="p-3 print:hidden"></td>
+                  </tr>
+                </tfoot>
+              )}
+            </table>
+          </div>
+        </div>
 
-                          <td className="p-3 text-right">৳ {money(row.salesAmount)}</td>
-                          <td className="p-3 text-right text-red-500">৳ {money(row.vatAmount)}</td>
-                          <td className="p-3 text-right text-red-500">৳ {money(row.aitAmount)}</td>
-                          <td className="p-3 text-right font-bold text-blue-600">৳ {money(row.netReceivable)}</td>
-                          <td className="p-3 text-right text-green-600 font-semibold">৳ {money(row.paidAmount)}</td>
-                          <td className="p-3 text-right text-red-500 font-semibold">৳ {money(row.currentDue || row.dueAmount)}</td>
-                          <td className="p-3 text-right font-bold">৳ {money(row.balance)}</td>
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-4 mt-5">
+          <div className="rounded-2xl border p-4 bg-gray-50">
+            <p className="text-sm text-gray-600">
+              <b>Formula:</b> Net Receivable = Sales Amount - VAT Deducted - AIT Deducted.
+              Current Due = Net Receivable - Received Amount.
+            </p>
+          </div>
 
-                          <td className="p-3 text-center print:hidden">
-                            {Number(row.currentDue || row.dueAmount || 0) > 0 ? (
-                              <button
-                                onClick={() => openPayment(row)}
-                                className="px-3 py-2 rounded-xl bg-blue-600 text-white inline-flex items-center gap-2 hover:bg-blue-700"
-                              >
-                                <Wallet size={15} />
-                                Collect
-                              </button>
-                            ) : (
-                              <span className="text-xs text-green-600 font-semibold">
-                                Paid
-                              </span>
-                            )}
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
+          <div className="rounded-2xl border p-4 bg-blue-50">
+            <p className="text-sm text-gray-500">Amount in Words</p>
+            <p className="font-bold mt-1 text-blue-700">
+              {numberToWordsBD(summary.closingBalance)}
+            </p>
+          </div>
+        </div>
 
-                  {rows.length > 0 && (
-                    <tfoot className="bg-gray-50 border-t font-bold">
-                      <tr>
-                        <td className="p-3" colSpan={4}>Total</td>
-                        <td className="p-3 text-right">৳ {money(summary.salesTotal || summary.grossTotal)}</td>
-                        <td className="p-3 text-right text-red-500">৳ {money(summary.vatTotal)}</td>
-                        <td className="p-3 text-right text-red-500">৳ {money(summary.aitTotal)}</td>
-                        <td className="p-3 text-right text-blue-600">৳ {money(summary.netReceivableTotal)}</td>
-                        <td className="p-3 text-right text-green-600">৳ {money(summary.paidTotal)}</td>
-                        <td className="p-3 text-right text-red-500">৳ {money(summary.currentDueTotal || summary.dueTotal)}</td>
-                        <td className="p-3 text-right">৳ {money(summary.closingBalance)}</td>
-                        <td className="p-3 print:hidden"></td>
-                      </tr>
-                    </tfoot>
-                  )}
-                </table>
-              </div>
+        <div className="mt-10 border-t pt-6 space-y-6">
+          <div className="grid grid-cols-2 gap-6 text-sm">
+            <div className="text-center">
+              <div className="h-10 border-b border-dashed"></div>
+              <p className="mt-2 font-semibold">Customer Signature</p>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-4">
-              <div className="rounded-2xl border p-4 bg-gray-50">
-                <p className="text-sm text-gray-600">
-                  <b>Formula:</b> Net Receivable = Sales Amount - VAT Deducted - AIT Deducted.
-                  Current Due = Net Receivable - Received Amount.
-                </p>
-              </div>
-
-              <div className="rounded-2xl border p-4 bg-blue-50">
-                <p className="text-sm text-gray-500">Amount in Words</p>
-                <p className="font-bold mt-1 text-blue-700">
-                  {numberToWordsBD(summary.closingBalance)}
-                </p>
-              </div>
+            <div className="text-center">
+              <div className="h-10 border-b border-dashed"></div>
+              <p className="mt-2 font-semibold">Authorized Signature</p>
             </div>
+          </div>
+
+          <div className="text-center text-xs text-gray-400 border-t pt-3">
+            This is a system generated customer statement.
           </div>
         </div>
       </div>

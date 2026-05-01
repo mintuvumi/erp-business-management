@@ -16,7 +16,9 @@ export async function GET(req) {
     const from = searchParams.get("from") || "";
     const to = searchParams.get("to") || "";
 
-    const query = {};
+    const query = {
+      status: { $ne: "cancelled" },
+    };
 
     if (customer) {
       query.customerName = { $regex: customer, $options: "i" };
@@ -41,15 +43,12 @@ export async function GET(req) {
       const aitAmount = moneyNumber(sale.aitAmount);
       const paidAmount = moneyNumber(sale.paidAmount);
 
-      // Customer Statement: VAT + AIT বাদ দিয়ে receivable
       const netReceivable = moneyNumber(
         sale.netReceivable || salesAmount - vatAmount - aitAmount
       );
 
-      // Customer Statement due
       const currentDue = Math.max(netReceivable - paidAmount, 0);
 
-      // Running outstanding balance
       balance += currentDue;
 
       return {
@@ -69,8 +68,6 @@ export async function GET(req) {
         paidAmount,
 
         currentDue,
-
-        // old compatible field, UI পুরোনো হলে error হবে না
         dueAmount: currentDue,
 
         balance,
@@ -94,7 +91,6 @@ export async function GET(req) {
       currentDueTotal: rows.reduce((s, r) => s + r.currentDue, 0),
       closingBalance: balance,
 
-      // old compatible fields
       grossTotal: rows.reduce((s, r) => s + r.salesAmount, 0),
       dueTotal: rows.reduce((s, r) => s + r.currentDue, 0),
     };

@@ -1,42 +1,19 @@
 export function numberToWordsBD(amount) {
-  const n = Math.floor(Number(amount || 0));
+  const value = Number(amount || 0);
+  const n = Math.floor(value);
+  const paisa = Math.round((value - n) * 100);
 
-  if (n === 0) return "Zero Taka Only";
+  if (value === 0) return "Zero Taka Only";
 
   const ones = [
-    "",
-    "One",
-    "Two",
-    "Three",
-    "Four",
-    "Five",
-    "Six",
-    "Seven",
-    "Eight",
-    "Nine",
-    "Ten",
-    "Eleven",
-    "Twelve",
-    "Thirteen",
-    "Fourteen",
-    "Fifteen",
-    "Sixteen",
-    "Seventeen",
-    "Eighteen",
-    "Nineteen",
+    "", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight",
+    "Nine", "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen",
+    "Sixteen", "Seventeen", "Eighteen", "Nineteen",
   ];
 
   const tens = [
-    "",
-    "",
-    "Twenty",
-    "Thirty",
-    "Forty",
-    "Fifty",
-    "Sixty",
-    "Seventy",
-    "Eighty",
-    "Ninety",
+    "", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy",
+    "Eighty", "Ninety",
   ];
 
   function belowThousand(num) {
@@ -52,24 +29,34 @@ export function numberToWordsBD(amount) {
       num %= 10;
     }
 
-    if (num > 0) {
-      text += ones[num] + " ";
-    }
+    if (num > 0) text += ones[num] + " ";
 
     return text.trim();
   }
 
-  const crore = Math.floor(n / 10000000);
-  const lakh = Math.floor((n % 10000000) / 100000);
-  const thousand = Math.floor((n % 100000) / 1000);
-  const rest = n % 1000;
+  function convert(num) {
+    if (num === 0) return "Zero";
 
-  let words = "";
+    const crore = Math.floor(num / 10000000);
+    const lakh = Math.floor((num % 10000000) / 100000);
+    const thousand = Math.floor((num % 100000) / 1000);
+    const rest = num % 1000;
 
-  if (crore) words += belowThousand(crore) + " Crore ";
-  if (lakh) words += belowThousand(lakh) + " Lakh ";
-  if (thousand) words += belowThousand(thousand) + " Thousand ";
-  if (rest) words += belowThousand(rest);
+    let words = "";
 
-  return `${words.trim()} Taka Only`;
+    if (crore) words += belowThousand(crore) + " Crore ";
+    if (lakh) words += belowThousand(lakh) + " Lakh ";
+    if (thousand) words += belowThousand(thousand) + " Thousand ";
+    if (rest) words += belowThousand(rest);
+
+    return words.trim();
+  }
+
+  const takaWords = `${convert(n)} Taka`;
+
+  if (paisa > 0) {
+    return `${takaWords} and ${convert(paisa)} Paisa Only`;
+  }
+
+  return `${takaWords} Only`;
 }
