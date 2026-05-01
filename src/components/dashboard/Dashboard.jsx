@@ -25,6 +25,7 @@ export default function Dashboard() {
   const [purchaseDue, setPurchaseDue] = useState(0);
   const [stockValue, setStockValue] = useState(0);
   const [employeeCount, setEmployeeCount] = useState(0);
+  const [totalSales, setTotalSales] = useState(0);
 
   const [profitCard, setProfitCard] = useState({
     title: "Profit",
@@ -56,6 +57,7 @@ export default function Dashboard() {
         const profit = await safeFetch("/api/dashboard/profit");
         const expense = await safeFetch("/api/dashboard/expense");
         const employee = await safeFetch("/api/employees");
+        const salesReport = await safeFetch("/api/sales/report");
 
         if (bank.success) setBankBalance(bank.data?.totalBankBalance || 0);
         if (cash.success) setCashInHand(cash.data?.cashInHand || 0);
@@ -85,6 +87,10 @@ export default function Dashboard() {
         if (employee.success) {
           setEmployeeCount(employee.data?.totalEmployee || 0);
         }
+
+        if (salesReport.success) {
+          setTotalSales(salesReport.data?.totalSales || 0);
+        }
       } catch (err) {
         console.error("DASHBOARD_LOAD_ERROR:", err);
       }
@@ -96,12 +102,12 @@ export default function Dashboard() {
   const cards = [
     {
       title: "Cash in Hand",
-      value: `৳ ${Number(cashInHand || 0).toFixed(2)}`,
+      value: `৳ ${money(cashInHand)}`,
       action: "cash",
     },
     {
       title: "Bank Balance",
-      value: `৳ ${Number(bankBalance || 0).toFixed(2)}`,
+      value: `৳ ${money(bankBalance)}`,
       action: "bank",
     },
     {
@@ -109,15 +115,19 @@ export default function Dashboard() {
       value: profitCard.value,
       action: "profit",
     },
-    { title: "Total Sales", value: "৳ 200000", action: "sales" },
+    {
+      title: "Total Sales",
+      value: `৳ ${money(totalSales)}`,
+      action: "sales",
+    },
     {
       title: "Total Purchase",
-      value: `৳ ${Number(purchaseDue || 0).toFixed(2)}`,
+      value: `৳ ${money(purchaseDue)}`,
       action: "purchase",
     },
     {
       title: "Stock Value",
-      value: `৳ ${Number(stockValue || 0).toFixed(2)}`,
+      value: `৳ ${money(stockValue)}`,
       action: "stock",
     },
     {
@@ -206,4 +216,8 @@ export default function Dashboard() {
       </div>
     </>
   );
+}
+
+function money(value) {
+  return Number(value || 0).toFixed(2);
 }

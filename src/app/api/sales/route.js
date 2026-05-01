@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import Sale from "@/models/Sale";
 import Stock from "@/models/Stock";
+import Customer from "@/models/Customer";
+import CompanySetting from "@/models/CompanySetting";
 import connectDB from "@/lib/db";
 import generateBillNo from "@/utils/generateBillNo";
 import CashTransaction from "@/models/CashTransaction";
@@ -12,33 +14,50 @@ function calculateTax({ salesAmount, vatPercent, aitPercent, amountType }) {
 
   let baseSalesAmount = 0;
   let vatAmount = 0;
-  let aitAmount = 0;
-  let grossAmount = 0;
-  let netReceivable = 0;
 
   if (amountType === "inclusive") {
     baseSalesAmount = vatRate > 0 ? (amount * 100) / (100 + vatRate) : amount;
     vatAmount = amount - baseSalesAmount;
-    aitAmount = (baseSalesAmount * aitRate) / 100;
-    grossAmount = amount;
-    netReceivable = grossAmount - vatAmount - aitAmount;
   } else {
     baseSalesAmount = amount;
     vatAmount = (baseSalesAmount * vatRate) / 100;
-    aitAmount = (baseSalesAmount * aitRate) / 100;
-    grossAmount = baseSalesAmount + vatAmount + aitAmount;
-    netReceivable = grossAmount - vatAmount - aitAmount;
   }
+
+  const aitAmount = (baseSalesAmount * aitRate) / 100;
+
+  const invoiceTotal = baseSalesAmount + vatAmount;
+  const netReceivable = baseSalesAmount - vatAmount - aitAmount;
 
   return {
     baseSalesAmount,
     vatAmount,
     aitAmount,
     taxTotal: vatAmount + aitAmount,
-    grossAmount,
+    invoiceTotal,
+    grossAmount: invoiceTotal,
     netReceivable,
     netSalesAmount: baseSalesAmount,
   };
+}
+
+function getPaymentType({ paidAmount, targetAmount }) {
+  const paid = Number(paidAmount || 0);
+  const target = Number(targetAmount || 0);
+
+  if (paid <= 0) return "credit";
+  if (paid >= target) return "cash";
+  return "partial";
+}
+
+async function getCustomerPreviousDue(customerName) {
+  const sales = await Sale.find({
+    customerName: { $regex: `^${customerName}$`, $options: "i" },
+    status: { $ne: "cancelled" },
+  });
+
+  return sales.reduce((sum, sale) => {
+    return sum + Number(sale.statementDueAmount || sale.dueAmount || 0);
+  }, 0);
 }
 
 export async function POST(req) {
@@ -47,6 +66,13 @@ export async function POST(req) {
 
     const body = await req.json();
 
+    if (!body.customerName || !String(body.customerName).trim()) {
+      return NextResponse.json(
+        { success: false, message: "Customer name required" },
+        { status: 400 }
+      );
+    }
+
     if (!body.items || body.items.length === 0) {
       return NextResponse.json(
         { success: false, message: "Items required" },
@@ -54,43 +80,58 @@ export async function POST(req) {
       );
     }
 
-    for (const item of body.items) {
+    const manualBillNo = String(body.manualBillNo || "").trim();
+
+    if (manualBillNo) {
+      const exists = await Sale.findOne({ billNo: manualBillNo });
+
+      if (exists) {
+        return NextResponse.json(
+          { success: false, message: "Invoice number already exists" },
+          { status: 400 }
+        );
+      }
+    }
+
+    const validBodyItems = body.items.filter(
+      (item) => String(item.name || "").trim() && Number(item.qty || 0) > 0
+    );
+
+    if (validBodyItems.length === 0) {
+      return NextResponse.json(
+        { success: false, message: "At least one valid item required" },
+        { status: 400 }
+      );
+    }
+
+    for (const item of validBodyItems) {
+      if (Number(item.price || 0) < 0) {
+        return NextResponse.json(
+          { success: false, message: `Invalid price for ${item.name}` },
+          { status: 400 }
+        );
+      }
+
       if (item.sourceType === "stock") {
-        const stock = await Stock.findOne({
-          itemName: item.name,
-        });
+        const stock = await Stock.findOne({ itemName: item.name });
 
         if (!stock) {
           return NextResponse.json(
-            {
-              success: false,
-              message: `Stock not found for ${item.name}`,
-            },
+            { success: false, message: `Stock not found for ${item.name}` },
             { status: 400 }
           );
         }
 
         if (Number(stock.qty) < Number(item.qty)) {
           return NextResponse.json(
-            {
-              success: false,
-              message: `Not enough stock for ${item.name}`,
-            },
+            { success: false, message: `Not enough stock for ${item.name}` },
             { status: 400 }
           );
         }
-
-        stock.qty = Number(stock.qty) - Number(item.qty);
-        stock.totalValue = Number(stock.qty) * Number(stock.avgCost || 0);
-
-        await stock.save();
       }
     }
 
-    const count = await Sale.countDocuments();
-    const billNo = generateBillNo(count);
-
-    const items = body.items.map((i) => {
+    const items = validBodyItems.map((i) => {
       const qty = Number(i.qty) || 0;
       const price = Number(i.price) || 0;
       const purchasePrice = Number(i.purchasePrice) || 0;
@@ -101,6 +142,9 @@ export async function POST(req) {
 
       return {
         ...i,
+        name: String(i.name || "").trim(),
+        description: String(i.description || "").trim(),
+        unit: i.unit || "pcs",
         qty,
         price,
         purchasePrice,
@@ -115,8 +159,15 @@ export async function POST(req) {
     const totalProfit = items.reduce((sum, i) => sum + i.profit, 0);
 
     const discount = Number(body.discount) || 0;
-    const afterDiscount = Math.max(subTotal - discount, 0);
 
+    if (discount < 0) {
+      return NextResponse.json(
+        { success: false, message: "Discount cannot be negative" },
+        { status: 400 }
+      );
+    }
+
+    const afterDiscount = Math.max(subTotal - discount, 0);
     const amountType = body.amountType || "exclusive";
 
     const salesAmount =
@@ -124,6 +175,13 @@ export async function POST(req) {
 
     const vatPercent = Number(body.vatPercent) || 0;
     const aitPercent = Number(body.aitPercent) || 0;
+
+    if (vatPercent < 0 || aitPercent < 0) {
+      return NextResponse.json(
+        { success: false, message: "VAT/AIT percent cannot be negative" },
+        { status: 400 }
+      );
+    }
 
     const tax = calculateTax({
       salesAmount,
@@ -133,18 +191,94 @@ export async function POST(req) {
     });
 
     const paidAmount = Number(body.paidAmount) || 0;
-    const dueAmount = Math.max(tax.netReceivable - paidAmount, 0);
 
-    const paymentType =
-      paidAmount <= 0
-        ? "credit"
-        : paidAmount >= tax.netReceivable
-        ? "cash"
-        : "partial";
+    if (paidAmount < 0) {
+      return NextResponse.json(
+        { success: false, message: "Payment amount cannot be negative" },
+        { status: 400 }
+      );
+    }
+
+    const invoiceDueAmount = Math.max(tax.invoiceTotal - paidAmount, 0);
+    const statementDueAmount = Math.max(tax.netReceivable - paidAmount, 0);
+    const dueAmount = statementDueAmount;
+
+    const settings = await CompanySetting.findOne();
+    const customer = await Customer.findOne({
+      name: { $regex: `^${body.customerName.trim()}$`, $options: "i" },
+    });
+
+    const creditApprovalRequired =
+      settings?.creditApprovalRequired === false ? false : true;
+
+    const defaultCreditLimit = Number(settings?.defaultCreditLimit || 50000);
+    const customerCreditLimit =
+      Number(customer?.creditLimit || 0) > 0
+        ? Number(customer.creditLimit)
+        : defaultCreditLimit;
+
+    const previousDue = await getCustomerPreviousDue(body.customerName.trim());
+    const totalDueAfterSale = previousDue + statementDueAmount;
+
+    if (
+      creditApprovalRequired &&
+      statementDueAmount > 0 &&
+      totalDueAfterSale > customerCreditLimit
+    ) {
+      const ownerPin = String(body.ownerPin || "").trim();
+      const savedOwnerPin = String(settings?.ownerPin || "1234").trim();
+
+      if (!ownerPin || ownerPin !== savedOwnerPin) {
+        return NextResponse.json(
+          {
+            success: false,
+            requirePin: true,
+            message:
+              settings?.creditWarningMessage ||
+              "Customer credit limit exceeded. Owner approval required.",
+            data: {
+              previousDue,
+              newDue: statementDueAmount,
+              totalDueAfterSale,
+              creditLimit: customerCreditLimit,
+            },
+          },
+          { status: 403 }
+        );
+      }
+    }
+
+    for (const item of items) {
+      if (item.sourceType === "stock") {
+        const stock = await Stock.findOne({ itemName: item.name });
+
+        stock.qty = Number(stock.qty) - Number(item.qty);
+        stock.totalValue = Number(stock.qty) * Number(stock.avgCost || 0);
+
+        await stock.save();
+      }
+    }
+
+    const count = await Sale.countDocuments();
+    const autoBillNo = generateBillNo(count);
+    const billNo = manualBillNo || autoBillNo;
+
+    const paymentType = getPaymentType({
+      paidAmount,
+      targetAmount: tax.invoiceTotal,
+    });
 
     const sale = await Sale.create({
       ...body,
+
       billNo,
+      manualBillNo,
+      autoBillNo,
+
+      customerName: body.customerName.trim(),
+      customerPhone: body.customerPhone || customer?.phone || "",
+      customerAddress: body.customerAddress || customer?.address || "",
+
       items,
 
       subTotal,
@@ -163,15 +297,20 @@ export async function POST(req) {
       aitAmount: tax.aitAmount,
 
       taxTotal: tax.taxTotal,
+
       grossAmount: tax.grossAmount,
+      invoiceTotal: tax.invoiceTotal,
+      invoiceDueAmount,
+
       netReceivable: tax.netReceivable,
+      statementDueAmount,
+
       netSalesAmount: tax.netSalesAmount,
 
-      // old compatible field
-      netTotal: tax.netReceivable,
+      netTotal: tax.invoiceTotal,
+      dueAmount,
 
       paidAmount,
-      dueAmount,
       paymentType,
 
       vatDocumentReceived: Boolean(body.vatDocumentReceived),
@@ -186,7 +325,7 @@ export async function POST(req) {
     if (paidAmount > 0) {
       await CashTransaction.create({
         type: "in",
-        category: "cash_sale",
+        category: paymentType === "cash" ? "cash_sale" : "due_collection",
         title: `Cash received from sale ${billNo}`,
         amount: paidAmount,
         date: body.date || new Date().toISOString().slice(0, 10),
