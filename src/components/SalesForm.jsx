@@ -47,6 +47,8 @@ export default function SalesForm() {
   const [customer, setCustomer] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [customerAddress, setCustomerAddress] = useState("");
+  const [customerSuggestions, setCustomerSuggestions] = useState([]);
+
   const [poWoNo, setPoWoNo] = useState("");
   const [note, setNote] = useState("");
 
@@ -75,10 +77,37 @@ export default function SalesForm() {
 
   const [saving, setSaving] = useState(false);
 
-  // ✅ Owner approval states
   const [ownerPin, setOwnerPin] = useState("");
   const [showPinModal, setShowPinModal] = useState(false);
   const [creditInfo, setCreditInfo] = useState(null);
+
+  const fetchCustomers = async (value) => {
+    setCustomer(value);
+
+    if (!value.trim()) {
+      setCustomerSuggestions([]);
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/customers?q=${encodeURIComponent(value)}`);
+      const data = await res.json();
+
+      if (data.success) {
+        setCustomerSuggestions(data.data || []);
+      }
+    } catch (error) {
+      console.error("CUSTOMER_SEARCH_ERROR:", error);
+      setCustomerSuggestions([]);
+    }
+  };
+
+  const selectCustomer = (c) => {
+    setCustomer(c.name || "");
+    setCustomerPhone(c.phone || "");
+    setCustomerAddress(c.address || "");
+    setCustomerSuggestions([]);
+  };
 
   const updateItem = (index, field, value) => {
     const newItems = [...items];
@@ -154,6 +183,7 @@ export default function SalesForm() {
     setCustomer("");
     setCustomerPhone("");
     setCustomerAddress("");
+    setCustomerSuggestions([]);
     setPoWoNo("");
     setNote("");
     setItems([
@@ -330,17 +360,39 @@ export default function SalesForm() {
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <Input type="date" label="Date" value={date} onChange={setDate} />
-          <Input
-            label="Customer Name"
-            value={customer}
-            onChange={setCustomer}
-            placeholder="Enter customer name"
-          />
+
+          <div className="relative">
+            <Input
+              label="Customer Name"
+              value={customer}
+              onChange={fetchCustomers}
+              placeholder="Type customer name, e.g. ACI Ltd"
+            />
+
+            {customerSuggestions.length > 0 && (
+              <div className="absolute left-0 right-0 top-full mt-1 bg-white border rounded-2xl shadow-lg z-[9999] max-h-56 overflow-auto">
+                {customerSuggestions.map((c) => (
+                  <button
+                    key={c._id}
+                    type="button"
+                    onClick={() => selectCustomer(c)}
+                    className="w-full text-left p-3 hover:bg-blue-50 border-b last:border-b-0"
+                  >
+                    <p className="font-semibold text-sm">{c.name}</p>
+                    <p className="text-xs text-gray-500">
+                      {c.phone || "No phone"} {c.address ? `• ${c.address}` : ""}
+                    </p>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
           <Input
             label="Phone Number"
             value={customerPhone}
             onChange={setCustomerPhone}
-            placeholder="Enter phone number"
+            placeholder="Auto fill / enter phone number"
           />
         </div>
 
@@ -349,7 +401,7 @@ export default function SalesForm() {
             label="Customer Address"
             value={customerAddress}
             onChange={setCustomerAddress}
-            placeholder="Enter customer address"
+            placeholder="Auto fill / enter customer address"
           />
           <Input
             label="PO / Work Order No"
@@ -432,7 +484,7 @@ export default function SalesForm() {
               <input
                 type="number"
                 value={item.purchasePrice}
-                placeholder="Cost"
+                placeholder="Cost / purchase price"
                 onChange={(e) =>
                   updateItem(i, "purchasePrice", e.target.value)
                 }
@@ -527,13 +579,13 @@ export default function SalesForm() {
               label="VAT Document Note"
               value={vatDocumentNote}
               onChange={setVatDocumentNote}
-              placeholder="VAT challan / note"
+              placeholder="VAT challan / document note"
             />
             <Input
               label="AIT Document Note"
               value={aitDocumentNote}
               onChange={setAitDocumentNote}
-              placeholder="AIT certificate / note"
+              placeholder="AIT certificate / document note"
             />
           </div>
 
