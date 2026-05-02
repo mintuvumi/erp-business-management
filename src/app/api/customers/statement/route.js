@@ -20,10 +20,12 @@ export async function GET(req) {
       status: { $ne: "cancelled" },
     };
 
+    // 🔥 SEARCH FIX
     if (customer) {
       query.customerName = { $regex: customer, $options: "i" };
     }
 
+    // 🔥 DATE FILTER
     if (from || to) {
       query.date = {};
       if (from) query.date.$gte = from;
@@ -33,6 +35,7 @@ export async function GET(req) {
     const sales = await Sale.find(query).sort({ date: 1, createdAt: 1 });
 
     let balance = 0;
+    let lastCustomer = null;
 
     const rows = sales.map((sale) => {
       const salesAmount = moneyNumber(
@@ -48,6 +51,12 @@ export async function GET(req) {
       );
 
       const currentDue = Math.max(netReceivable - paidAmount, 0);
+
+      // 🔥 CUSTOMER CHANGE হলে balance reset
+      if (sale.customerName !== lastCustomer) {
+        balance = 0;
+        lastCustomer = sale.customerName;
+      }
 
       balance += currentDue;
 
@@ -89,7 +98,7 @@ export async function GET(req) {
       netReceivableTotal: rows.reduce((s, r) => s + r.netReceivable, 0),
       paidTotal: rows.reduce((s, r) => s + r.paidAmount, 0),
       currentDueTotal: rows.reduce((s, r) => s + r.currentDue, 0),
-      closingBalance: balance,
+      closingBalance: rows.length ? rows[rows.length - 1].balance : 0,
 
       grossTotal: rows.reduce((s, r) => s + r.salesAmount, 0),
       dueTotal: rows.reduce((s, r) => s + r.currentDue, 0),
