@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Plus, Trash2, Save } from "lucide-react";
+import { Plus, Trash2, Save, Printer, X } from "lucide-react";
 
 function generateBillNo() {
   const random = Math.floor(1000 + Math.random() * 9000);
@@ -41,7 +41,6 @@ export default function SalesForm() {
   const [billNo] = useState(generateBillNo());
   const [billType, setBillType] = useState("auto");
   const [manualBillNo, setManualBillNo] = useState("");
-
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
 
   const [customer, setCustomer] = useState("");
@@ -76,10 +75,12 @@ export default function SalesForm() {
   const [aitDocumentNote, setAitDocumentNote] = useState("");
 
   const [saving, setSaving] = useState(false);
-
   const [ownerPin, setOwnerPin] = useState("");
   const [showPinModal, setShowPinModal] = useState(false);
   const [creditInfo, setCreditInfo] = useState(null);
+
+  const [showInvoice, setShowInvoice] = useState(false);
+  const [invoiceData, setInvoiceData] = useState(null);
 
   const fetchCustomers = async (value) => {
     setCustomer(value);
@@ -171,11 +172,7 @@ export default function SalesForm() {
   const statementDueAmount = Math.max(tax.netReceivable - paidAmount, 0);
 
   const paymentType =
-    paidAmount <= 0
-      ? "credit"
-      : paidAmount >= tax.invoiceTotal
-      ? "cash"
-      : "partial";
+    paidAmount <= 0 ? "credit" : paidAmount >= tax.invoiceTotal ? "cash" : "partial";
 
   const resetForm = () => {
     setBillType("auto");
@@ -213,62 +210,41 @@ export default function SalesForm() {
   };
 
   const buildPayload = (pin = "") => {
-    const validItems = itemRows.filter(
-      (item) => item.name.trim() && item.qty > 0
-    );
+    const validItems = itemRows.filter((item) => item.name.trim() && item.qty > 0);
 
     return {
       billNo,
       manualBillNo: billType === "manual" ? manualBillNo.trim() : "",
-
       date,
       customerName: customer,
       customerPhone,
       customerAddress,
       poWoNo,
-
       items: validItems,
-
       discount: discountAmount,
       amountType,
       salesAmount: afterDiscount,
-
       vatPercent: Number(vatPercent || 0),
       aitPercent: Number(aitPercent || 0),
-
       paidAmount,
-
       vatDocumentReceived,
       aitDocumentReceived,
       vatDocumentNote,
       aitDocumentNote,
-
       ownerPin: pin,
-
       note,
       status: "completed",
     };
   };
 
   const handleSubmit = async (pin = "") => {
-    if (!customer.trim()) {
-      alert("Customer name required");
-      return;
-    }
-
+    if (!customer.trim()) return alert("Customer name required");
     if (billType === "manual" && !manualBillNo.trim()) {
-      alert("Manual invoice number required");
-      return;
+      return alert("Manual invoice number required");
     }
 
-    const validItems = itemRows.filter(
-      (item) => item.name.trim() && item.qty > 0
-    );
-
-    if (validItems.length === 0) {
-      alert("At least one valid item required");
-      return;
-    }
+    const validItems = itemRows.filter((item) => item.name.trim() && item.qty > 0);
+    if (validItems.length === 0) return alert("At least one valid item required");
 
     const payload = buildPayload(pin);
 
@@ -293,7 +269,21 @@ export default function SalesForm() {
         throw new Error(data.message || "Sale save failed");
       }
 
-      alert("Sale Saved ✅");
+      setInvoiceData({
+        ...payload,
+        invoiceNo: payload.manualBillNo || payload.billNo,
+        subTotal,
+        discountAmount,
+        vatAmount: tax.vatAmount,
+        aitAmount: tax.aitAmount,
+        invoiceTotal: tax.invoiceTotal,
+        paidAmount,
+        invoiceDueAmount,
+        paymentType,
+      });
+
+      setShowInvoice(true);
+      alert("Sale Saved ✅ Invoice Ready");
       resetForm();
     } catch (err) {
       alert(err.message || "Sale save failed");
@@ -303,11 +293,7 @@ export default function SalesForm() {
   };
 
   const approveWithPin = async () => {
-    if (!ownerPin.trim()) {
-      alert("Owner PIN required");
-      return;
-    }
-
+    if (!ownerPin.trim()) return alert("Owner PIN required");
     setShowPinModal(false);
     await handleSubmit(ownerPin.trim());
   };
@@ -347,7 +333,6 @@ export default function SalesForm() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <Input label="Auto Bill No" value={billNo} readOnly />
-
             <Input
               label="Manual Invoice No"
               value={manualBillNo}
@@ -438,7 +423,7 @@ export default function SalesForm() {
 
               <input
                 value={item.description}
-                placeholder="Product description"
+                placeholder="Item description for invoice"
                 onChange={(e) => updateItem(i, "description", e.target.value)}
                 className="col-span-12 md:col-span-3 border bg-white p-3 rounded-xl outline-none focus:ring-4 focus:ring-blue-100"
               />
@@ -455,7 +440,7 @@ export default function SalesForm() {
               <input
                 type="number"
                 value={item.qty}
-                placeholder="Qty"
+                placeholder="Enter quantity"
                 onChange={(e) => updateItem(i, "qty", e.target.value)}
                 className="col-span-6 md:col-span-1 border bg-white p-3 rounded-xl outline-none focus:ring-4 focus:ring-blue-100"
               />
@@ -465,6 +450,7 @@ export default function SalesForm() {
                 onChange={(e) => updateItem(i, "unit", e.target.value)}
                 className="col-span-6 md:col-span-1 border bg-white p-3 rounded-xl"
               >
+                <option value="">Unit</option>
                 <option value="pcs">pcs</option>
                 <option value="nos">nos</option>
                 <option value="kg">kg</option>
@@ -476,7 +462,7 @@ export default function SalesForm() {
               <input
                 type="number"
                 value={item.price}
-                placeholder="Unit price"
+                placeholder="Selling price"
                 onChange={(e) => updateItem(i, "price", e.target.value)}
                 className="col-span-6 md:col-span-1 border bg-white p-3 rounded-xl outline-none focus:ring-4 focus:ring-blue-100"
               />
@@ -484,10 +470,8 @@ export default function SalesForm() {
               <input
                 type="number"
                 value={item.purchasePrice}
-                placeholder="Cost / purchase price"
-                onChange={(e) =>
-                  updateItem(i, "purchasePrice", e.target.value)
-                }
+                placeholder="Buying cost"
+                onChange={(e) => updateItem(i, "purchasePrice", e.target.value)}
                 className="col-span-6 md:col-span-1 border bg-white p-3 rounded-xl outline-none focus:ring-4 focus:ring-blue-100"
               />
 
@@ -533,60 +517,9 @@ export default function SalesForm() {
               </select>
             </div>
 
-            <Input
-              type="number"
-              label="VAT %"
-              value={vatPercent}
-              onChange={setVatPercent}
-              placeholder="Example: 10"
-            />
-            <Input
-              type="number"
-              label="AIT %"
-              value={aitPercent}
-              onChange={setAitPercent}
-              placeholder="Example: 5"
-            />
-            <Input
-              type="number"
-              label="Payment Amount"
-              value={paid}
-              onChange={setPaid}
-              placeholder="Enter received amount"
-            />
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <label className="border rounded-xl p-3 flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={vatDocumentReceived}
-                onChange={(e) => setVatDocumentReceived(e.target.checked)}
-              />
-              VAT Document Received
-            </label>
-
-            <label className="border rounded-xl p-3 flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={aitDocumentReceived}
-                onChange={(e) => setAitDocumentReceived(e.target.checked)}
-              />
-              AIT Document Received
-            </label>
-
-            <Input
-              label="VAT Document Note"
-              value={vatDocumentNote}
-              onChange={setVatDocumentNote}
-              placeholder="VAT challan / document note"
-            />
-            <Input
-              label="AIT Document Note"
-              value={aitDocumentNote}
-              onChange={setAitDocumentNote}
-              placeholder="AIT certificate / document note"
-            />
+            <Input type="number" label="VAT %" value={vatPercent} onChange={setVatPercent} placeholder="Example: 10" />
+            <Input type="number" label="AIT %" value={aitPercent} onChange={setAitPercent} placeholder="Example: 5" />
+            <Input type="number" label="Payment Amount" value={paid} onChange={setPaid} placeholder="Enter received amount" />
           </div>
 
           <textarea
@@ -607,24 +540,11 @@ export default function SalesForm() {
           <Row title="Invoice Total" value={tax.invoiceTotal} bold />
 
           <div className="border-t pt-3 mt-3 space-y-2">
-            <Row
-              title={`AIT Deducted (${aitPercent || 0}%)`}
-              value={tax.aitAmount}
-              danger
-            />
-            <Row
-              title="Statement Net Receivable"
-              value={tax.netReceivable}
-              highlight
-            />
+            <Row title={`AIT Deducted (${aitPercent || 0}%)`} value={tax.aitAmount} danger />
+            <Row title="Statement Net Receivable" value={tax.netReceivable} highlight />
             <Row title="Payment Amount" value={paidAmount} success />
             <Row title="Invoice Due" value={invoiceDueAmount} danger />
-            <Row
-              title="Statement Due"
-              value={statementDueAmount}
-              danger
-              bold
-            />
+            <Row title="Statement Due" value={statementDueAmount} danger bold />
           </div>
 
           <div className="border-t pt-3 mt-3 flex justify-between text-sm">
@@ -640,33 +560,29 @@ export default function SalesForm() {
             className="w-full mt-4 inline-flex justify-center items-center gap-2 bg-blue-600 text-white px-5 py-3 rounded-xl hover:bg-blue-700 disabled:opacity-60"
           >
             <Save size={16} />
-            {saving ? "Saving..." : "Save Sale"}
+            {saving ? "Saving..." : "Save Sale & Invoice"}
           </button>
         </div>
       </div>
+
+      {showInvoice && invoiceData && (
+        <SalesInvoice
+          invoice={invoiceData}
+          onClose={() => setShowInvoice(false)}
+        />
+      )}
 
       {showPinModal && (
         <div className="fixed inset-0 z-[9999] bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white w-full max-w-md rounded-[28px] shadow-2xl border overflow-hidden">
             <div className="p-5 border-b">
-              <h3 className="text-lg font-bold text-center">
-                Owner Approval Required
-              </h3>
+              <h3 className="text-lg font-bold text-center">Owner Approval Required</h3>
               <p className="text-sm text-gray-500 text-center mt-1">
                 Customer credit limit exceeded.
               </p>
             </div>
 
-            {creditInfo && (
-              <div className="p-5 grid grid-cols-2 gap-3 text-sm">
-                <InfoBox title="Previous Due" value={creditInfo.previousDue} />
-                <InfoBox title="New Due" value={creditInfo.newDue} />
-                <InfoBox title="Total Due" value={creditInfo.totalDueAfterSale} danger />
-                <InfoBox title="Credit Limit" value={creditInfo.creditLimit} />
-              </div>
-            )}
-
-            <div className="px-5 pb-5 space-y-3">
+            <div className="px-5 pb-5 space-y-3 pt-5">
               <input
                 type="password"
                 value={ownerPin}
@@ -698,6 +614,185 @@ export default function SalesForm() {
           </div>
         </div>
       )}
+
+      <style jsx global>{`
+        @media print {
+          body * {
+            visibility: hidden;
+          }
+          #sales-invoice-print,
+          #sales-invoice-print * {
+            visibility: visible;
+          }
+          #sales-invoice-print {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
+          }
+          .no-print {
+            display: none !important;
+          }
+        }
+      `}</style>
+    </div>
+  );
+}
+
+function SalesInvoice({ invoice, onClose }) {
+  return (
+    <div className="fixed inset-0 z-[99999] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl max-w-5xl w-full max-h-[95vh] overflow-auto">
+        <div className="no-print flex justify-between items-center p-4 border-b">
+          <h3 className="font-bold">Sales Invoice Preview</h3>
+          <div className="flex gap-2">
+            <button
+              onClick={() => window.print()}
+              className="px-4 py-2 rounded-xl bg-blue-600 text-white flex items-center gap-2"
+            >
+              <Printer size={16} /> Print
+            </button>
+            <button onClick={onClose} className="w-10 h-10 rounded-full border flex items-center justify-center">
+              <X size={18} />
+            </button>
+          </div>
+        </div>
+
+        <div id="sales-invoice-print" className="bg-white mx-auto my-6 w-[794px] min-h-[1123px] relative overflow-hidden shadow-xl print:shadow-none">
+          <div className="h-28 flex items-center justify-between border-b-2 border-gray-700">
+            <div className="pl-14 flex items-center gap-3">
+              <div className="w-14 h-14 rounded-2xl bg-blue-600 text-white flex items-center justify-center text-3xl font-bold">
+                P
+              </div>
+              <div>
+                <h1 className="text-2xl font-black leading-6">Pixel Mart</h1>
+                <p className="text-xs text-gray-500">Creative design house</p>
+              </div>
+            </div>
+
+            <div className="h-full w-[330px] bg-gradient-to-r from-blue-900 to-sky-500 text-white flex items-center justify-center clip-invoice">
+              <h2 className="text-4xl font-black tracking-wide">INVOICE</h2>
+            </div>
+          </div>
+
+          <div className="px-14 pt-14">
+            <div className="flex justify-between">
+              <div>
+                <p className="text-xs text-gray-600">Invoice To:</p>
+                <h3 className="text-sm font-black text-blue-800 uppercase">
+                  {invoice.customerName || "Customer Name"}
+                </h3>
+                <p className="text-xs text-gray-600">{invoice.customerAddress || "Customer Address"}</p>
+                <p className="text-xs mt-3">P : {invoice.customerPhone || "-"}</p>
+                <p className="text-xs">PO/WO : {invoice.poWoNo || "-"}</p>
+              </div>
+
+              <div className="text-xs">
+                <p className="bg-blue-900 text-white px-3 py-1 font-bold">
+                  INVOICE NO: #{invoice.invoiceNo}
+                </p>
+                <div className="mt-3 grid grid-cols-2 gap-x-5 gap-y-1">
+                  <span>Account No</span>
+                  <span className="text-right">280090</span>
+                  <span>Invoice Date</span>
+                  <span className="text-right">{formatDate(invoice.date)}</span>
+                </div>
+              </div>
+            </div>
+
+            <table className="w-full mt-8 text-xs border-collapse">
+              <thead>
+                <tr className="text-white">
+                  <th className="bg-blue-950 p-3 text-center w-[55px]">SL No</th>
+                  <th className="bg-blue-900 p-3 text-left">Item Description</th>
+                  <th className="bg-sky-500 p-3 text-center w-[85px]">Quantity</th>
+                  <th className="bg-sky-600 p-3 text-center w-[70px]">Unit</th>
+                  <th className="bg-blue-800 p-3 text-right w-[95px]">Unit Price</th>
+                  <th className="bg-blue-950 p-3 text-right w-[105px]">Total Price</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {invoice.items?.map((item, index) => (
+                  <tr key={index} className="border-b">
+                    <td className="p-3 text-center font-bold">{index + 1}</td>
+                    <td className="p-3">
+                      <p className="font-bold">{item.name}</p>
+                      <p className="text-[10px] text-gray-500 mt-1">
+                        {item.description || "-"}
+                      </p>
+                    </td>
+                    <td className="p-3 text-center bg-gray-100 font-bold">
+                      {Number(item.qty || 0).toFixed(0)}
+                    </td>
+                    <td className="p-3 text-center">{item.unit || "-"}</td>
+                    <td className="p-3 text-right">৳ {money(item.price)}</td>
+                    <td className="p-3 text-right font-bold">৳ {money(item.total)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            <div className="flex justify-between mt-6">
+              <div className="w-[48%] text-xs">
+                <h4 className="font-bold mb-2">Payment method</h4>
+                <p>Payment Type: {invoice.paymentType}</p>
+                <p>Paid Amount: ৳ {money(invoice.paidAmount)}</p>
+                <p>Invoice Due: ৳ {money(invoice.invoiceDueAmount)}</p>
+
+                <h4 className="font-bold mt-5 mb-1">Terms & Conditions:</h4>
+                <p className="text-[10px] text-gray-500">
+                  Goods once sold are not refundable without company approval.
+                </p>
+
+                <p className="font-bold mt-6">Thanks for your business!</p>
+              </div>
+
+              <div className="w-[35%] text-xs space-y-2">
+                <InvoiceTotalRow title="Sub Total" value={invoice.subTotal} />
+                <InvoiceTotalRow title="Discount" value={invoice.discountAmount} />
+                <InvoiceTotalRow title={`VAT (${invoice.vatPercent || 0}%)`} value={invoice.vatAmount} />
+                <InvoiceTotalRow title={`AIT (${invoice.aitPercent || 0}%)`} value={invoice.aitAmount} />
+                <div className="bg-blue-600 text-white px-4 py-2 flex justify-between font-bold">
+                  <span>Grand Total</span>
+                  <span>৳ {money(invoice.invoiceTotal)}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="absolute bottom-24 right-16 text-center">
+              <div className="font-signature text-2xl italic">Authorized</div>
+              <div className="border-t border-gray-700 mt-1 pt-1">
+                <p className="font-bold text-xs">AUTHORIZED SIGNATURE</p>
+                <p className="text-[10px]">Chief Director</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="absolute bottom-0 left-0 right-0 h-20">
+            <div className="absolute bottom-0 left-0 right-0 h-2 bg-sky-500"></div>
+            <div className="absolute right-0 bottom-0 w-[430px] h-20 bg-gradient-to-r from-blue-950 to-sky-500 clip-footer"></div>
+          </div>
+
+          <style jsx>{`
+            .clip-invoice {
+              clip-path: polygon(20% 0, 100% 0, 100% 100%, 0 100%);
+            }
+            .clip-footer {
+              clip-path: polygon(18% 0, 100% 0, 100% 100%, 0 100%);
+            }
+          `}</style>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function InvoiceTotalRow({ title, value }) {
+  return (
+    <div className="flex justify-between px-4">
+      <span>{title}</span>
+      <span>৳ {money(value)}</span>
     </div>
   );
 }
@@ -725,11 +820,11 @@ function Input({ label, value, onChange, placeholder, type = "text", readOnly })
 function Row({ title, value, bold, danger, success, highlight }) {
   return (
     <div
-      className={`flex justify-between text-sm ${
-        bold ? "font-bold text-base" : ""
-      } ${danger ? "text-red-500" : ""} ${
-        success ? "text-green-600" : ""
-      } ${highlight ? "font-bold text-blue-600" : ""}`}
+      className={`flex justify-between text-sm ${bold ? "font-bold text-base" : ""} ${
+        danger ? "text-red-500" : ""
+      } ${success ? "text-green-600" : ""} ${
+        highlight ? "font-bold text-blue-600" : ""
+      }`}
     >
       <span>{title}</span>
       <span>৳ {money(value)}</span>
@@ -737,19 +832,15 @@ function Row({ title, value, bold, danger, success, highlight }) {
   );
 }
 
-function InfoBox({ title, value, danger }) {
-  return (
-    <div
-      className={`border rounded-2xl p-3 ${
-        danger ? "bg-red-50 text-red-600" : "bg-gray-50"
-      }`}
-    >
-      <p className="text-xs opacity-70">{title}</p>
-      <h4 className="font-bold mt-1">৳ {money(value)}</h4>
-    </div>
-  );
-}
-
 function money(value) {
   return Number(value || 0).toFixed(2);
+}
+
+function formatDate(value) {
+  if (!value) return "";
+  return new Date(value).toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
 }
