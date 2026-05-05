@@ -24,7 +24,6 @@ function calculateTax({ salesAmount, vatPercent, aitPercent, amountType }) {
   }
 
   const aitAmount = (baseSalesAmount * aitRate) / 100;
-
   const invoiceTotal = baseSalesAmount + vatAmount;
   const netReceivable = baseSalesAmount - vatAmount - aitAmount;
 
@@ -73,7 +72,7 @@ export async function POST(req) {
       );
     }
 
-    if (!body.items || body.items.length === 0) {
+    if (!Array.isArray(body.items) || body.items.length === 0) {
       return NextResponse.json(
         { success: false, message: "Items required" },
         { status: 400 }
@@ -93,8 +92,11 @@ export async function POST(req) {
       }
     }
 
-    const validBodyItems = body.items.filter(
-      (item) => String(item.name || "").trim() && Number(item.qty || 0) > 0
+    const validBodyItems = (body.items || []).filter(
+      (item) =>
+        item &&
+        String(item.name || "").trim() &&
+        Number(item.qty || 0) > 0
     );
 
     if (validBodyItems.length === 0) {
