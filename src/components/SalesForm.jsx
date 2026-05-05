@@ -4,8 +4,20 @@ import { useMemo, useState } from "react";
 import { Plus, Trash2, Save, Printer, X } from "lucide-react";
 
 function generateBillNo() {
-  const random = Math.floor(1000 + Math.random() * 9000);
-  return `SAL-${random}`;
+  return `SAL-${Math.floor(1000 + Math.random() * 9000)}`;
+}
+
+function money(value) {
+  return Number(value || 0).toFixed(2);
+}
+
+function formatDate(value) {
+  if (!value) return "";
+  return new Date(value).toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
 }
 
 function calculateTax({ salesAmount, vatPercent, aitPercent, amountType }) {
@@ -25,17 +37,25 @@ function calculateTax({ salesAmount, vatPercent, aitPercent, amountType }) {
   }
 
   const aitAmount = (baseSalesAmount * aitRate) / 100;
-  const invoiceTotal = baseSalesAmount + vatAmount;
-  const netReceivable = baseSalesAmount - vatAmount - aitAmount;
 
   return {
     baseSalesAmount,
     vatAmount,
     aitAmount,
-    invoiceTotal,
-    netReceivable,
+    invoiceTotal: baseSalesAmount + vatAmount,
+    netReceivable: baseSalesAmount - vatAmount - aitAmount,
   };
 }
+
+const emptyItem = {
+  name: "",
+  description: "",
+  qty: "",
+  unit: "pcs",
+  price: "",
+  purchasePrice: "",
+  sourceType: "stock",
+};
 
 export default function SalesForm() {
   const [billNo] = useState(generateBillNo());
@@ -50,18 +70,7 @@ export default function SalesForm() {
 
   const [poWoNo, setPoWoNo] = useState("");
   const [note, setNote] = useState("");
-
-  const [items, setItems] = useState([
-    {
-      name: "",
-      description: "",
-      qty: "",
-      unit: "pcs",
-      price: "",
-      purchasePrice: "",
-      sourceType: "stock",
-    },
-  ]);
+  const [items, setItems] = useState([{ ...emptyItem }]);
 
   const [discount, setDiscount] = useState("");
   const [amountType, setAmountType] = useState("exclusive");
@@ -93,10 +102,7 @@ export default function SalesForm() {
     try {
       const res = await fetch(`/api/customers?q=${encodeURIComponent(value)}`);
       const data = await res.json();
-
-      if (data.success) {
-        setCustomerSuggestions(data.data || []);
-      }
+      if (data.success) setCustomerSuggestions(data.data || []);
     } catch (error) {
       console.error("CUSTOMER_SEARCH_ERROR:", error);
       setCustomerSuggestions([]);
@@ -104,58 +110,54 @@ export default function SalesForm() {
   };
 
   const selectCustomer = (c) => {
-    setCustomer(c.name || "");
-    setCustomerPhone(c.phone || "");
-    setCustomerAddress(c.address || "");
+    setCustomer(c?.name || "");
+    setCustomerPhone(c?.phone || "");
+    setCustomerAddress(c?.address || "");
     setCustomerSuggestions([]);
   };
 
   const updateItem = (index, field, value) => {
-    const newItems = [...items];
-    newItems[index][field] = value;
-    setItems(newItems);
+    setItems((prev) => {
+      const next = [...(prev || [])];
+      next[index] = { ...(next[index] || emptyItem), [field]: value };
+      return next;
+    });
   };
 
-  const addItem = () => {
-    setItems([
-      ...items,
-      {
-        name: "",
-        description: "",
-        qty: "",
-        unit: "pcs",
-        price: "",
-        purchasePrice: "",
-        sourceType: "stock",
-      },
-    ]);
-  };
+  const addItem = () => setItems((prev) => [...(prev || []), { ...emptyItem }]);
 
   const removeItem = (index) => {
-    if (items.length === 1) return;
-    setItems(items.filter((_, i) => i !== index));
+    if ((items || []).length === 1) return;
+    setItems((prev) => prev.filter((_, i) => i !== index));
   };
 
   const itemRows = useMemo(() => {
-    return items.map((item) => {
-      const qty = Number(item.qty || 0);
-      const price = Number(item.price || 0);
-      const purchasePrice = Number(item.purchasePrice || 0);
+    return (items || [])
+      .filter(Boolean)
+      .map((item) => {
+        const qty = Number(item?.qty || 0);
+        const price = Number(item?.price || 0);
+        const purchasePrice = Number(item?.purchasePrice || 0);
 
-      return {
-        ...item,
-        qty,
-        price,
-        purchasePrice,
-        total: qty * price,
-        costTotal: qty * purchasePrice,
-        profit: qty * (price - purchasePrice),
-      };
-    });
+        return {
+          ...emptyItem,
+          ...item,
+          name: item?.name || "",
+          description: item?.description || "",
+          unit: item?.unit || "pcs",
+          sourceType: item?.sourceType || "stock",
+          qty,
+          price,
+          purchasePrice,
+          total: qty * price,
+          costTotal: qty * purchasePrice,
+          profit: qty * (price - purchasePrice),
+        };
+      });
   }, [items]);
 
-  const subTotal = itemRows.reduce((sum, i) => sum + i.total, 0);
-  const totalProfit = itemRows.reduce((sum, i) => sum + i.profit, 0);
+  const subTotal = itemRows.reduce((sum, i) => sum + Number(i?.total || 0), 0);
+  const totalProfit = itemRows.reduce((sum, i) => sum + Number(i?.profit || 0), 0);
 
   const discountAmount = Number(discount || 0);
   const afterDiscount = Math.max(subTotal - discountAmount, 0);
@@ -174,6 +176,9 @@ export default function SalesForm() {
   const paymentType =
     paidAmount <= 0 ? "credit" : paidAmount >= tax.invoiceTotal ? "cash" : "partial";
 
+  const getValidItems = () =>
+    itemRows.filter((item) => item?.name?.trim() && Number(item?.qty || 0) > 0);
+
   const resetForm = () => {
     setBillType("auto");
     setManualBillNo("");
@@ -183,17 +188,7 @@ export default function SalesForm() {
     setCustomerSuggestions([]);
     setPoWoNo("");
     setNote("");
-    setItems([
-      {
-        name: "",
-        description: "",
-        qty: "",
-        unit: "pcs",
-        price: "",
-        purchasePrice: "",
-        sourceType: "stock",
-      },
-    ]);
+    setItems([{ ...emptyItem }]);
     setDiscount("");
     setAmountType("exclusive");
     setVatPercent("");
@@ -209,33 +204,29 @@ export default function SalesForm() {
     setDate(new Date().toISOString().split("T")[0]);
   };
 
-  const buildPayload = (pin = "") => {
-    const validItems = itemRows.filter((item) => item.name.trim() && item.qty > 0);
-
-    return {
-      billNo,
-      manualBillNo: billType === "manual" ? manualBillNo.trim() : "",
-      date,
-      customerName: customer,
-      customerPhone,
-      customerAddress,
-      poWoNo,
-      items: validItems,
-      discount: discountAmount,
-      amountType,
-      salesAmount: afterDiscount,
-      vatPercent: Number(vatPercent || 0),
-      aitPercent: Number(aitPercent || 0),
-      paidAmount,
-      vatDocumentReceived,
-      aitDocumentReceived,
-      vatDocumentNote,
-      aitDocumentNote,
-      ownerPin: pin,
-      note,
-      status: "completed",
-    };
-  };
+  const buildPayload = (pin = "") => ({
+    billNo,
+    manualBillNo: billType === "manual" ? manualBillNo.trim() : "",
+    date,
+    customerName: customer,
+    customerPhone,
+    customerAddress,
+    poWoNo,
+    items: getValidItems(),
+    discount: discountAmount,
+    amountType,
+    salesAmount: afterDiscount,
+    vatPercent: Number(vatPercent || 0),
+    aitPercent: Number(aitPercent || 0),
+    paidAmount,
+    vatDocumentReceived,
+    aitDocumentReceived,
+    vatDocumentNote,
+    aitDocumentNote,
+    ownerPin: pin,
+    note,
+    status: "completed",
+  });
 
   const handleSubmit = async (pin = "") => {
     if (!customer.trim()) return alert("Customer name required");
@@ -243,7 +234,7 @@ export default function SalesForm() {
       return alert("Manual invoice number required");
     }
 
-    const validItems = itemRows.filter((item) => item.name.trim() && item.qty > 0);
+    const validItems = getValidItems();
     if (validItems.length === 0) return alert("At least one valid item required");
 
     const payload = buildPayload(pin);
@@ -265,13 +256,12 @@ export default function SalesForm() {
           setShowPinModal(true);
           return;
         }
-
         throw new Error(data.message || "Sale save failed");
       }
 
       setInvoiceData({
         ...payload,
-        invoiceNo: payload.manualBillNo || payload.billNo,
+        invoiceNo: data?.data?.billNo || payload.manualBillNo || payload.billNo,
         subTotal,
         discountAmount,
         vatAmount: tax.vatAmount,
@@ -566,10 +556,7 @@ export default function SalesForm() {
       </div>
 
       {showInvoice && invoiceData && (
-        <SalesInvoice
-          invoice={invoiceData}
-          onClose={() => setShowInvoice(false)}
-        />
+        <SalesInvoice invoice={invoiceData} onClose={() => setShowInvoice(false)} />
       )}
 
       {showPinModal && (
@@ -620,16 +607,22 @@ export default function SalesForm() {
           body * {
             visibility: hidden;
           }
+
           #sales-invoice-print,
           #sales-invoice-print * {
             visibility: visible;
           }
+
           #sales-invoice-print {
             position: absolute;
             left: 0;
             top: 0;
-            width: 100%;
+            width: 794px;
+            min-height: 1123px;
+            margin: 0;
+            box-shadow: none !important;
           }
+
           .no-print {
             display: none !important;
           }
@@ -640,6 +633,8 @@ export default function SalesForm() {
 }
 
 function SalesInvoice({ invoice, onClose }) {
+  const invoiceItems = (invoice?.items || []).filter(Boolean);
+
   return (
     <div className="fixed inset-0 z-[99999] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl max-w-5xl w-full max-h-[95vh] overflow-auto">
@@ -652,13 +647,19 @@ function SalesInvoice({ invoice, onClose }) {
             >
               <Printer size={16} /> Print
             </button>
-            <button onClick={onClose} className="w-10 h-10 rounded-full border flex items-center justify-center">
+            <button
+              onClick={onClose}
+              className="w-10 h-10 rounded-full border flex items-center justify-center"
+            >
               <X size={18} />
             </button>
           </div>
         </div>
 
-        <div id="sales-invoice-print" className="bg-white mx-auto my-6 w-[794px] min-h-[1123px] relative overflow-hidden shadow-xl print:shadow-none">
+        <div
+          id="sales-invoice-print"
+          className="bg-white mx-auto my-6 w-[794px] min-h-[1123px] relative overflow-hidden shadow-xl print:shadow-none"
+        >
           <div className="h-28 flex items-center justify-between border-b-2 border-gray-700">
             <div className="pl-14 flex items-center gap-3">
               <div className="w-14 h-14 rounded-2xl bg-blue-600 text-white flex items-center justify-center text-3xl font-bold">
@@ -680,22 +681,24 @@ function SalesInvoice({ invoice, onClose }) {
               <div>
                 <p className="text-xs text-gray-600">Invoice To:</p>
                 <h3 className="text-sm font-black text-blue-800 uppercase">
-                  {invoice.customerName || "Customer Name"}
+                  {invoice?.customerName || "Customer Name"}
                 </h3>
-                <p className="text-xs text-gray-600">{invoice.customerAddress || "Customer Address"}</p>
-                <p className="text-xs mt-3">P : {invoice.customerPhone || "-"}</p>
-                <p className="text-xs">PO/WO : {invoice.poWoNo || "-"}</p>
+                <p className="text-xs text-gray-600">
+                  {invoice?.customerAddress || "Customer Address"}
+                </p>
+                <p className="text-xs mt-3">P : {invoice?.customerPhone || "-"}</p>
+                <p className="text-xs">PO/WO : {invoice?.poWoNo || "-"}</p>
               </div>
 
               <div className="text-xs">
                 <p className="bg-blue-900 text-white px-3 py-1 font-bold">
-                  INVOICE NO: #{invoice.invoiceNo}
+                  INVOICE NO: #{invoice?.invoiceNo}
                 </p>
                 <div className="mt-3 grid grid-cols-2 gap-x-5 gap-y-1">
                   <span>Account No</span>
                   <span className="text-right">280090</span>
                   <span>Invoice Date</span>
-                  <span className="text-right">{formatDate(invoice.date)}</span>
+                  <span className="text-right">{formatDate(invoice?.date)}</span>
                 </div>
               </div>
             </div>
@@ -713,21 +716,21 @@ function SalesInvoice({ invoice, onClose }) {
               </thead>
 
               <tbody>
-                {invoice.items?.map((item, index) => (
+                {invoiceItems.map((item, index) => (
                   <tr key={index} className="border-b">
                     <td className="p-3 text-center font-bold">{index + 1}</td>
                     <td className="p-3">
-                      <p className="font-bold">{item.name}</p>
+                      <p className="font-bold">{item?.name || "-"}</p>
                       <p className="text-[10px] text-gray-500 mt-1">
-                        {item.description || "-"}
+                        {item?.description || "-"}
                       </p>
                     </td>
                     <td className="p-3 text-center bg-gray-100 font-bold">
-                      {Number(item.qty || 0).toFixed(0)}
+                      {Number(item?.qty || 0).toFixed(0)}
                     </td>
-                    <td className="p-3 text-center">{item.unit || "-"}</td>
-                    <td className="p-3 text-right">৳ {money(item.price)}</td>
-                    <td className="p-3 text-right font-bold">৳ {money(item.total)}</td>
+                    <td className="p-3 text-center">{item?.unit || "-"}</td>
+                    <td className="p-3 text-right">৳ {money(item?.price)}</td>
+                    <td className="p-3 text-right font-bold">৳ {money(item?.total)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -736,9 +739,9 @@ function SalesInvoice({ invoice, onClose }) {
             <div className="flex justify-between mt-6">
               <div className="w-[48%] text-xs">
                 <h4 className="font-bold mb-2">Payment method</h4>
-                <p>Payment Type: {invoice.paymentType}</p>
-                <p>Paid Amount: ৳ {money(invoice.paidAmount)}</p>
-                <p>Invoice Due: ৳ {money(invoice.invoiceDueAmount)}</p>
+                <p>Payment Type: {invoice?.paymentType}</p>
+                <p>Paid Amount: ৳ {money(invoice?.paidAmount)}</p>
+                <p>Invoice Due: ৳ {money(invoice?.invoiceDueAmount)}</p>
 
                 <h4 className="font-bold mt-5 mb-1">Terms & Conditions:</h4>
                 <p className="text-[10px] text-gray-500">
@@ -749,19 +752,19 @@ function SalesInvoice({ invoice, onClose }) {
               </div>
 
               <div className="w-[35%] text-xs space-y-2">
-                <InvoiceTotalRow title="Sub Total" value={invoice.subTotal} />
-                <InvoiceTotalRow title="Discount" value={invoice.discountAmount} />
-                <InvoiceTotalRow title={`VAT (${invoice.vatPercent || 0}%)`} value={invoice.vatAmount} />
-                <InvoiceTotalRow title={`AIT (${invoice.aitPercent || 0}%)`} value={invoice.aitAmount} />
+                <InvoiceTotalRow title="Sub Total" value={invoice?.subTotal} />
+                <InvoiceTotalRow title="Discount" value={invoice?.discountAmount} />
+                <InvoiceTotalRow title={`VAT (${invoice?.vatPercent || 0}%)`} value={invoice?.vatAmount} />
+                <InvoiceTotalRow title={`AIT (${invoice?.aitPercent || 0}%)`} value={invoice?.aitAmount} />
                 <div className="bg-blue-600 text-white px-4 py-2 flex justify-between font-bold">
                   <span>Grand Total</span>
-                  <span>৳ {money(invoice.invoiceTotal)}</span>
+                  <span>৳ {money(invoice?.invoiceTotal)}</span>
                 </div>
               </div>
             </div>
 
             <div className="absolute bottom-24 right-16 text-center">
-              <div className="font-signature text-2xl italic">Authorized</div>
+              <div className="text-2xl italic">Authorized</div>
               <div className="border-t border-gray-700 mt-1 pt-1">
                 <p className="font-bold text-xs">AUTHORIZED SIGNATURE</p>
                 <p className="text-[10px]">Chief Director</p>
@@ -778,6 +781,7 @@ function SalesInvoice({ invoice, onClose }) {
             .clip-invoice {
               clip-path: polygon(20% 0, 100% 0, 100% 100%, 0 100%);
             }
+
             .clip-footer {
               clip-path: polygon(18% 0, 100% 0, 100% 100%, 0 100%);
             }
@@ -800,9 +804,7 @@ function InvoiceTotalRow({ title, value }) {
 function Input({ label, value, onChange, placeholder, type = "text", readOnly }) {
   return (
     <div>
-      <label className="text-xs font-semibold text-gray-500 mb-1 block">
-        {label}
-      </label>
+      <label className="text-xs font-semibold text-gray-500 mb-1 block">{label}</label>
       <input
         type={type}
         value={value}
@@ -830,17 +832,4 @@ function Row({ title, value, bold, danger, success, highlight }) {
       <span>৳ {money(value)}</span>
     </div>
   );
-}
-
-function money(value) {
-  return Number(value || 0).toFixed(2);
-}
-
-function formatDate(value) {
-  if (!value) return "";
-  return new Date(value).toLocaleDateString("en-GB", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
 }
