@@ -1,7 +1,15 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Plus, Trash2, Save, Printer, X } from "lucide-react";
+import { useMemo, useState, useEffect } from "react";
+import {
+  Plus,
+  Trash2,
+  Save,
+  Printer,
+  X,
+  Download,
+  Share2,
+} from "lucide-react";
 
 function generateBillNo() {
   return `SAL-${Math.floor(1000 + Math.random() * 9000)}`;
@@ -67,7 +75,8 @@ export default function SalesForm() {
   const [customerPhone, setCustomerPhone] = useState("");
   const [customerAddress, setCustomerAddress] = useState("");
   const [customerSuggestions, setCustomerSuggestions] = useState([]);
-
+  const [invoiceData, setInvoiceData] = useState(null);
+  const [companyInfo, setCompanyInfo] = useState(null);
   const [poWoNo, setPoWoNo] = useState("");
   const [note, setNote] = useState("");
   const [items, setItems] = useState([{ ...emptyItem }]);
@@ -89,7 +98,17 @@ export default function SalesForm() {
   const [creditInfo, setCreditInfo] = useState(null);
 
   const [showInvoice, setShowInvoice] = useState(false);
-  const [invoiceData, setInvoiceData] = useState(null);
+
+  useEffect(() => {
+    fetch("/api/company-settings")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data?.success) {
+          setCompanyInfo(data.data);
+        }
+      })
+      .catch(console.error);
+  }, []);
 
   const fetchCustomers = async (value) => {
     setCustomer(value);
@@ -268,15 +287,26 @@ export default function SalesForm() {
 
       setInvoiceData({
         ...payload,
+
+        companyInfo,
+
         invoiceNo: data?.data?.billNo || payload.manualBillNo || payload.billNo,
+
         subTotal,
         discountAmount,
+
         vatAmount: tax.vatAmount,
-        aitAmount: tax.aitAmount,
+
         invoiceTotal: tax.invoiceTotal,
+
         paidAmount,
         invoiceDueAmount,
         statementDueAmount,
+
+        previousDue: data?.data?.previousDue || 0,
+        currentDueAmount: data?.data?.currentDueAmount || 0,
+        totalDueAfterSale: data?.data?.totalDueAfterSale || 0,
+
         paymentType,
       });
 
@@ -349,7 +379,7 @@ export default function SalesForm() {
               label="Customer Name"
               value={customer}
               onChange={fetchCustomers}
-              placeholder="Type customer name, e.g. ACI Ltd"
+              placeholder="Type customer name..."
             />
 
             {customerSuggestions.length > 0 && (
@@ -390,7 +420,7 @@ export default function SalesForm() {
             label="PO / Work Order No"
             value={poWoNo}
             onChange={setPoWoNo}
-            placeholder="Example: ACI01526"
+            placeholder="Example: BD01526"
           />
         </div>
       </div>
@@ -668,13 +698,38 @@ function SalesInvoice({ invoice, onClose }) {
       <div className="bg-white rounded-2xl max-w-5xl w-full max-h-[95vh] overflow-auto">
         <div className="no-print flex justify-between items-center p-4 border-b">
           <h3 className="font-bold">Sales Invoice Preview</h3>
-          <div className="flex gap-2">
+
+          <div className="flex gap-2 flex-wrap">
             <button
               onClick={() => window.print()}
               className="px-4 py-2 rounded-xl bg-blue-600 text-white flex items-center gap-2"
             >
               <Printer size={16} /> Print
             </button>
+
+            <button
+              onClick={() => window.print()}
+              className="px-4 py-2 rounded-xl bg-green-600 text-white flex items-center gap-2"
+            >
+              <Download size={16} /> PDF
+            </button>
+
+            <button
+              onClick={async () => {
+                try {
+                  await navigator.share({
+                    title: "Sales Invoice",
+                    text: `Invoice ${invoice?.invoiceNo}`,
+                  });
+                } catch (err) {
+                  console.log(err);
+                }
+              }}
+              className="px-4 py-2 rounded-xl bg-purple-600 text-white flex items-center gap-2"
+            >
+              <Share2 size={16} /> Share
+            </button>
+
             <button
               onClick={onClose}
               className="w-10 h-10 rounded-full border flex items-center justify-center"
@@ -693,9 +748,24 @@ function SalesInvoice({ invoice, onClose }) {
               <div className="w-14 h-14 rounded-2xl bg-blue-600 text-white flex items-center justify-center text-3xl font-bold">
                 P
               </div>
+
               <div>
-                <h1 className="text-2xl font-black leading-6">Pixel Mart</h1>
-                <p className="text-xs text-gray-500">Creative design house</p>
+                <h1 className="text-2xl font-black leading-6">
+                  {invoice?.companyInfo?.companyName || "NextCore ERP"}
+                </h1>
+
+                <p className="text-xs text-gray-500">
+                  {invoice?.companyInfo?.companySlogan ||
+                    "Your trusted business partner"}
+                </p>
+
+                <p className="text-[10px] text-gray-500 mt-1">
+                  {invoice?.companyInfo?.companyAddress || ""}
+                </p>
+
+                <p className="text-[10px] text-gray-500">
+                  {invoice?.companyInfo?.companyPhone || ""}
+                </p>
               </div>
             </div>
 
@@ -715,7 +785,7 @@ function SalesInvoice({ invoice, onClose }) {
                   {invoice?.customerAddress || "Customer Address"}
                 </p>
                 <p className="text-xs mt-3">P : {invoice?.customerPhone || "-"}</p>
-                <p className="text-xs">PO/WO : {invoice?.poWoNo || "-"}</p>
+                <p className="text-xs">PO/WO NO: {invoice?.poWoNo || "-"}</p>
               </div>
 
               <div className="text-xs">
@@ -723,7 +793,7 @@ function SalesInvoice({ invoice, onClose }) {
                   INVOICE NO: #{invoice?.invoiceNo}
                 </p>
                 <div className="mt-3 grid grid-cols-2 gap-x-5 gap-y-1">
-                  <span>Account No</span>
+                  <span>Account NO</span>
                   <span className="text-right">280090</span>
                   <span>Invoice Date</span>
                   <span className="text-right">{formatDate(invoice?.date)}</span>
@@ -734,7 +804,7 @@ function SalesInvoice({ invoice, onClose }) {
             <table className="w-full mt-8 text-xs border-collapse">
               <thead>
                 <tr className="text-white">
-                  <th className="bg-blue-950 p-3 text-center w-[55px]">SL No</th>
+                  <th className="bg-blue-950 p-3 text-center w-[55px]">SL NO</th>
                   <th className="bg-blue-900 p-3 text-left">Item Description</th>
                   <th className="bg-sky-500 p-3 text-center w-[85px]">Quantity</th>
                   <th className="bg-sky-600 p-3 text-center w-[70px]">Unit</th>
@@ -772,6 +842,10 @@ function SalesInvoice({ invoice, onClose }) {
                 <p>Paid Amount: ৳ {money(invoice?.paidAmount)}</p>
                 <p>Invoice Due: ৳ {money(invoice?.invoiceDueAmount)}</p>
 
+                <p>Previous Due Amount: ৳ {money(invoice?.previousDue)}</p>
+
+                <p>Total Due Amount: ৳ {money(invoice?.totalDueAfterSale)}</p>
+
                 {invoice?.note ? (
                   <>
                     <h4 className="font-bold mt-5 mb-1">Invoice Note:</h4>
@@ -779,9 +853,21 @@ function SalesInvoice({ invoice, onClose }) {
                   </>
                 ) : null}
 
+                {invoice?.companyInfo?.invoiceNote ? (
+                  <>
+                    <h4 className="font-bold mt-5 mb-1">Invoice Note:</h4>
+
+                    <p className="text-[10px] text-gray-500">
+                      {invoice.companyInfo.invoiceNote}
+                    </p>
+                  </>
+                ) : null}
+
                 <h4 className="font-bold mt-5 mb-1">Terms & Conditions:</h4>
+
                 <p className="text-[10px] text-gray-500">
-                  Goods once sold are not refundable without company approval.
+                  {invoice?.companyInfo?.invoiceTerms ||
+                    "Goods once sold are not refundable without company approval."}
                 </p>
 
                 <p className="font-bold mt-6">Thanks for your business!</p>
@@ -806,14 +892,38 @@ function SalesInvoice({ invoice, onClose }) {
               <div className="text-2xl italic">Authorized</div>
               <div className="border-t border-gray-700 mt-1 pt-1">
                 <p className="font-bold text-xs">AUTHORIZED SIGNATURE</p>
-                
               </div>
             </div>
           </div>
 
-          <div className="absolute bottom-0 left-0 right-0 h-20">
-            <div className="absolute bottom-0 left-0 right-0 h-2 bg-sky-500"></div>
-            <div className="absolute right-0 bottom-0 w-[430px] h-20 bg-gradient-to-r from-blue-950 to-sky-500 clip-footer"></div>
+          <div className="absolute bottom-0 left-0 right-0 h-24 border-t bg-white">
+            <div className="flex items-center justify-between px-14 h-full text-[10px]">
+              <div>
+                <p className="font-bold">{invoice?.companyInfo?.companyName}</p>
+
+                <p>{invoice?.companyInfo?.companyAddress}</p>
+              </div>
+
+              <div className="text-center">
+                {invoice?.companyInfo?.logo ? (
+                  <img
+                    src={invoice.companyInfo.logo}
+                    alt="logo"
+                    className="h-12 mx-auto object-contain"
+                  />
+                ) : (
+                  <div className="w-12 h-12 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold mx-auto">
+                    LOGO
+                  </div>
+                )}
+              </div>
+
+              <div className="text-right">
+                <p>{invoice?.companyInfo?.companyPhone}</p>
+
+                <p>{invoice?.companyInfo?.companyEmail}</p>
+              </div>
+            </div>
           </div>
 
           <style jsx>{`
