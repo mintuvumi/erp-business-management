@@ -59,6 +59,43 @@ async function getCustomerPreviousDue(customerName) {
   }, 0);
 }
 
+async function getOrCreateCustomer(body) {
+  const customerName = String(body.customerName || "").trim();
+
+  let customer = await Customer.findOne({
+    name: { $regex: `^${customerName}$`, $options: "i" },
+  });
+
+  if (!customer) {
+    customer = await Customer.create({
+      name: customerName,
+      phone: body.customerPhone || "",
+      address: body.customerAddress || "",
+      status: "active",
+    });
+
+    return customer;
+  }
+
+  let changed = false;
+
+  if (body.customerPhone && body.customerPhone !== customer.phone) {
+    customer.phone = body.customerPhone;
+    changed = true;
+  }
+
+  if (body.customerAddress && body.customerAddress !== customer.address) {
+    customer.address = body.customerAddress;
+    changed = true;
+  }
+
+  if (changed) {
+    await customer.save();
+  }
+
+  return customer;
+}
+
 export async function POST(req) {
   try {
     await connectDB();
@@ -79,6 +116,7 @@ export async function POST(req) {
       );
     }
 
+    const customerName = String(body.customerName || "").trim();
     const manualBillNo = String(body.manualBillNo || "").trim();
 
     if (manualBillNo) {
@@ -124,7 +162,7 @@ export async function POST(req) {
           );
         }
 
-        if (Number(stock.qty) < Number(item.qty)) {
+        if (Number(stock.qty || 0) < Number(item.qty || 0)) {
           return NextResponse.json(
             { success: false, message: `Not enough stock for ${item.name}` },
             { status: 400 }
@@ -147,6 +185,7 @@ export async function POST(req) {
         name: String(i.name || "").trim(),
         description: String(i.description || "").trim(),
         unit: i.unit || "pcs",
+        sourceType: i.sourceType || "stock",
         qty,
         price,
         purchasePrice,
@@ -156,9 +195,9 @@ export async function POST(req) {
       };
     });
 
-    const subTotal = items.reduce((sum, i) => sum + i.total, 0);
-    const totalCost = items.reduce((sum, i) => sum + i.costTotal, 0);
-    const totalProfit = items.reduce((sum, i) => sum + i.profit, 0);
+    const subTotal = items.reduce((sum, i) => sum + Number(i.total || 0), 0);
+    const totalCost = items.reduce((sum, i) => sum + Number(i.costTotal || 0), 0);
+    const totalProfit = items.reduce((sum, i) => sum + Number(i.profit || 0), 0);
 
     const discount = Number(body.discount) || 0;
 
@@ -206,9 +245,10 @@ export async function POST(req) {
     const dueAmount = statementDueAmount;
 
     const settings = await CompanySetting.findOne();
-    const customer = await Customer.findOne({
-      name: { $regex: `^${body.customerName.trim()}$`, $options: "i" },
-    });
+    const customer = await getOrCreateCustomer(body);
+
+    const previousDue = await getCustomerPreviousDue(customerName);
+    const totalDueAfterSale = previousDue + statementDueAmount;
 
     const creditApprovalRequired =
       settings?.creditApprovalRequired === false ? false : true;
@@ -218,9 +258,6 @@ export async function POST(req) {
       Number(customer?.creditLimit || 0) > 0
         ? Number(customer.creditLimit)
         : defaultCreditLimit;
-
-    const previousDue = await getCustomerPreviousDue(body.customerName.trim());
-    const totalDueAfterSale = previousDue + statementDueAmount;
 
     if (
       creditApprovalRequired &&
@@ -254,10 +291,11 @@ export async function POST(req) {
       if (item.sourceType === "stock") {
         const stock = await Stock.findOne({ itemName: item.name });
 
-        stock.qty = Number(stock.qty) - Number(item.qty);
-        stock.totalValue = Number(stock.qty) * Number(stock.avgCost || 0);
-
-        await stock.save();
+        if (stock) {
+          stock.qty = Number(stock.qty || 0) - Number(item.qty || 0);
+          stock.totalValue = Number(stock.qty || 0) * Number(stock.avgCost || 0);
+          await stock.save();
+        }
       }
     }
 
@@ -277,7 +315,7 @@ export async function POST(req) {
       manualBillNo,
       autoBillNo,
 
-      customerName: body.customerName.trim(),
+      customerName,
       customerPhone: body.customerPhone || customer?.phone || "",
       customerAddress: body.customerAddress || customer?.address || "",
 
@@ -322,6 +360,9 @@ export async function POST(req) {
 
       totalCost,
       totalProfit,
+
+      note: body.note || "",
+      status: body.status || "completed",
     });
 
     if (paidAmount > 0) {
@@ -341,7 +382,12 @@ export async function POST(req) {
       {
         success: true,
         message: "Sale created successfully",
-        data: sale,
+        data: {
+          ...sale.toObject(),
+          previousDue,
+          currentDueAmount: statementDueAmount,
+          totalDueAfterSale,
+        },
       },
       { status: 201 }
     );

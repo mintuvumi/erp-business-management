@@ -17,6 +17,17 @@ const CompanySettingSchema = new mongoose.Schema(
 
     themeColor: { type: String, default: "blue" },
 
+    invoiceTerms: {
+    type: String,
+    default:
+    "Goods once sold are not refundable without company approval.",
+   },
+
+    invoiceNote: {
+    type: String,
+    default: "",
+    },
+
     invoiceFooter: {
       type: String,
       default: "Thank you for doing business with us.",
