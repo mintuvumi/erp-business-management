@@ -135,9 +135,9 @@ export default function SalesForm() {
     return (items || [])
       .filter(Boolean)
       .map((item) => {
-        const qty = Number(item?.qty || 0);
-        const price = Number(item?.price || 0);
-        const purchasePrice = Number(item?.purchasePrice || 0);
+        const qtyNumber = Number(item?.qty || 0);
+        const priceNumber = Number(item?.price || 0);
+        const purchasePriceNumber = Number(item?.purchasePrice || 0);
 
         return {
           ...emptyItem,
@@ -146,19 +146,19 @@ export default function SalesForm() {
           description: item?.description || "",
           unit: item?.unit || "pcs",
           sourceType: item?.sourceType || "stock",
-          qty,
-          price,
-          purchasePrice,
-          total: qty * price,
-          costTotal: qty * purchasePrice,
-          profit: qty * (price - purchasePrice),
+
+          qty: item?.qty ?? "",
+          price: item?.price ?? "",
+          purchasePrice: item?.purchasePrice ?? "",
+
+          total: qtyNumber * priceNumber,
+          costTotal: qtyNumber * purchasePriceNumber,
+          profit: qtyNumber * (priceNumber - purchasePriceNumber),
         };
       });
   }, [items]);
 
   const subTotal = itemRows.reduce((sum, i) => sum + Number(i?.total || 0), 0);
-  const totalProfit = itemRows.reduce((sum, i) => sum + Number(i?.profit || 0), 0);
-
   const discountAmount = Number(discount || 0);
   const afterDiscount = Math.max(subTotal - discountAmount, 0);
 
@@ -177,7 +177,14 @@ export default function SalesForm() {
     paidAmount <= 0 ? "credit" : paidAmount >= tax.invoiceTotal ? "cash" : "partial";
 
   const getValidItems = () =>
-    itemRows.filter((item) => item?.name?.trim() && Number(item?.qty || 0) > 0);
+    itemRows
+      .filter((item) => item && item?.name?.trim() && Number(item?.qty || 0) > 0)
+      .map((item) => ({
+        ...item,
+        qty: Number(item.qty || 0),
+        price: Number(item.price || 0),
+        purchasePrice: Number(item.purchasePrice || 0),
+      }));
 
   const resetForm = () => {
     setBillType("auto");
@@ -269,6 +276,7 @@ export default function SalesForm() {
         invoiceTotal: tax.invoiceTotal,
         paidAmount,
         invoiceDueAmount,
+        statementDueAmount,
         paymentType,
       });
 
@@ -294,7 +302,7 @@ export default function SalesForm() {
         <div>
           <h2 className="text-xl font-bold">Sales Entry</h2>
           <p className="text-sm text-gray-500 mt-1">
-            Invoice, VAT, AIT এবং customer statement হিসাবসহ sales entry করুন।
+            Invoice, VAT এবং customer statement হিসাবসহ sales entry করুন।
           </p>
         </div>
 
@@ -430,7 +438,7 @@ export default function SalesForm() {
               <input
                 type="number"
                 value={item.qty}
-                placeholder="Enter quantity"
+                placeholder="Qty"
                 onChange={(e) => updateItem(i, "qty", e.target.value)}
                 className="col-span-6 md:col-span-1 border bg-white p-3 rounded-xl outline-none focus:ring-4 focus:ring-blue-100"
               />
@@ -507,9 +515,29 @@ export default function SalesForm() {
               </select>
             </div>
 
-            <Input type="number" label="VAT %" value={vatPercent} onChange={setVatPercent} placeholder="Example: 10" />
-            <Input type="number" label="AIT %" value={aitPercent} onChange={setAitPercent} placeholder="Example: 5" />
-            <Input type="number" label="Payment Amount" value={paid} onChange={setPaid} placeholder="Enter received amount" />
+            <Input
+              type="number"
+              label="VAT %"
+              value={vatPercent}
+              onChange={setVatPercent}
+              placeholder="Example: 10"
+            />
+
+            <Input
+              type="number"
+              label="AIT %"
+              value={aitPercent}
+              onChange={setAitPercent}
+              placeholder="Example: 5"
+            />
+
+            <Input
+              type="number"
+              label="Payment Amount"
+              value={paid}
+              onChange={setPaid}
+              placeholder="Enter received amount"
+            />
           </div>
 
           <textarea
@@ -530,19 +558,10 @@ export default function SalesForm() {
           <Row title="Invoice Total" value={tax.invoiceTotal} bold />
 
           <div className="border-t pt-3 mt-3 space-y-2">
-            <Row title={`AIT Deducted (${aitPercent || 0}%)`} value={tax.aitAmount} danger />
-            <Row title="Statement Net Receivable" value={tax.netReceivable} highlight />
             <Row title="Payment Amount" value={paidAmount} success />
             <Row title="Invoice Due" value={invoiceDueAmount} danger />
             <Row title="Statement Due" value={statementDueAmount} danger bold />
           </div>
-
-          <div className="border-t pt-3 mt-3 flex justify-between text-sm">
-            <span className="text-gray-500">Payment Type</span>
-            <span className="capitalize font-bold">{paymentType}</span>
-          </div>
-
-          <Row title="Profit" value={totalProfit} />
 
           <button
             onClick={() => handleSubmit("")}
@@ -597,6 +616,15 @@ export default function SalesForm() {
                   Approve
                 </button>
               </div>
+
+              {creditInfo && (
+                <div className="text-xs bg-red-50 border border-red-100 rounded-xl p-3 space-y-1">
+                  <p>Previous Due: ৳ {money(creditInfo.previousDue)}</p>
+                  <p>New Due: ৳ {money(creditInfo.newDue)}</p>
+                  <p>Total Due: ৳ {money(creditInfo.totalDueAfterSale)}</p>
+                  <p>Credit Limit: ৳ {money(creditInfo.creditLimit)}</p>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -721,9 +749,11 @@ function SalesInvoice({ invoice, onClose }) {
                     <td className="p-3 text-center font-bold">{index + 1}</td>
                     <td className="p-3">
                       <p className="font-bold">{item?.name || "-"}</p>
-                      <p className="text-[10px] text-gray-500 mt-1">
-                        {item?.description || "-"}
-                      </p>
+                      {item?.description ? (
+                        <p className="text-[10px] text-gray-500 mt-1">
+                          {item.description}
+                        </p>
+                      ) : null}
                     </td>
                     <td className="p-3 text-center bg-gray-100 font-bold">
                       {Number(item?.qty || 0).toFixed(0)}
@@ -739,9 +769,15 @@ function SalesInvoice({ invoice, onClose }) {
             <div className="flex justify-between mt-6">
               <div className="w-[48%] text-xs">
                 <h4 className="font-bold mb-2">Payment method</h4>
-                <p>Payment Type: {invoice?.paymentType}</p>
                 <p>Paid Amount: ৳ {money(invoice?.paidAmount)}</p>
                 <p>Invoice Due: ৳ {money(invoice?.invoiceDueAmount)}</p>
+
+                {invoice?.note ? (
+                  <>
+                    <h4 className="font-bold mt-5 mb-1">Invoice Note:</h4>
+                    <p className="text-[10px] text-gray-500">{invoice.note}</p>
+                  </>
+                ) : null}
 
                 <h4 className="font-bold mt-5 mb-1">Terms & Conditions:</h4>
                 <p className="text-[10px] text-gray-500">
@@ -754,8 +790,11 @@ function SalesInvoice({ invoice, onClose }) {
               <div className="w-[35%] text-xs space-y-2">
                 <InvoiceTotalRow title="Sub Total" value={invoice?.subTotal} />
                 <InvoiceTotalRow title="Discount" value={invoice?.discountAmount} />
-                <InvoiceTotalRow title={`VAT (${invoice?.vatPercent || 0}%)`} value={invoice?.vatAmount} />
-                <InvoiceTotalRow title={`AIT (${invoice?.aitPercent || 0}%)`} value={invoice?.aitAmount} />
+                <InvoiceTotalRow
+                  title={`VAT (${invoice?.vatPercent || 0}%)`}
+                  value={invoice?.vatAmount}
+                />
+
                 <div className="bg-blue-600 text-white px-4 py-2 flex justify-between font-bold">
                   <span>Grand Total</span>
                   <span>৳ {money(invoice?.invoiceTotal)}</span>
@@ -767,7 +806,7 @@ function SalesInvoice({ invoice, onClose }) {
               <div className="text-2xl italic">Authorized</div>
               <div className="border-t border-gray-700 mt-1 pt-1">
                 <p className="font-bold text-xs">AUTHORIZED SIGNATURE</p>
-                <p className="text-[10px]">Chief Director</p>
+                
               </div>
             </div>
           </div>
