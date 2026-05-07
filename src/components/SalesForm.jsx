@@ -9,6 +9,7 @@ import {
   X,
   Download,
   Share2,
+  Mail,
 } from "lucide-react";
 
 function generateBillNo() {
@@ -26,6 +27,92 @@ function formatDate(value) {
     month: "short",
     year: "numeric",
   });
+}
+
+function formatTime() {
+  return new Date().toLocaleTimeString("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function numberToWords(num) {
+  const a = [
+    "",
+    "One",
+    "Two",
+    "Three",
+    "Four",
+    "Five",
+    "Six",
+    "Seven",
+    "Eight",
+    "Nine",
+    "Ten",
+    "Eleven",
+    "Twelve",
+    "Thirteen",
+    "Fourteen",
+    "Fifteen",
+    "Sixteen",
+    "Seventeen",
+    "Eighteen",
+    "Nineteen",
+  ];
+
+  const b = [
+    "",
+    "",
+    "Twenty",
+    "Thirty",
+    "Forty",
+    "Fifty",
+    "Sixty",
+    "Seventy",
+    "Eighty",
+    "Ninety",
+  ];
+
+  const convert = (n) => {
+    n = Number(n || 0);
+
+    if (n === 0) return "";
+    if (n < 20) return a[n];
+    if (n < 100) {
+      return b[Math.floor(n / 10)] + (n % 10 ? " " + a[n % 10] : "");
+    }
+    if (n < 1000) {
+      return (
+        a[Math.floor(n / 100)] +
+        " Hundred" +
+        (n % 100 ? " " + convert(n % 100) : "")
+      );
+    }
+    if (n < 100000) {
+      return (
+        convert(Math.floor(n / 1000)) +
+        " Thousand" +
+        (n % 1000 ? " " + convert(n % 1000) : "")
+      );
+    }
+    if (n < 10000000) {
+      return (
+        convert(Math.floor(n / 100000)) +
+        " Lakh" +
+        (n % 100000 ? " " + convert(n % 100000) : "")
+      );
+    }
+
+    return (
+      convert(Math.floor(n / 10000000)) +
+      " Crore" +
+      (n % 10000000 ? " " + convert(n % 10000000) : "")
+    );
+  };
+
+  const amount = Math.floor(Number(num || 0));
+  if (amount <= 0) return "Zero";
+  return convert(amount);
 }
 
 function calculateTax({ salesAmount, vatPercent, aitPercent, amountType }) {
@@ -75,8 +162,10 @@ export default function SalesForm() {
   const [customerPhone, setCustomerPhone] = useState("");
   const [customerAddress, setCustomerAddress] = useState("");
   const [customerSuggestions, setCustomerSuggestions] = useState([]);
+
   const [invoiceData, setInvoiceData] = useState(null);
   const [companyInfo, setCompanyInfo] = useState(null);
+
   const [poWoNo, setPoWoNo] = useState("");
   const [note, setNote] = useState("");
   const [items, setItems] = useState([{ ...emptyItem }]);
@@ -86,6 +175,8 @@ export default function SalesForm() {
   const [vatPercent, setVatPercent] = useState("");
   const [aitPercent, setAitPercent] = useState("");
   const [paid, setPaid] = useState("");
+
+  const [dueMode, setDueMode] = useState("show");
 
   const [vatDocumentReceived, setVatDocumentReceived] = useState(false);
   const [aitDocumentReceived, setAitDocumentReceived] = useState(false);
@@ -103,9 +194,7 @@ export default function SalesForm() {
     fetch("/api/company-settings")
       .then((res) => res.json())
       .then((data) => {
-        if (data?.success) {
-          setCompanyInfo(data.data);
-        }
+        if (data?.success) setCompanyInfo(data.data);
       })
       .catch(console.error);
   }, []);
@@ -165,11 +254,9 @@ export default function SalesForm() {
           description: item?.description || "",
           unit: item?.unit || "pcs",
           sourceType: item?.sourceType || "stock",
-
           qty: item?.qty ?? "",
           price: item?.price ?? "",
           purchasePrice: item?.purchasePrice ?? "",
-
           total: qtyNumber * priceNumber,
           costTotal: qtyNumber * purchasePriceNumber,
           profit: qtyNumber * (priceNumber - purchasePriceNumber),
@@ -220,6 +307,7 @@ export default function SalesForm() {
     setVatPercent("");
     setAitPercent("");
     setPaid("");
+    setDueMode("show");
     setVatDocumentReceived(false);
     setAitDocumentReceived(false);
     setVatDocumentNote("");
@@ -287,26 +375,19 @@ export default function SalesForm() {
 
       setInvoiceData({
         ...payload,
-
         companyInfo,
-
+        dueMode,
         invoiceNo: data?.data?.billNo || payload.manualBillNo || payload.billNo,
-
         subTotal,
         discountAmount,
-
         vatAmount: tax.vatAmount,
-
         invoiceTotal: tax.invoiceTotal,
-
         paidAmount,
         invoiceDueAmount,
         statementDueAmount,
-
         previousDue: data?.data?.previousDue || 0,
         currentDueAmount: data?.data?.currentDueAmount || 0,
         totalDueAfterSale: data?.data?.totalDueAfterSale || 0,
-
         paymentType,
       });
 
@@ -593,6 +674,43 @@ export default function SalesForm() {
             <Row title="Statement Due" value={statementDueAmount} danger bold />
           </div>
 
+          <div className="border rounded-xl p-3 space-y-2 mt-3">
+            <p className="font-semibold text-sm">Previous Due Settings</p>
+
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="radio"
+                name="dueMode"
+                value="show"
+                checked={dueMode === "show"}
+                onChange={(e) => setDueMode(e.target.value)}
+              />
+              Show Previous Due Only
+            </label>
+
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="radio"
+                name="dueMode"
+                value="add"
+                checked={dueMode === "add"}
+                onChange={(e) => setDueMode(e.target.value)}
+              />
+              Add Previous Due to Invoice Total
+            </label>
+
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="radio"
+                name="dueMode"
+                value="hide"
+                checked={dueMode === "hide"}
+                onChange={(e) => setDueMode(e.target.value)}
+              />
+              Hide Previous Due
+            </label>
+          </div>
+
           <button
             onClick={() => handleSubmit("")}
             disabled={saving}
@@ -662,6 +780,22 @@ export default function SalesForm() {
 
       <style jsx global>{`
         @media print {
+          @page {
+            size: A4;
+            margin: 0;
+          }
+
+          html,
+          body {
+            width: 210mm;
+            min-height: 297mm;
+            margin: 0 !important;
+            padding: 0 !important;
+            background: white !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+
           body * {
             visibility: hidden;
           }
@@ -675,10 +809,31 @@ export default function SalesForm() {
             position: absolute;
             left: 0;
             top: 0;
-            width: 794px;
-            min-height: 1123px;
-            margin: 0;
+            width: 210mm !important;
+            min-height: 297mm !important;
+            margin: 0 !important;
             box-shadow: none !important;
+            overflow: visible !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+
+          .invoice-page {
+            width: 210mm;
+            min-height: 297mm;
+            page-break-after: always;
+            position: relative;
+            background: white;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+
+          thead {
+            display: table-header-group;
+          }
+
+          tr {
+            page-break-inside: avoid;
           }
 
           .no-print {
@@ -692,6 +847,89 @@ export default function SalesForm() {
 
 function SalesInvoice({ invoice, onClose }) {
   const invoiceItems = (invoice?.items || []).filter(Boolean);
+
+  const invoiceTotal = Number(invoice?.invoiceTotal || 0);
+  const previousDue = Number(invoice?.previousDue || 0);
+  const paidAmount = Number(invoice?.paidAmount || 0);
+
+  const netPayable =
+    invoice?.dueMode === "add"
+      ? Math.max(invoiceTotal + previousDue - paidAmount, 0)
+      : Math.max(invoiceTotal - paidAmount, 0);
+
+  const handleDownloadPDF = async () => {
+    const html2pdf = (await import("html2pdf.js")).default;
+    const element = document.getElementById("sales-invoice-print");
+
+    html2pdf()
+      .set({
+        margin: 0,
+        filename: `${invoice?.invoiceNo || "invoice"}.pdf`,
+        image: { type: "jpeg", quality: 1 },
+        html2canvas: {
+          scale: 2,
+          useCORS: true,
+        },
+        jsPDF: {
+          unit: "mm",
+          format: "a4",
+          orientation: "portrait",
+        },
+        pagebreak: {
+          mode: ["css", "legacy"],
+        },
+      })
+      .from(element)
+      .save();
+  };
+
+  const shareWhatsApp = () => {
+    const text = `Invoice ${invoice?.invoiceNo} - Net Payable ৳ ${money(
+      netPayable
+    )}`;
+    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank");
+  };
+
+  const shareEmail = () => {
+    const subject = `Invoice ${invoice?.invoiceNo}`;
+    const body = `Dear Customer,%0D%0A%0D%0AInvoice No: ${
+      invoice?.invoiceNo
+    }%0D%0ANet Payable: ৳ ${money(netPayable)}%0D%0A%0D%0AThank you.`;
+
+    window.location.href = `mailto:?subject=${encodeURIComponent(
+      subject
+    )}&body=${body}`;
+  };
+
+  const LogoBox = ({ small = false }) => {
+    if (invoice?.companyInfo?.logo) {
+      return (
+        <img
+          src={invoice.companyInfo.logo}
+          alt="Company Logo"
+          className={
+            small
+              ? "h-12 mx-auto object-contain"
+              : "w-14 h-14 rounded-2xl object-cover border"
+          }
+        />
+      );
+    }
+
+    return (
+      <div
+        className={
+          small
+            ? "w-12 h-12 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold mx-auto"
+            : "w-14 h-14 rounded-2xl bg-blue-600 text-white flex items-center justify-center text-3xl font-bold"
+        }
+      >
+        {String(invoice?.companyInfo?.companyName || "P")
+          .charAt(0)
+          .toUpperCase()}
+      </div>
+    );
+  };
 
   return (
     <div className="fixed inset-0 z-[99999] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
@@ -708,26 +946,24 @@ function SalesInvoice({ invoice, onClose }) {
             </button>
 
             <button
-              onClick={() => window.print()}
+              onClick={handleDownloadPDF}
               className="px-4 py-2 rounded-xl bg-green-600 text-white flex items-center gap-2"
             >
               <Download size={16} /> PDF
             </button>
 
             <button
-              onClick={async () => {
-                try {
-                  await navigator.share({
-                    title: "Sales Invoice",
-                    text: `Invoice ${invoice?.invoiceNo}`,
-                  });
-                } catch (err) {
-                  console.log(err);
-                }
-              }}
+              onClick={shareWhatsApp}
+              className="px-4 py-2 rounded-xl bg-emerald-600 text-white flex items-center gap-2"
+            >
+              <Share2 size={16} /> WhatsApp
+            </button>
+
+            <button
+              onClick={shareEmail}
               className="px-4 py-2 rounded-xl bg-purple-600 text-white flex items-center gap-2"
             >
-              <Share2 size={16} /> Share
+              <Mail size={16} /> Email
             </button>
 
             <button
@@ -739,202 +975,176 @@ function SalesInvoice({ invoice, onClose }) {
           </div>
         </div>
 
-        <div
-          id="sales-invoice-print"
-          className="bg-white mx-auto my-6 w-[794px] min-h-[1123px] relative overflow-hidden shadow-xl print:shadow-none"
-        >
-          <div className="h-28 flex items-center justify-between border-b-2 border-gray-700">
-            <div className="pl-14 flex items-center gap-3">
-              <div className="w-14 h-14 rounded-2xl bg-blue-600 text-white flex items-center justify-center text-3xl font-bold">
-                P
-              </div>
+        <div id="sales-invoice-print" className="bg-white mx-auto my-6 w-[210mm] min-h-[297mm] shadow-xl print:shadow-none">
+          <div className="invoice-page overflow-hidden">
+            <div className="h-28 flex items-center justify-between border-b-2 border-gray-700">
+              <div className="pl-14 flex items-center gap-3">
+                <LogoBox />
 
-              <div>
-                <h1 className="text-2xl font-black leading-6">
-                  {invoice?.companyInfo?.companyName || "NextCore ERP"}
-                </h1>
+                <div>
+                  <h1 className="text-2xl font-black leading-6">
+                    {invoice?.companyInfo?.companyName || "NextCore ERP"}
+                  </h1>
 
-                <p className="text-xs text-gray-500">
-                  {invoice?.companyInfo?.companySlogan ||
-                    "Your trusted business partner"}
-                </p>
+                  <p className="text-xs text-gray-500">
+                    {invoice?.companyInfo?.companySlogan ||
+                      "Your trusted business partner"}
+                  </p>
 
-                <p className="text-[10px] text-gray-500 mt-1">
-                  {invoice?.companyInfo?.companyAddress || ""}
-                </p>
+                  <p className="text-[10px] text-gray-500 mt-1">
+                    {invoice?.companyInfo?.companyAddress || ""}
+                  </p>
 
-                <p className="text-[10px] text-gray-500">
-                  {invoice?.companyInfo?.companyPhone || ""}
-                </p>
-              </div>
-            </div>
-
-            <div className="h-full w-[330px] bg-gradient-to-r from-blue-900 to-sky-500 text-white flex items-center justify-center clip-invoice">
-              <h2 className="text-4xl font-black tracking-wide">INVOICE</h2>
-            </div>
-          </div>
-
-          <div className="px-14 pt-14">
-            <div className="flex justify-between">
-              <div>
-                <p className="text-xs text-gray-600">Invoice To:</p>
-                <h3 className="text-sm font-black text-blue-800 uppercase">
-                  {invoice?.customerName || "Customer Name"}
-                </h3>
-                <p className="text-xs text-gray-600">
-                  {invoice?.customerAddress || "Customer Address"}
-                </p>
-                <p className="text-xs mt-3">P : {invoice?.customerPhone || "-"}</p>
-                <p className="text-xs">PO/WO NO: {invoice?.poWoNo || "-"}</p>
-              </div>
-
-              <div className="text-xs">
-                <p className="bg-blue-900 text-white px-3 py-1 font-bold">
-                  INVOICE NO: #{invoice?.invoiceNo}
-                </p>
-                <div className="mt-3 grid grid-cols-2 gap-x-5 gap-y-1">
-                  <span>Account NO</span>
-                  <span className="text-right">280090</span>
-                  <span>Invoice Date</span>
-                  <span className="text-right">{formatDate(invoice?.date)}</span>
+                  <p className="text-[10px] text-gray-500">
+                    {invoice?.companyInfo?.companyPhone || ""}
+                  </p>
                 </div>
               </div>
+
+              <div className="h-full w-[330px] bg-gradient-to-r from-blue-900 to-sky-500 text-white flex items-center justify-center clip-invoice">
+                <h2 className="text-4xl font-black tracking-wide">INVOICE</h2>
+              </div>
             </div>
 
-            <table className="w-full mt-8 text-xs border-collapse">
-              <thead>
-                <tr className="text-white">
-                  <th className="bg-blue-950 p-3 text-center w-[55px]">SL NO</th>
-                  <th className="bg-blue-900 p-3 text-left">Item Description</th>
-                  <th className="bg-sky-500 p-3 text-center w-[85px]">Quantity</th>
-                  <th className="bg-sky-600 p-3 text-center w-[70px]">Unit</th>
-                  <th className="bg-blue-800 p-3 text-right w-[95px]">Unit Price</th>
-                  <th className="bg-blue-950 p-3 text-right w-[105px]">Total Price</th>
-                </tr>
-              </thead>
-
-              <tbody>
-                {invoiceItems.map((item, index) => (
-                  <tr key={index} className="border-b">
-                    <td className="p-3 text-center font-bold">{index + 1}</td>
-                    <td className="p-3">
-                      <p className="font-bold">{item?.name || "-"}</p>
-                      {item?.description ? (
-                        <p className="text-[10px] text-gray-500 mt-1">
-                          {item.description}
-                        </p>
-                      ) : null}
-                    </td>
-                    <td className="p-3 text-center bg-gray-100 font-bold">
-                      {Number(item?.qty || 0).toFixed(0)}
-                    </td>
-                    <td className="p-3 text-center">{item?.unit || "-"}</td>
-                    <td className="p-3 text-right">৳ {money(item?.price)}</td>
-                    <td className="p-3 text-right font-bold">৳ {money(item?.total)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-
-            <div className="flex justify-between mt-6">
-              <div className="w-[48%] text-xs">
-                <h4 className="font-bold mb-2">Payment method</h4>
-                <p>Paid Amount: ৳ {money(invoice?.paidAmount)}</p>
-                <p>Invoice Due: ৳ {money(invoice?.invoiceDueAmount)}</p>
-
-                <p>Previous Due Amount: ৳ {money(invoice?.previousDue)}</p>
-
-                <p>Total Due Amount: ৳ {money(invoice?.totalDueAfterSale)}</p>
-
-                {invoice?.note ? (
-                  <>
-                    <h4 className="font-bold mt-5 mb-1">Invoice Note:</h4>
-                    <p className="text-[10px] text-gray-500">{invoice.note}</p>
-                  </>
-                ) : null}
-
-                {invoice?.companyInfo?.invoiceNote ? (
-                  <>
-                    <h4 className="font-bold mt-5 mb-1">Invoice Note:</h4>
-
-                    <p className="text-[10px] text-gray-500">
-                      {invoice.companyInfo.invoiceNote}
-                    </p>
-                  </>
-                ) : null}
-
-                <h4 className="font-bold mt-5 mb-1">Terms & Conditions:</h4>
-
-                <p className="text-[10px] text-gray-500">
-                  {invoice?.companyInfo?.invoiceTerms ||
-                    "Goods once sold are not refundable without company approval."}
-                </p>
-
-                <p className="font-bold mt-6">Thanks for your business!</p>
-              </div>
-
-              <div className="w-[35%] text-xs space-y-2">
-                <InvoiceTotalRow title="Sub Total" value={invoice?.subTotal} />
-                <InvoiceTotalRow title="Discount" value={invoice?.discountAmount} />
-                <InvoiceTotalRow
-                  title={`VAT (${invoice?.vatPercent || 0}%)`}
-                  value={invoice?.vatAmount}
-                />
-
-                <div className="bg-blue-600 text-white px-4 py-2 flex justify-between font-bold">
-                  <span>Grand Total</span>
-                  <span>৳ {money(invoice?.invoiceTotal)}</span>
+            <div className="px-14 pt-10 pb-28">
+              <div className="flex justify-between">
+                <div>
+                  <p className="text-xs text-gray-600">Invoice To:</p>
+                  <h3 className="text-sm font-black text-blue-800 uppercase">
+                    {invoice?.customerName || "Customer Name"}
+                  </h3>
+                  <p className="text-xs text-gray-600">
+                    {invoice?.customerAddress || "Customer Address"}
+                  </p>
+                  <p className="text-xs mt-3">P : {invoice?.customerPhone || "-"}</p>
+                  <p className="text-xs">PO/WO NO: {invoice?.poWoNo || "-"}</p>
                 </div>
-              </div>
-            </div>
 
-            <div className="absolute bottom-24 right-16 text-center">
-              <div className="text-2xl italic">Authorized</div>
-              <div className="border-t border-gray-700 mt-1 pt-1">
-                <p className="font-bold text-xs">AUTHORIZED SIGNATURE</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="absolute bottom-0 left-0 right-0 h-24 border-t bg-white">
-            <div className="flex items-center justify-between px-14 h-full text-[10px]">
-              <div>
-                <p className="font-bold">{invoice?.companyInfo?.companyName}</p>
-
-                <p>{invoice?.companyInfo?.companyAddress}</p>
-              </div>
-
-              <div className="text-center">
-                {invoice?.companyInfo?.logo ? (
-                  <img
-                    src={invoice.companyInfo.logo}
-                    alt="logo"
-                    className="h-12 mx-auto object-contain"
-                  />
-                ) : (
-                  <div className="w-12 h-12 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold mx-auto">
-                    LOGO
+                <div className="text-xs">
+                  <p className="bg-blue-900 text-white px-3 py-1 font-bold">
+                    INVOICE NO: #{invoice?.invoiceNo}
+                  </p>
+                  <div className="mt-3 grid grid-cols-2 gap-x-5 gap-y-1">
+                    <span>Invoice Date</span>
+                    <span className="text-right">{formatDate(invoice?.date)}</span>
+                    <span>Time</span>
+                    <span className="text-right">{formatTime()}</span>
                   </div>
-                )}
+                </div>
               </div>
 
-              <div className="text-right">
-                <p>{invoice?.companyInfo?.companyPhone}</p>
+              <table className="w-full mt-8 text-xs border-collapse">
+                <thead>
+                  <tr className="text-white">
+                    <th className="bg-blue-950 p-3 text-center w-[55px]">SL</th>
+                    <th className="bg-blue-900 p-3 text-left">Item Description</th>
+                    <th className="bg-sky-500 p-3 text-center w-[85px]">Qty</th>
+                    <th className="bg-sky-600 p-3 text-center w-[70px]">Unit</th>
+                    <th className="bg-blue-800 p-3 text-right w-[95px]">
+                      Unit Price
+                    </th>
+                    <th className="bg-blue-950 p-3 text-right w-[105px]">
+                      Total
+                    </th>
+                  </tr>
+                </thead>
 
-                <p>{invoice?.companyInfo?.companyEmail}</p>
+                <tbody>
+                  {invoiceItems.map((item, index) => (
+                    <tr key={index} className="border-b">
+                      <td className="p-3 text-center font-bold">{index + 1}</td>
+                      <td className="p-3">
+                        <p className="font-bold">{item?.name || "-"}</p>
+                        {item?.description ? (
+                          <p className="text-[10px] text-gray-500 mt-1">
+                            {item.description}
+                          </p>
+                        ) : null}
+                      </td>
+                      <td className="p-3 text-center bg-gray-100 font-bold">
+                        {Number(item?.qty || 0).toFixed(0)}
+                      </td>
+                      <td className="p-3 text-center">{item?.unit || "-"}</td>
+                      <td className="p-3 text-right">৳ {money(item?.price)}</td>
+                      <td className="p-3 text-right font-bold">
+                        ৳ {money(item?.total)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+
+              <div className="flex justify-end mt-6">
+                <div className="w-[42%] text-xs space-y-2">
+                  <InvoiceTotalRow title="Subtotal" value={invoice?.subTotal} />
+                  <InvoiceTotalRow title="Discount" value={invoice?.discountAmount} />
+                  <InvoiceTotalRow
+                    title={`VAT (${invoice?.vatPercent || 0}%)`}
+                    value={invoice?.vatAmount}
+                  />
+                  <InvoiceTotalRow title="Total Price in Taka" value={invoiceTotal} />
+                  <InvoiceTotalRow title="Payment Amount" value={paidAmount} />
+
+                  {invoice?.dueMode !== "hide" ? (
+                    <InvoiceTotalRow
+                      title="Previous Due Amount"
+                      value={previousDue}
+                    />
+                  ) : null}
+
+                  <div className="bg-blue-700 text-white px-4 py-3 flex justify-between font-bold rounded-xl">
+                    <span>Net Price in Taka</span>
+                    <span>৳ {money(netPayable)}</span>
+                  </div>
+
+                  <div className="border rounded-xl p-3 bg-gray-50">
+                    <p className="text-[11px] font-semibold text-gray-700">
+                      In Words:
+                    </p>
+                    <p className="text-sm font-bold text-blue-900 mt-1 leading-6">
+                      {numberToWords(netPayable)} BDT Only
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {note ? null : null}
+
+              <div className="absolute bottom-28 right-16 text-center">
+                <div className="text-2xl italic">Authorized</div>
+                <div className="border-t border-gray-700 mt-1 pt-1">
+                  <p className="font-bold text-xs">AUTHORIZED SIGNATURE</p>
+                  <p className="text-[10px]">
+                    {invoice?.companyInfo?.ownerName || "Company Owner"}
+                  </p>
+                </div>
               </div>
             </div>
+
+            <div className="absolute bottom-0 left-0 right-0 h-24 border-t bg-white invoice-footer">
+              <div className="flex items-center justify-between px-14 h-full text-[10px]">
+                <div>
+                  <p className="font-bold">{invoice?.companyInfo?.companyName}</p>
+                  <p>{invoice?.companyInfo?.companyAddress}</p>
+                </div>
+
+                <div className="text-center">
+                  <LogoBox small />
+                </div>
+
+                <div className="text-right">
+                  <p>{invoice?.companyInfo?.companyPhone}</p>
+                  <p>{invoice?.companyInfo?.companyEmail}</p>
+                </div>
+              </div>
+            </div>
+
+            <style jsx>{`
+              .clip-invoice {
+                clip-path: polygon(20% 0, 100% 0, 100% 100%, 0 100%);
+              }
+            `}</style>
           </div>
-
-          <style jsx>{`
-            .clip-invoice {
-              clip-path: polygon(20% 0, 100% 0, 100% 100%, 0 100%);
-            }
-
-            .clip-footer {
-              clip-path: polygon(18% 0, 100% 0, 100% 100%, 0 100%);
-            }
-          `}</style>
         </div>
       </div>
     </div>
