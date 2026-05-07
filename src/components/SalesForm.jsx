@@ -78,9 +78,11 @@ function numberToWords(num) {
 
     if (n === 0) return "";
     if (n < 20) return a[n];
+
     if (n < 100) {
       return b[Math.floor(n / 10)] + (n % 10 ? " " + a[n % 10] : "");
     }
+
     if (n < 1000) {
       return (
         a[Math.floor(n / 100)] +
@@ -88,6 +90,7 @@ function numberToWords(num) {
         (n % 100 ? " " + convert(n % 100) : "")
       );
     }
+
     if (n < 100000) {
       return (
         convert(Math.floor(n / 1000)) +
@@ -95,6 +98,7 @@ function numberToWords(num) {
         (n % 1000 ? " " + convert(n % 1000) : "")
       );
     }
+
     if (n < 10000000) {
       return (
         convert(Math.floor(n / 100000)) +
@@ -179,7 +183,6 @@ export default function SalesForm() {
   const [aitPercent, setAitPercent] = useState("");
   const [paid, setPaid] = useState("");
 
-  // default active: previous due add হবে
   const [dueMode, setDueMode] = useState("add");
 
   const [vatDocumentReceived, setVatDocumentReceived] = useState(false);
@@ -200,14 +203,9 @@ export default function SalesForm() {
       .then((data) => {
         if (data?.success) {
           setCompanyInfo(data.data);
-
-          if (data?.data?.vatPercent !== undefined) {
-            setVatPercent(String(data.data.vatPercent || ""));
-          }
-
-          if (data?.data?.aitPercent !== undefined) {
-            setAitPercent(String(data.data.aitPercent || ""));
-          }
+          setVatPercent(String(data.data?.vatPercent || ""));
+          setAitPercent(String(data.data?.aitPercent || ""));
+          setDueMode(data.data?.defaultDueMode || "add");
         }
       })
       .catch(console.error);
@@ -359,7 +357,7 @@ export default function SalesForm() {
     setVatPercent(String(companyInfo?.vatPercent || ""));
     setAitPercent(String(companyInfo?.aitPercent || ""));
     setPaid("");
-    setDueMode("add");
+    setDueMode(companyInfo?.defaultDueMode || "add");
     setVatDocumentReceived(false);
     setAitDocumentReceived(false);
     setVatDocumentNote("");
@@ -867,7 +865,6 @@ export default function SalesForm() {
           html,
           body {
             width: 210mm;
-            min-height: 297mm;
             margin: 0 !important;
             padding: 0 !important;
             background: white !important;
@@ -889,30 +886,44 @@ export default function SalesForm() {
             left: 0;
             top: 0;
             width: 210mm !important;
-            min-height: 297mm !important;
             margin: 0 !important;
             box-shadow: none !important;
-            overflow: visible !important;
+            background: white !important;
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
           }
 
           .invoice-page {
-            width: 210mm;
-            min-height: 297mm;
+            width: 210mm !important;
+            min-height: 297mm !important;
             page-break-after: always;
+            break-after: page;
             position: relative;
-            background: white;
+            overflow: hidden !important;
+            background: white !important;
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
+          }
+
+          .invoice-page:last-child {
+            page-break-after: auto;
+            break-after: auto;
+          }
+
+          .invoice-page-break {
+            page-break-before: always;
+            break-before: page;
           }
 
           thead {
             display: table-header-group;
           }
 
-          tr {
-            page-break-inside: avoid;
+          tr,
+          td,
+          th {
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
           }
 
           .no-print {
@@ -936,6 +947,20 @@ function SalesInvoice({ invoice, onClose }) {
       ? Math.max(invoiceTotal + previousDue - paidAmount, 0)
       : Math.max(invoiceTotal - paidAmount, 0);
 
+  const ITEMS_PER_FIRST_PAGE = 10;
+  const ITEMS_PER_OTHER_PAGE = 16;
+
+  const pages = [];
+  let remainingItems = [...invoiceItems];
+
+  pages.push(remainingItems.splice(0, ITEMS_PER_FIRST_PAGE));
+
+  while (remainingItems.length > 0) {
+    pages.push(remainingItems.splice(0, ITEMS_PER_OTHER_PAGE));
+  }
+
+  if (pages.length === 0) pages.push([]);
+
   const handleDownloadPDF = async () => {
     const html2pdf = (await import("html2pdf.js")).default;
     const element = document.getElementById("sales-invoice-print");
@@ -956,6 +981,7 @@ function SalesInvoice({ invoice, onClose }) {
         },
         pagebreak: {
           mode: ["css", "legacy"],
+          before: ".invoice-page-break",
         },
       })
       .from(element)
@@ -1010,6 +1036,107 @@ function SalesInvoice({ invoice, onClose }) {
     );
   };
 
+  const InvoiceHeader = () => (
+    <div className="h-28 flex items-center justify-between border-b-2 border-gray-700">
+      <div className="pl-14 flex items-center gap-3">
+        <LogoBox />
+
+        <div>
+          <h1 className="text-2xl font-black leading-6">
+            {invoice?.companyInfo?.companyName || "NextCore ERP"}
+          </h1>
+
+          <p className="text-xs text-gray-500">
+            {invoice?.companyInfo?.companySlogan ||
+              "Your trusted business partner"}
+          </p>
+
+          <p className="text-[10px] text-gray-500 mt-1">
+            {invoice?.companyInfo?.companyAddress || ""}
+          </p>
+
+          <p className="text-[10px] text-gray-500">
+            {invoice?.companyInfo?.companyPhone || ""}
+          </p>
+        </div>
+      </div>
+
+      <div className="h-full w-[330px] bg-gradient-to-r from-blue-900 to-sky-500 text-white flex items-center justify-center clip-invoice">
+        <h2 className="text-4xl font-black tracking-wide">INVOICE</h2>
+      </div>
+    </div>
+  );
+
+  const InvoiceFooter = ({ pageNo, totalPages }) => (
+    <div className="absolute bottom-8 left-0 right-0 h-20 border-t bg-white invoice-footer">
+      <div className="flex items-center justify-between px-14 h-full text-[10px]">
+        <div>
+          <p className="font-bold">{invoice?.companyInfo?.companyName}</p>
+          <p>{invoice?.companyInfo?.companyAddress}</p>
+        </div>
+
+        <div className="text-center">
+          <LogoBox small />
+          <p className="mt-1 text-gray-500">
+            Page {pageNo} of {totalPages}
+          </p>
+        </div>
+
+        <div className="text-right">
+          <p>{invoice?.companyInfo?.companyPhone}</p>
+          <p>{invoice?.companyInfo?.companyEmail}</p>
+        </div>
+      </div>
+    </div>
+  );
+
+  const ItemTable = ({ items, startIndex }) => (
+    <table className="w-full mt-8 text-xs border-collapse">
+      <thead>
+        <tr className="text-white">
+          <th className="bg-blue-950 p-3 text-center w-[55px]">SL</th>
+          <th className="bg-blue-900 p-3 text-left">Item Description</th>
+          <th className="bg-sky-500 p-3 text-center w-[85px]">Qty</th>
+          <th className="bg-sky-600 p-3 text-center w-[70px]">Unit</th>
+          <th className="bg-blue-800 p-3 text-right w-[95px]">Unit Price</th>
+          <th className="bg-blue-950 p-3 text-right w-[105px]">Total</th>
+        </tr>
+      </thead>
+
+      <tbody>
+        {items.map((item, index) => (
+          <tr key={index} className="border-b">
+            <td className="p-3 text-center font-bold">{startIndex + index + 1}</td>
+
+            <td className="p-3">
+              <p className="font-bold">{item?.name || "-"}</p>
+
+              {item?.description ? (
+                <p className="text-[10px] text-gray-500 mt-1">
+                  {item.description}
+                </p>
+              ) : null}
+            </td>
+
+            <td className="p-3 text-center bg-gray-100 font-bold">
+              {Number(item?.qty || 0).toFixed(0)}
+            </td>
+
+            <td className="p-3 text-center">{item?.unit || "-"}</td>
+
+            <td className="p-3 text-right">৳ {money(item?.price)}</td>
+
+            <td className="p-3 text-right font-bold">
+              ৳ {money(item?.total)}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+
+  let itemStartIndex = 0;
+
   return (
     <div className="fixed inset-0 z-[99999] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl max-w-5xl w-full max-h-[95vh] overflow-auto">
@@ -1054,177 +1181,158 @@ function SalesInvoice({ invoice, onClose }) {
           </div>
         </div>
 
-        <div
-          id="sales-invoice-print"
-          className="bg-white mx-auto my-6 w-[210mm] min-h-[297mm] shadow-xl print:shadow-none"
-        >
-          <div className="invoice-page overflow-hidden">
-            <div className="h-28 flex items-center justify-between border-b-2 border-gray-700">
-              <div className="pl-14 flex items-center gap-3">
-                <LogoBox />
+        <div id="sales-invoice-print" className="bg-white mx-auto my-6 w-[210mm]">
+          {pages.map((pageItems, pageIndex) => {
+            const isFirstPage = pageIndex === 0;
+            const isLastPage = pageIndex === pages.length - 1;
+            const startIndex = itemStartIndex;
+            itemStartIndex += pageItems.length;
 
-                <div>
-                  <h1 className="text-2xl font-black leading-6">
-                    {invoice?.companyInfo?.companyName || "NextCore ERP"}
-                  </h1>
+            return (
+              <div
+                key={pageIndex}
+                className={`invoice-page relative bg-white w-[210mm] min-h-[297mm] overflow-hidden ${
+                  pageIndex > 0 ? "invoice-page-break" : ""
+                }`}
+              >
+                <InvoiceHeader />
 
-                  <p className="text-xs text-gray-500">
-                    {invoice?.companyInfo?.companySlogan ||
-                      "Your trusted business partner"}
-                  </p>
+                <div className="px-14 pt-10 pb-40">
+                  {isFirstPage && (
+                    <div className="flex justify-between">
+                      <div>
+                        <p className="text-xs text-gray-600">Invoice To:</p>
 
-                  <p className="text-[10px] text-gray-500 mt-1">
-                    {invoice?.companyInfo?.companyAddress || ""}
-                  </p>
+                        <h3 className="text-sm font-black text-blue-800 uppercase">
+                          {invoice?.customerName || "Customer Name"}
+                        </h3>
 
-                  <p className="text-[10px] text-gray-500">
-                    {invoice?.companyInfo?.companyPhone || ""}
-                  </p>
-                </div>
-              </div>
+                        <p className="text-xs text-gray-600">
+                          {invoice?.customerAddress || "Customer Address"}
+                        </p>
 
-              <div className="h-full w-[330px] bg-gradient-to-r from-blue-900 to-sky-500 text-white flex items-center justify-center clip-invoice">
-                <h2 className="text-4xl font-black tracking-wide">INVOICE</h2>
-              </div>
-            </div>
+                        <p className="text-xs mt-3">
+                          P : {invoice?.customerPhone || "-"}
+                        </p>
 
-            <div className="px-14 pt-10 pb-28">
-              <div className="flex justify-between">
-                <div>
-                  <p className="text-xs text-gray-600">Invoice To:</p>
-                  <h3 className="text-sm font-black text-blue-800 uppercase">
-                    {invoice?.customerName || "Customer Name"}
-                  </h3>
-                  <p className="text-xs text-gray-600">
-                    {invoice?.customerAddress || "Customer Address"}
-                  </p>
-                  <p className="text-xs mt-3">P : {invoice?.customerPhone || "-"}</p>
-                  <p className="text-xs">PO/WO NO: {invoice?.poWoNo || "-"}</p>
-                </div>
+                        <p className="text-xs">
+                          PO/WO NO: {invoice?.poWoNo || "-"}
+                        </p>
+                      </div>
 
-                <div className="text-xs">
-                  <p className="bg-blue-900 text-white px-3 py-1 font-bold">
-                    INVOICE NO: #{invoice?.invoiceNo}
-                  </p>
-                  <div className="mt-3 grid grid-cols-2 gap-x-5 gap-y-1">
-                    <span>Invoice Date</span>
-                    <span className="text-right">{formatDate(invoice?.date)}</span>
-                    <span>Time</span>
-                    <span className="text-right">{formatTime()}</span>
-                  </div>
-                </div>
-              </div>
+                      <div className="text-xs">
+                        <p className="bg-blue-900 text-white px-3 py-1 font-bold">
+                          INVOICE NO: #{invoice?.invoiceNo}
+                        </p>
 
-              <table className="w-full mt-8 text-xs border-collapse">
-                <thead>
-                  <tr className="text-white">
-                    <th className="bg-blue-950 p-3 text-center w-[55px]">SL</th>
-                    <th className="bg-blue-900 p-3 text-left">Item Description</th>
-                    <th className="bg-sky-500 p-3 text-center w-[85px]">Qty</th>
-                    <th className="bg-sky-600 p-3 text-center w-[70px]">Unit</th>
-                    <th className="bg-blue-800 p-3 text-right w-[95px]">
-                      Unit Price
-                    </th>
-                    <th className="bg-blue-950 p-3 text-right w-[105px]">
-                      Total
-                    </th>
-                  </tr>
-                </thead>
+                        <div className="mt-3 grid grid-cols-2 gap-x-5 gap-y-1">
+                          <span>Invoice Date</span>
+                          <span className="text-right">
+                            {formatDate(invoice?.date)}
+                          </span>
 
-                <tbody>
-                  {invoiceItems.map((item, index) => (
-                    <tr key={index} className="border-b">
-                      <td className="p-3 text-center font-bold">{index + 1}</td>
-                      <td className="p-3">
-                        <p className="font-bold">{item?.name || "-"}</p>
-                        {item?.description ? (
-                          <p className="text-[10px] text-gray-500 mt-1">
-                            {item.description}
+                          <span>Time</span>
+                          <span className="text-right">{formatTime()}</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {!isFirstPage && (
+                    <div className="flex justify-between text-xs">
+                      <p>
+                        Invoice No:{" "}
+                        <span className="font-bold">#{invoice?.invoiceNo}</span>
+                      </p>
+                      <p>
+                        Customer:{" "}
+                        <span className="font-bold">{invoice?.customerName}</span>
+                      </p>
+                    </div>
+                  )}
+
+                  <ItemTable items={pageItems} startIndex={startIndex} />
+
+                  {isLastPage && (
+                    <>
+                      <div className="flex justify-end mt-6">
+                        <div className="w-[42%] text-xs space-y-2">
+                          <InvoiceTotalRow
+                            title="Subtotal"
+                            value={invoice?.subTotal}
+                          />
+
+                          <InvoiceTotalRow
+                            title="Discount"
+                            value={invoice?.discountAmount}
+                          />
+
+                          <InvoiceTotalRow
+                            title={`VAT (${invoice?.vatPercent || 0}%)`}
+                            value={invoice?.vatAmount}
+                          />
+
+                          <InvoiceTotalRow
+                            title="Total Price in Taka"
+                            value={invoiceTotal}
+                          />
+
+                          <InvoiceTotalRow
+                            title="Payment Amount"
+                            value={paidAmount}
+                          />
+
+                          {invoice?.dueMode !== "hide" ? (
+                            <InvoiceTotalRow
+                              title="Previous Due Amount"
+                              value={previousDue}
+                            />
+                          ) : null}
+
+                          <div className="bg-blue-700 text-white px-4 py-3 flex justify-between font-bold rounded-xl">
+                            <span>Net Price in Taka</span>
+                            <span>৳ {money(netPayable)}</span>
+                          </div>
+
+                          <div className="border rounded-xl p-3 bg-gray-50">
+                            <p className="text-[11px] font-semibold text-gray-700">
+                              In Words:
+                            </p>
+
+                            <p className="text-sm font-bold text-blue-900 mt-1 leading-6">
+                              {numberToWords(netPayable)} BDT Only
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="absolute bottom-36 right-16 text-center">
+                        <div className="text-2xl italic">Authorized</div>
+
+                        <div className="border-t border-gray-700 mt-1 pt-1">
+                          <p className="font-bold text-xs">
+                            AUTHORIZED SIGNATURE
                           </p>
-                        ) : null}
-                      </td>
-                      <td className="p-3 text-center bg-gray-100 font-bold">
-                        {Number(item?.qty || 0).toFixed(0)}
-                      </td>
-                      <td className="p-3 text-center">{item?.unit || "-"}</td>
-                      <td className="p-3 text-right">৳ {money(item?.price)}</td>
-                      <td className="p-3 text-right font-bold">
-                        ৳ {money(item?.total)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
 
-              <div className="flex justify-end mt-6">
-                <div className="w-[42%] text-xs space-y-2">
-                  <InvoiceTotalRow title="Subtotal" value={invoice?.subTotal} />
-                  <InvoiceTotalRow title="Discount" value={invoice?.discountAmount} />
-                  <InvoiceTotalRow
-                    title={`VAT (${invoice?.vatPercent || 0}%)`}
-                    value={invoice?.vatAmount}
-                  />
-                  <InvoiceTotalRow title="Total Price in Taka" value={invoiceTotal} />
-                  <InvoiceTotalRow title="Payment Amount" value={paidAmount} />
-
-                  {invoice?.dueMode !== "hide" ? (
-                    <InvoiceTotalRow
-                      title="Previous Due Amount"
-                      value={previousDue}
-                    />
-                  ) : null}
-
-                  <div className="bg-blue-700 text-white px-4 py-3 flex justify-between font-bold rounded-xl">
-                    <span>Net Price in Taka</span>
-                    <span>৳ {money(netPayable)}</span>
-                  </div>
-
-                  <div className="border rounded-xl p-3 bg-gray-50">
-                    <p className="text-[11px] font-semibold text-gray-700">
-                      In Words:
-                    </p>
-                    <p className="text-sm font-bold text-blue-900 mt-1 leading-6">
-                      {numberToWords(netPayable)} BDT Only
-                    </p>
-                  </div>
+                          <p className="text-[10px]">
+                            {invoice?.companyInfo?.ownerName || "Company Owner"}
+                          </p>
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
+
+                <InvoiceFooter pageNo={pageIndex + 1} totalPages={pages.length} />
+
+                <style jsx>{`
+                  .clip-invoice {
+                    clip-path: polygon(20% 0, 100% 0, 100% 100%, 0 100%);
+                  }
+                `}</style>
               </div>
-
-              <div className="absolute bottom-28 right-16 text-center">
-                <div className="text-2xl italic">Authorized</div>
-                <div className="border-t border-gray-700 mt-1 pt-1">
-                  <p className="font-bold text-xs">AUTHORIZED SIGNATURE</p>
-                  <p className="text-[10px]">
-                    {invoice?.companyInfo?.ownerName || "Company Owner"}
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="absolute bottom-0 left-0 right-0 h-24 border-t bg-white invoice-footer">
-              <div className="flex items-center justify-between px-14 h-full text-[10px]">
-                <div>
-                  <p className="font-bold">{invoice?.companyInfo?.companyName}</p>
-                  <p>{invoice?.companyInfo?.companyAddress}</p>
-                </div>
-
-                <div className="text-center">
-                  <LogoBox small />
-                </div>
-
-                <div className="text-right">
-                  <p>{invoice?.companyInfo?.companyPhone}</p>
-                  <p>{invoice?.companyInfo?.companyEmail}</p>
-                </div>
-              </div>
-            </div>
-
-            <style jsx>{`
-              .clip-invoice {
-                clip-path: polygon(20% 0, 100% 0, 100% 100%, 0 100%);
-              }
-            `}</style>
-          </div>
+            );
+          })}
         </div>
       </div>
     </div>
