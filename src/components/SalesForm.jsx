@@ -163,6 +163,9 @@ export default function SalesForm() {
   const [customerAddress, setCustomerAddress] = useState("");
   const [customerSuggestions, setCustomerSuggestions] = useState([]);
 
+  const [stockProducts, setStockProducts] = useState([]);
+  const [activeProductIndex, setActiveProductIndex] = useState(null);
+
   const [invoiceData, setInvoiceData] = useState(null);
   const [companyInfo, setCompanyInfo] = useState(null);
 
@@ -176,7 +179,8 @@ export default function SalesForm() {
   const [aitPercent, setAitPercent] = useState("");
   const [paid, setPaid] = useState("");
 
-  const [dueMode, setDueMode] = useState("show");
+  // default active: previous due add হবে
+  const [dueMode, setDueMode] = useState("add");
 
   const [vatDocumentReceived, setVatDocumentReceived] = useState(false);
   const [aitDocumentReceived, setAitDocumentReceived] = useState(false);
@@ -194,7 +198,26 @@ export default function SalesForm() {
     fetch("/api/company-settings")
       .then((res) => res.json())
       .then((data) => {
-        if (data?.success) setCompanyInfo(data.data);
+        if (data?.success) {
+          setCompanyInfo(data.data);
+
+          if (data?.data?.vatPercent !== undefined) {
+            setVatPercent(String(data.data.vatPercent || ""));
+          }
+
+          if (data?.data?.aitPercent !== undefined) {
+            setAitPercent(String(data.data.aitPercent || ""));
+          }
+        }
+      })
+      .catch(console.error);
+
+    fetch("/api/dashboard/stock")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data?.success) {
+          setStockProducts(data.data.stocks || []);
+        }
       })
       .catch(console.error);
   }, []);
@@ -230,6 +253,35 @@ export default function SalesForm() {
       next[index] = { ...(next[index] || emptyItem), [field]: value };
       return next;
     });
+  };
+
+  const selectStockProduct = (index, stock) => {
+    setItems((prev) => {
+      const next = [...(prev || [])];
+
+      next[index] = {
+        ...(next[index] || emptyItem),
+        name: stock?.itemName || "",
+        sourceType: "stock",
+        unit: next[index]?.unit || "pcs",
+        purchasePrice: stock?.avgCost || "",
+      };
+
+      return next;
+    });
+
+    setActiveProductIndex(null);
+  };
+
+  const getProductSuggestions = (itemName) => {
+    const q = String(itemName || "").trim().toLowerCase();
+    if (!q) return [];
+
+    return (stockProducts || [])
+      .filter((stock) =>
+        String(stock?.itemName || "").toLowerCase().includes(q)
+      )
+      .slice(0, 8);
   };
 
   const addItem = () => setItems((prev) => [...(prev || []), { ...emptyItem }]);
@@ -304,10 +356,10 @@ export default function SalesForm() {
     setItems([{ ...emptyItem }]);
     setDiscount("");
     setAmountType("exclusive");
-    setVatPercent("");
-    setAitPercent("");
+    setVatPercent(String(companyInfo?.vatPercent || ""));
+    setAitPercent(String(companyInfo?.aitPercent || ""));
     setPaid("");
-    setDueMode("show");
+    setDueMode("add");
     setVatDocumentReceived(false);
     setAitDocumentReceived(false);
     setVatDocumentNote("");
@@ -407,6 +459,12 @@ export default function SalesForm() {
     await handleSubmit(ownerPin.trim());
   };
 
+  const livePreviousDue = Number(creditInfo?.previousDue || 0);
+  const liveNetPrice =
+    dueMode === "add"
+      ? Math.max(tax.invoiceTotal + livePreviousDue - paidAmount, 0)
+      : Math.max(tax.invoiceTotal - paidAmount, 0);
+
   return (
     <div className="space-y-6">
       <div className="bg-white border rounded-[28px] p-5 md:p-7 shadow-sm space-y-5">
@@ -446,7 +504,7 @@ export default function SalesForm() {
               label="Manual Invoice No"
               value={manualBillNo}
               onChange={setManualBillNo}
-              placeholder="Example: ACI01526"
+              placeholder="Example: BD01526"
               readOnly={billType === "auto"}
             />
           </div>
@@ -518,84 +576,113 @@ export default function SalesForm() {
         </div>
 
         <div className="space-y-3">
-          {itemRows.map((item, i) => (
-            <div
-              key={i}
-              className="grid grid-cols-12 gap-2 items-start border rounded-2xl p-3 bg-gray-50/60"
-            >
-              <input
-                value={item.name}
-                placeholder="Product name"
-                onChange={(e) => updateItem(i, "name", e.target.value)}
-                className="col-span-12 md:col-span-3 border bg-white p-3 rounded-xl outline-none focus:ring-4 focus:ring-blue-100"
-              />
+          {itemRows.map((item, i) => {
+            const productSuggestions = getProductSuggestions(item.name);
 
-              <input
-                value={item.description}
-                placeholder="Item description for invoice"
-                onChange={(e) => updateItem(i, "description", e.target.value)}
-                className="col-span-12 md:col-span-3 border bg-white p-3 rounded-xl outline-none focus:ring-4 focus:ring-blue-100"
-              />
-
-              <select
-                value={item.sourceType}
-                onChange={(e) => updateItem(i, "sourceType", e.target.value)}
-                className="col-span-6 md:col-span-1 border bg-white p-3 rounded-xl"
+            return (
+              <div
+                key={i}
+                className="grid grid-cols-12 gap-2 items-start border rounded-2xl p-3 bg-gray-50/60"
               >
-                <option value="stock">Stock</option>
-                <option value="direct">Direct</option>
-              </select>
+                <div className="col-span-12 md:col-span-3 relative">
+                  <input
+                    value={item.name}
+                    placeholder="Search product name..."
+                    onFocus={() => setActiveProductIndex(i)}
+                    onChange={(e) => {
+                      updateItem(i, "name", e.target.value);
+                      setActiveProductIndex(i);
+                    }}
+                    className="w-full border bg-white p-3 rounded-xl outline-none focus:ring-4 focus:ring-blue-100"
+                  />
 
-              <input
-                type="number"
-                value={item.qty}
-                placeholder="Qty"
-                onChange={(e) => updateItem(i, "qty", e.target.value)}
-                className="col-span-6 md:col-span-1 border bg-white p-3 rounded-xl outline-none focus:ring-4 focus:ring-blue-100"
-              />
+                  {activeProductIndex === i && productSuggestions.length > 0 && (
+                    <div className="absolute left-0 right-0 top-full mt-1 bg-white border rounded-2xl shadow-xl z-[9999] max-h-64 overflow-auto">
+                      {productSuggestions.map((stock) => (
+                        <button
+                          key={stock._id}
+                          type="button"
+                          onClick={() => selectStockProduct(i, stock)}
+                          className="w-full text-left p-3 hover:bg-blue-50 border-b last:border-b-0"
+                        >
+                          <p className="font-bold text-sm">{stock.itemName}</p>
+                          <p className="text-xs text-gray-500">
+                            Stock: {stock.qty || 0} pcs | Avg Cost: ৳{" "}
+                            {money(stock.avgCost)}
+                          </p>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
 
-              <select
-                value={item.unit}
-                onChange={(e) => updateItem(i, "unit", e.target.value)}
-                className="col-span-6 md:col-span-1 border bg-white p-3 rounded-xl"
-              >
-                <option value="">Unit</option>
-                <option value="pcs">pcs</option>
-                <option value="nos">nos</option>
-                <option value="kg">kg</option>
-                <option value="liter">liter</option>
-                <option value="meter">meter</option>
-                <option value="feet">feet</option>
-              </select>
+                <input
+                  value={item.description}
+                  placeholder="Item description for invoice"
+                  onChange={(e) => updateItem(i, "description", e.target.value)}
+                  className="col-span-12 md:col-span-3 border bg-white p-3 rounded-xl outline-none focus:ring-4 focus:ring-blue-100"
+                />
 
-              <input
-                type="number"
-                value={item.price}
-                placeholder="Selling price"
-                onChange={(e) => updateItem(i, "price", e.target.value)}
-                className="col-span-6 md:col-span-1 border bg-white p-3 rounded-xl outline-none focus:ring-4 focus:ring-blue-100"
-              />
+                <select
+                  value={item.sourceType}
+                  onChange={(e) => updateItem(i, "sourceType", e.target.value)}
+                  className="col-span-6 md:col-span-1 border bg-white p-3 rounded-xl"
+                >
+                  <option value="stock">Stock</option>
+                  <option value="direct">Direct</option>
+                </select>
 
-              <input
-                type="number"
-                value={item.purchasePrice}
-                placeholder="Buying cost"
-                onChange={(e) => updateItem(i, "purchasePrice", e.target.value)}
-                className="col-span-6 md:col-span-1 border bg-white p-3 rounded-xl outline-none focus:ring-4 focus:ring-blue-100"
-              />
+                <input
+                  type="number"
+                  value={item.qty}
+                  placeholder="Qty"
+                  onChange={(e) => updateItem(i, "qty", e.target.value)}
+                  className="col-span-6 md:col-span-1 border bg-white p-3 rounded-xl outline-none focus:ring-4 focus:ring-blue-100"
+                />
 
-              <div className="col-span-6 md:col-span-1 bg-white border rounded-xl p-3 text-right font-bold">
-                ৳ {money(item.total)}
+                <select
+                  value={item.unit}
+                  onChange={(e) => updateItem(i, "unit", e.target.value)}
+                  className="col-span-6 md:col-span-1 border bg-white p-3 rounded-xl"
+                >
+                  <option value="">Unit</option>
+                  <option value="pcs">pcs</option>
+                  <option value="nos">nos</option>
+                  <option value="kg">kg</option>
+                  <option value="liter">liter</option>
+                  <option value="meter">meter</option>
+                  <option value="feet">feet</option>
+                </select>
+
+                <input
+                  type="number"
+                  value={item.price}
+                  placeholder="Selling price"
+                  onChange={(e) => updateItem(i, "price", e.target.value)}
+                  className="col-span-6 md:col-span-1 border bg-white p-3 rounded-xl outline-none focus:ring-4 focus:ring-blue-100"
+                />
+
+                <input
+                  type="number"
+                  value={item.purchasePrice}
+                  placeholder="Buying cost"
+                  onChange={(e) => updateItem(i, "purchasePrice", e.target.value)}
+                  className="col-span-6 md:col-span-1 border bg-white p-3 rounded-xl outline-none focus:ring-4 focus:ring-blue-100"
+                />
+
+                <div className="col-span-6 md:col-span-1 bg-white border rounded-xl p-3 text-right font-bold">
+                  ৳ {money(item.total)}
+                </div>
+
+                <button
+                  onClick={() => removeItem(i)}
+                  className="col-span-6 md:col-span-1 h-12 rounded-xl border bg-white flex items-center justify-center text-red-500 hover:bg-red-50"
+                >
+                  <Trash2 size={16} />
+                </button>
               </div>
-
-              <button
-                onClick={() => removeItem(i)}
-                className="col-span-6 md:col-span-1 h-12 rounded-xl border bg-white flex items-center justify-center text-red-500 hover:bg-red-50"
-              >
-                <Trash2 size={16} />
-              </button>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 
@@ -664,29 +751,21 @@ export default function SalesForm() {
 
           <Row title="Subtotal" value={subTotal} />
           <Row title="Discount" value={discountAmount} danger />
-          <Row title="Sales Amount" value={afterDiscount} />
-          <Row title={`VAT Add (${vatPercent || 0}%)`} value={tax.vatAmount} />
-          <Row title="Invoice Total" value={tax.invoiceTotal} bold />
+          <Row title={`VAT (${vatPercent || 0}%)`} value={tax.vatAmount} />
+          <Row title="Total Price in Taka" value={tax.invoiceTotal} bold />
 
           <div className="border-t pt-3 mt-3 space-y-2">
             <Row title="Payment Amount" value={paidAmount} success />
-            <Row title="Invoice Due" value={invoiceDueAmount} danger />
-            <Row title="Statement Due" value={statementDueAmount} danger bold />
+
+            {dueMode !== "hide" && (
+              <Row title="Previous Due Amount" value={livePreviousDue} danger />
+            )}
+
+            <Row title="Net Price in Taka" value={liveNetPrice} danger bold />
           </div>
 
           <div className="border rounded-xl p-3 space-y-2 mt-3">
             <p className="font-semibold text-sm">Previous Due Settings</p>
-
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="radio"
-                name="dueMode"
-                value="show"
-                checked={dueMode === "show"}
-                onChange={(e) => setDueMode(e.target.value)}
-              />
-              Show Previous Due Only
-            </label>
 
             <label className="flex items-center gap-2 text-sm">
               <input
@@ -975,7 +1054,10 @@ function SalesInvoice({ invoice, onClose }) {
           </div>
         </div>
 
-        <div id="sales-invoice-print" className="bg-white mx-auto my-6 w-[210mm] min-h-[297mm] shadow-xl print:shadow-none">
+        <div
+          id="sales-invoice-print"
+          className="bg-white mx-auto my-6 w-[210mm] min-h-[297mm] shadow-xl print:shadow-none"
+        >
           <div className="invoice-page overflow-hidden">
             <div className="h-28 flex items-center justify-between border-b-2 border-gray-700">
               <div className="pl-14 flex items-center gap-3">
@@ -1107,8 +1189,6 @@ function SalesInvoice({ invoice, onClose }) {
                   </div>
                 </div>
               </div>
-
-              {note ? null : null}
 
               <div className="absolute bottom-28 right-16 text-center">
                 <div className="text-2xl italic">Authorized</div>
