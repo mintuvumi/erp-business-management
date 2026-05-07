@@ -17,15 +17,24 @@ const CompanySettingSchema = new mongoose.Schema(
 
     themeColor: { type: String, default: "blue" },
 
+    companySlogan: {
+      type: String,
+      default: "Your trusted business partner",
+    },
+
+    logo: { type: String, default: "" },
+    signature: { type: String, default: "" },
+    stamp: { type: String, default: "" },
+
     invoiceTerms: {
-    type: String,
-    default:
-    "Goods once sold are not refundable without company approval.",
-   },
+      type: String,
+      default:
+        "Goods once sold are not refundable without company approval.",
+    },
 
     invoiceNote: {
-    type: String,
-    default: "",
+      type: String,
+      default: "",
     },
 
     invoiceFooter: {
@@ -33,20 +42,42 @@ const CompanySettingSchema = new mongoose.Schema(
       default: "Thank you for doing business with us.",
     },
 
-    companySlogan: {
+    defaultDueMode: {
       type: String,
-      default: "Your trusted business partner",
+      enum: ["show", "add", "hide"],
+      default: "show",
     },
 
-    logo: { type: String, default: "" },
+    printColor: {
+      type: Boolean,
+      default: true,
+    },
 
-    /*
-      Credit Control Settings
-      ছোট ব্যবসা: 30,000 / 50,000
-      মাঝারি ব্যবসা: 1,00,000 - 5,00,000
-      বড় ব্যবসা: 10,00,000 - 50,00,000+
-    */
-    creditApprovalRequired: { type: Boolean, default: true },
+    pdfEnabled: {
+      type: Boolean,
+      default: true,
+    },
+
+    whatsappNumber: {
+      type: String,
+      default: "",
+    },
+
+    invoiceTemplate: {
+      type: String,
+      enum: ["modern", "classic", "simple"],
+      default: "modern",
+    },
+
+    stockReportFooter: {
+      type: String,
+      default: "This report is system generated.",
+    },
+
+    creditApprovalRequired: {
+      type: Boolean,
+      default: true,
+    },
 
     defaultCreditLimit: {
       type: Number,

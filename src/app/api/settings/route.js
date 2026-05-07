@@ -59,10 +59,38 @@ export async function POST(req) {
 
     settings.themeColor = body.themeColor || "blue";
 
+    settings.logo = body.logo || "";
+    settings.signature = body.signature || "";
+    settings.stamp = body.stamp || "";
+
+    settings.invoiceTerms =
+      body.invoiceTerms ||
+      "Goods once sold are not refundable without company approval.";
+
+    settings.invoiceNote = body.invoiceNote || "";
+
     settings.invoiceFooter =
       body.invoiceFooter || "Thank you for doing business with us.";
 
-    settings.logo = body.logo || "";
+    settings.defaultDueMode = ["show", "add", "hide"].includes(
+      body.defaultDueMode
+    )
+      ? body.defaultDueMode
+      : "show";
+
+    settings.printColor = body.printColor === false ? false : true;
+    settings.pdfEnabled = body.pdfEnabled === false ? false : true;
+
+    settings.whatsappNumber = body.whatsappNumber || "";
+
+    settings.invoiceTemplate = ["modern", "classic", "simple"].includes(
+      body.invoiceTemplate
+    )
+      ? body.invoiceTemplate
+      : "modern";
+
+    settings.stockReportFooter =
+      body.stockReportFooter || "This report is system generated.";
 
     settings.creditApprovalRequired =
       body.creditApprovalRequired === false ? false : true;

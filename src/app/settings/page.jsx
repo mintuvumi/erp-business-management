@@ -1,20 +1,66 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { Save, Upload, RefreshCcw, Building2 } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  Save,
+  Upload,
+  RefreshCcw,
+  Building2,
+  Search,
+  X,
+  Settings,
+} from "lucide-react";
+
+const settingSuggestions = [
+  "Company Information",
+  "Company Name",
+  "Company Address",
+  "Company Phone",
+  "Company Email",
+  "Company Slogan",
+  "Owner Name",
+  "Owner Role",
+  "Logo",
+  "Signature",
+  "Stamp",
+  "VAT",
+  "AIT",
+  "Low Stock Limit",
+  "Currency",
+  "Business Type",
+  "Theme Color",
+  "Invoice Terms",
+  "Invoice Note",
+  "Invoice Footer",
+  "Default Due Mode",
+  "Print Color",
+  "PDF Download",
+  "WhatsApp Number",
+  "Invoice Template",
+  "Stock Report Footer",
+  "Credit Approval",
+  "Default Credit Limit",
+  "Owner PIN",
+  "Credit Warning Message",
+];
 
 export default function SettingsPage() {
   const logoInputRef = useRef(null);
+  const signatureInputRef = useRef(null);
+  const stampInputRef = useRef(null);
+
   const [loading, setLoading] = useState(false);
+  const [settingsSearch, setSettingsSearch] = useState("");
 
   const [form, setForm] = useState({
     companyName: "",
     companyAddress: "",
     companyPhone: "",
     companyEmail: "",
+    companySlogan: "Your trusted business partner",
 
-    ownerName: "",
-    ownerRole: "",
+    ownerName: "Company User",
+    ownerRole: "Admin / Owner",
 
     currency: "৳",
     vatPercent: 0,
@@ -23,13 +69,49 @@ export default function SettingsPage() {
     businessType: "shop",
 
     themeColor: "blue",
-    invoiceFooter: "",
+
     logo: "",
+    signature: "",
+    stamp: "",
+
+    invoiceTerms:
+      "Goods once sold are not refundable without company approval.",
+    invoiceNote: "",
+    invoiceFooter: "Thank you for doing business with us.",
+
+    defaultDueMode: "show",
+    printColor: true,
+    pdfEnabled: true,
+    whatsappNumber: "",
+    invoiceTemplate: "modern",
+
+    stockReportFooter: "This report is system generated.",
+
+    creditApprovalRequired: true,
+    defaultCreditLimit: 50000,
+    ownerPin: "",
+    allowCreditLimitOverride: true,
+    creditWarningMessage:
+      "Customer credit limit exceeded. Owner approval is required.",
   });
 
   const update = (field, value) => {
     setForm((prev) => ({ ...prev, [field]: value }));
   };
+
+  const showSection = (keywords) => {
+    if (!settingsSearch.trim()) return true;
+    const text = settingsSearch.toLowerCase();
+    return keywords.some((k) => k.toLowerCase().includes(text));
+  };
+
+  const filteredSuggestions = useMemo(() => {
+    const q = settingsSearch.trim().toLowerCase();
+    if (!q) return [];
+    return settingSuggestions
+      .filter((item) => item.toLowerCase().includes(q))
+      .slice(0, 10);
+  }, [settingsSearch]);
 
   const fetchSettings = async () => {
     try {
@@ -41,10 +123,13 @@ export default function SettingsPage() {
       if (data.success) {
         setForm((prev) => ({
           ...prev,
-          companyName: data.data.companyName || prev.companyName,
-          companyAddress: data.data.companyAddress || prev.companyAddress,
-          companyPhone: data.data.companyPhone || prev.companyPhone,
-          companyEmail: data.data.companyEmail || prev.companyEmail,
+
+          companyName: data.data.companyName || "",
+          companyAddress: data.data.companyAddress || "",
+          companyPhone: data.data.companyPhone || "",
+          companyEmail: data.data.companyEmail || "",
+          companySlogan:
+            data.data.companySlogan || "Your trusted business partner",
 
           ownerName: data.data.ownerName || "Company User",
           ownerRole: data.data.ownerRole || "Admin / Owner",
@@ -55,8 +140,38 @@ export default function SettingsPage() {
           lowStockLimit: Number(data.data.lowStockLimit || 5),
 
           themeColor: data.data.themeColor || "blue",
-          invoiceFooter: data.data.invoiceFooter || "",
+
           logo: data.data.logo || "",
+          signature: data.data.signature || "",
+          stamp: data.data.stamp || "",
+
+          invoiceTerms:
+            data.data.invoiceTerms ||
+            "Goods once sold are not refundable without company approval.",
+          invoiceNote: data.data.invoiceNote || "",
+          invoiceFooter:
+            data.data.invoiceFooter ||
+            "Thank you for doing business with us.",
+
+          defaultDueMode: data.data.defaultDueMode || "show",
+          printColor: data.data.printColor === false ? false : true,
+          pdfEnabled: data.data.pdfEnabled === false ? false : true,
+          whatsappNumber: data.data.whatsappNumber || "",
+          invoiceTemplate: data.data.invoiceTemplate || "modern",
+
+          stockReportFooter:
+            data.data.stockReportFooter ||
+            "This report is system generated.",
+
+          creditApprovalRequired:
+            data.data.creditApprovalRequired === false ? false : true,
+          defaultCreditLimit: Number(data.data.defaultCreditLimit || 50000),
+          ownerPin: "",
+          allowCreditLimitOverride:
+            data.data.allowCreditLimitOverride === false ? false : true,
+          creditWarningMessage:
+            data.data.creditWarningMessage ||
+            "Customer credit limit exceeded. Owner approval is required.",
         }));
       }
     } catch (error) {
@@ -139,7 +254,7 @@ export default function SettingsPage() {
     }
   };
 
-  const uploadLogo = async (e) => {
+  const uploadImage = async (e, field) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -157,14 +272,14 @@ export default function SettingsPage() {
       const data = await res.json();
 
       if (data.success) {
-        setForm((prev) => ({ ...prev, logo: data.url }));
-        alert("Logo uploaded ✅");
+        setForm((prev) => ({ ...prev, [field]: data.url }));
+        alert(`${field} uploaded ✅`);
       } else {
-        alert("Logo upload failed");
+        alert(`${field} upload failed`);
       }
     } catch (error) {
-      console.error("LOGO_UPLOAD_ERROR:", error);
-      alert("Logo upload failed");
+      console.error("UPLOAD_ERROR:", error);
+      alert(`${field} upload failed`);
     } finally {
       setLoading(false);
     }
@@ -176,7 +291,7 @@ export default function SettingsPage() {
         <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center">
-              <Building2 size={22} />
+              <Settings size={22} />
             </div>
 
             <div>
@@ -184,8 +299,7 @@ export default function SettingsPage() {
                 Company Settings
               </h1>
               <p className="text-sm text-gray-500 mt-1">
-                Company profile, tax, stock limit, business type and invoice
-                settings
+                Company profile, invoice, stock, credit and report settings.
               </p>
             </div>
           </div>
@@ -201,127 +315,343 @@ export default function SettingsPage() {
             Refresh
           </button>
         </div>
+
+        <div className="mt-5 relative">
+          <Search
+            size={18}
+            className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"
+          />
+
+          <input
+            value={settingsSearch}
+            onChange={(e) => setSettingsSearch(e.target.value)}
+            placeholder="Search settings: logo, VAT, invoice, footer, credit, theme..."
+            className="w-full border rounded-2xl pl-11 pr-12 py-3 outline-none focus:ring-4 focus:ring-blue-100"
+          />
+
+          {settingsSearch && (
+            <button
+              onClick={() => setSettingsSearch("")}
+              className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-red-500"
+            >
+              <X size={18} />
+            </button>
+          )}
+
+          {filteredSuggestions.length > 0 && (
+            <div className="absolute left-0 right-0 top-full mt-2 bg-white border rounded-2xl shadow-xl z-50 overflow-hidden text-sm">
+              {filteredSuggestions.map((item) => (
+                <button
+                  key={item}
+                  type="button"
+                  onClick={() => setSettingsSearch(item)}
+                  className="w-full text-left px-4 py-3 hover:bg-blue-50 border-b last:border-b-0"
+                >
+                  {item}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
         <div className="xl:col-span-2 bg-white border rounded-[30px] p-5 md:p-7 shadow-sm space-y-5">
-          <SectionTitle title="Company Information" />
+          {showSection([
+            "company",
+            "information",
+            "name",
+            "phone",
+            "email",
+            "address",
+            "slogan",
+            "owner",
+            "role",
+            "currency",
+          ]) && (
+            <>
+              <SectionTitle title="Company Information" />
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <Input
-              label="Company Name"
-              value={form.companyName}
-              onChange={(v) => update("companyName", v)}
-              placeholder="Company name"
-            />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <Input
+                  label="Company Name"
+                  value={form.companyName}
+                  onChange={(v) => update("companyName", v)}
+                  placeholder="Company name"
+                />
 
-            <Input
-              label="Phone"
-              value={form.companyPhone}
-              onChange={(v) => update("companyPhone", v)}
-              placeholder="Phone number"
-            />
+                <Input
+                  label="Phone"
+                  value={form.companyPhone}
+                  onChange={(v) => update("companyPhone", v)}
+                  placeholder="Phone number"
+                />
 
-            <Input
-              label="Email"
-              value={form.companyEmail}
-              onChange={(v) => update("companyEmail", v)}
-              placeholder="Email address"
-            />
+                <Input
+                  label="Email"
+                  value={form.companyEmail}
+                  onChange={(v) => update("companyEmail", v)}
+                  placeholder="Email address"
+                />
 
-            <Input
-              label="Owner/Admin Name"
-              value={form.ownerName}
-              onChange={(v) => update("ownerName", v)}
-              placeholder="Owner name"
-            />
+                <Input
+                  label="Company Slogan"
+                  value={form.companySlogan}
+                  onChange={(v) => update("companySlogan", v)}
+                  placeholder="Your trusted business partner"
+                />
 
-            <Input
-              label="Owner Role"
-              value={form.ownerRole}
-              onChange={(v) => update("ownerRole", v)}
-              placeholder="Admin / Owner"
-            />
+                <Input
+                  label="Owner/Admin Name"
+                  value={form.ownerName}
+                  onChange={(v) => update("ownerName", v)}
+                  placeholder="Owner name"
+                />
 
-            <Input
-              label="Currency"
-              value={form.currency}
-              onChange={(v) => update("currency", v)}
-              placeholder="৳"
-            />
+                <Input
+                  label="Owner Role"
+                  value={form.ownerRole}
+                  onChange={(v) => update("ownerRole", v)}
+                  placeholder="Admin / Owner"
+                />
 
-            <div className="md:col-span-2">
-              <label className="text-xs text-gray-500">Address</label>
+                <Input
+                  label="Currency"
+                  value={form.currency}
+                  onChange={(v) => update("currency", v)}
+                  placeholder="৳"
+                />
+
+                <div className="md:col-span-2">
+                  <label className="text-xs text-gray-500">Address</label>
+                  <textarea
+                    value={form.companyAddress}
+                    onChange={(e) => update("companyAddress", e.target.value)}
+                    placeholder="Company address"
+                    className="w-full mt-1 border rounded-xl p-3 outline-none focus:ring-4 focus:ring-blue-100 min-h-[90px]"
+                  />
+                </div>
+              </div>
+            </>
+          )}
+
+          {showSection([
+            "tax",
+            "vat",
+            "ait",
+            "stock",
+            "business",
+            "theme",
+            "low stock",
+          ]) && (
+            <>
+              <SectionTitle title="Tax & ERP Rules" />
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                <Input
+                  type="number"
+                  label="Default VAT %"
+                  value={form.vatPercent}
+                  onChange={(v) => update("vatPercent", Number(v) || 0)}
+                />
+
+                <Input
+                  type="number"
+                  label="Default AIT %"
+                  value={form.aitPercent}
+                  onChange={(v) => update("aitPercent", Number(v) || 0)}
+                />
+
+                <Input
+                  type="number"
+                  label="Low Stock Limit"
+                  value={form.lowStockLimit}
+                  onChange={(v) => update("lowStockLimit", Number(v) || 5)}
+                />
+
+                <Select
+                  label="Business Type"
+                  value={form.businessType}
+                  onChange={(v) => update("businessType", v)}
+                  options={[
+                    ["shop", "Shop"],
+                    ["wholesale", "Wholesale"],
+                    ["manufacturing", "Manufacturing"],
+                  ]}
+                />
+
+                <Select
+                  label="Theme Color"
+                  value={form.themeColor}
+                  onChange={(v) => update("themeColor", v)}
+                  options={[
+                    ["blue", "Blue"],
+                    ["green", "Green"],
+                    ["purple", "Purple"],
+                    ["red", "Red"],
+                    ["orange", "Orange"],
+                  ]}
+                />
+              </div>
+            </>
+          )}
+
+          {showSection([
+            "invoice",
+            "terms",
+            "note",
+            "footer",
+            "due",
+            "print",
+            "pdf",
+            "whatsapp",
+            "template",
+          ]) && (
+            <>
+              <SectionTitle title="Invoice & Print Settings" />
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <Select
+                  label="Default Previous Due Mode"
+                  value={form.defaultDueMode}
+                  onChange={(v) => update("defaultDueMode", v)}
+                  options={[
+                    ["show", "Show Previous Due Only"],
+                    ["add", "Add Previous Due to Invoice Total"],
+                    ["hide", "Hide Previous Due"],
+                  ]}
+                />
+
+                <Select
+                  label="Invoice Template"
+                  value={form.invoiceTemplate}
+                  onChange={(v) => update("invoiceTemplate", v)}
+                  options={[
+                    ["modern", "Modern"],
+                    ["classic", "Classic"],
+                    ["simple", "Simple"],
+                  ]}
+                />
+
+                <Input
+                  label="WhatsApp Number"
+                  value={form.whatsappNumber}
+                  onChange={(v) => update("whatsappNumber", v)}
+                  placeholder="Example: 88017xxxxxxxx"
+                />
+
+                <Toggle
+                  label="Enable Color Print"
+                  checked={form.printColor}
+                  onChange={(v) => update("printColor", v)}
+                />
+
+                <Toggle
+                  label="Enable PDF Download"
+                  checked={form.pdfEnabled}
+                  onChange={(v) => update("pdfEnabled", v)}
+                />
+
+                <div className="md:col-span-2">
+                  <label className="text-xs text-gray-500">Invoice Terms</label>
+                  <textarea
+                    value={form.invoiceTerms}
+                    onChange={(e) => update("invoiceTerms", e.target.value)}
+                    placeholder="Invoice terms and conditions"
+                    className="w-full mt-1 border rounded-xl p-3 outline-none focus:ring-4 focus:ring-blue-100 min-h-[90px]"
+                  />
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="text-xs text-gray-500">Invoice Note</label>
+                  <textarea
+                    value={form.invoiceNote}
+                    onChange={(e) => update("invoiceNote", e.target.value)}
+                    placeholder="Default invoice note"
+                    className="w-full mt-1 border rounded-xl p-3 outline-none focus:ring-4 focus:ring-blue-100 min-h-[80px]"
+                  />
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="text-xs text-gray-500">Invoice Footer</label>
+                  <textarea
+                    value={form.invoiceFooter}
+                    onChange={(e) => update("invoiceFooter", e.target.value)}
+                    placeholder="Invoice footer text"
+                    className="w-full mt-1 border rounded-xl p-3 outline-none focus:ring-4 focus:ring-blue-100 min-h-[80px]"
+                  />
+                </div>
+              </div>
+            </>
+          )}
+
+          {showSection(["stock", "report", "footer"]) && (
+            <>
+              <SectionTitle title="Stock Report Settings" />
+
               <textarea
-                value={form.companyAddress}
-                onChange={(e) => update("companyAddress", e.target.value)}
-                placeholder="Company address"
-                className="w-full mt-1 border rounded-xl p-3 outline-none focus:ring-4 focus:ring-blue-100 min-h-[90px]"
+                value={form.stockReportFooter}
+                onChange={(e) => update("stockReportFooter", e.target.value)}
+                placeholder="Stock report footer"
+                className="w-full border rounded-xl p-3 outline-none focus:ring-4 focus:ring-blue-100 min-h-[80px]"
               />
-            </div>
-          </div>
+            </>
+          )}
 
-          <SectionTitle title="Tax & ERP Rules" />
+          {showSection([
+            "credit",
+            "limit",
+            "owner",
+            "pin",
+            "approval",
+            "warning",
+          ]) && (
+            <>
+              <SectionTitle title="Credit Control" />
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            <Input
-              type="number"
-              label="Default VAT %"
-              value={form.vatPercent}
-              onChange={(v) => update("vatPercent", Number(v) || 0)}
-            />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <Toggle
+                  label="Credit Approval Required"
+                  checked={form.creditApprovalRequired}
+                  onChange={(v) => update("creditApprovalRequired", v)}
+                />
 
-            <Input
-              type="number"
-              label="Default AIT %"
-              value={form.aitPercent}
-              onChange={(v) => update("aitPercent", Number(v) || 0)}
-            />
+                <Toggle
+                  label="Allow Credit Limit Override"
+                  checked={form.allowCreditLimitOverride}
+                  onChange={(v) => update("allowCreditLimitOverride", v)}
+                />
 
-            <Input
-              type="number"
-              label="Low Stock Limit"
-              value={form.lowStockLimit}
-              onChange={(v) => update("lowStockLimit", Number(v) || 5)}
-            />
+                <Input
+                  type="number"
+                  label="Default Credit Limit"
+                  value={form.defaultCreditLimit}
+                  onChange={(v) => update("defaultCreditLimit", Number(v) || 0)}
+                />
 
-            <div>
-              <label className="text-xs text-gray-500">Business Type</label>
-              <select
-                value={form.businessType}
-                onChange={(e) => update("businessType", e.target.value)}
-                className="w-full mt-1 border rounded-xl p-3 outline-none focus:ring-4 focus:ring-blue-100"
-              >
-                <option value="shop">Manufacturing</option>
-                <option value="wholesale">Wholesale</option>
-                <option value="manufacturing">Shop</option>
-              </select>
-            </div>
+                <Input
+                  type="password"
+                  label="Owner PIN"
+                  value={form.ownerPin}
+                  onChange={(v) => update("ownerPin", v)}
+                  placeholder="Leave empty to keep old PIN"
+                />
 
-            <div>
-              <label className="text-xs text-gray-500">Theme Color</label>
-              <select
-                value={form.themeColor}
-                onChange={(e) => update("themeColor", e.target.value)}
-                className="w-full mt-1 border rounded-xl p-3 outline-none focus:ring-4 focus:ring-blue-100"
-              >
-                <option value="blue">Blue</option>
-                <option value="green">Green</option>
-                <option value="purple">Purple</option>
-                <option value="red">Red</option>
-                <option value="orange">Orange</option>
-              </select>
-            </div>
-          </div>
-
-          <SectionTitle title="Invoice Footer" />
-
-          <textarea
-            value={form.invoiceFooter}
-            onChange={(e) => update("invoiceFooter", e.target.value)}
-            placeholder="Invoice footer text"
-            className="w-full border rounded-xl p-3 outline-none focus:ring-4 focus:ring-blue-100 min-h-[100px]"
-          />
+                <div className="md:col-span-2">
+                  <label className="text-xs text-gray-500">
+                    Credit Warning Message
+                  </label>
+                  <textarea
+                    value={form.creditWarningMessage}
+                    onChange={(e) =>
+                      update("creditWarningMessage", e.target.value)
+                    }
+                    className="w-full mt-1 border rounded-xl p-3 outline-none focus:ring-4 focus:ring-blue-100 min-h-[80px]"
+                  />
+                </div>
+              </div>
+            </>
+          )}
 
           <button
             onClick={saveSettings}
@@ -333,54 +663,94 @@ export default function SettingsPage() {
           </button>
         </div>
 
-        <div className="bg-white border rounded-[30px] p-5 md:p-7 shadow-sm h-fit">
-          <SectionTitle title="Company Logo" />
+        <div className="bg-white border rounded-[30px] p-5 md:p-7 shadow-sm h-fit space-y-5">
+          {showSection(["logo", "signature", "stamp", "company"]) && (
+            <>
+              <SectionTitle title="Branding Preview" />
 
-          <div className="mt-4 rounded-[28px] border bg-gray-50 p-5 flex flex-col items-center justify-center text-center">
-            {form.logo ? (
-              <img
-                src={form.logo}
-                alt="Company Logo"
-                className="w-28 h-28 rounded-3xl object-cover border bg-white"
-              />
-            ) : (
-              <div className="w-28 h-28 rounded-3xl bg-blue-50 text-blue-600 flex items-center justify-center border">
-                <Building2 size={42} />
+              <div className="rounded-[28px] border bg-gray-50 p-5 flex flex-col items-center justify-center text-center">
+                {form.logo ? (
+                  <img
+                    src={form.logo}
+                    alt="Company Logo"
+                    className="w-28 h-28 rounded-3xl object-cover border bg-white"
+                  />
+                ) : (
+                  <div className="w-28 h-28 rounded-3xl bg-blue-50 text-blue-600 flex items-center justify-center border">
+                    <Building2 size={42} />
+                  </div>
+                )}
+
+                <h3 className="font-bold mt-4">
+                  {form.companyName || "Company Name"}
+                </h3>
+
+                <p className="text-sm text-gray-500 mt-1">
+                  {form.companyPhone || "Phone number"}
+                </p>
+
+                <p className="text-xs text-blue-600 mt-2 capitalize">
+                  {form.businessType} ERP
+                </p>
+
+                <input
+                  ref={logoInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => uploadImage(e, "logo")}
+                />
+
+                <button
+                  onClick={() => logoInputRef.current?.click()}
+                  className="mt-5 inline-flex items-center gap-2 px-4 py-2 rounded-xl border hover:bg-blue-50 hover:text-blue-600"
+                >
+                  <Upload size={16} />
+                  Upload Logo
+                </button>
               </div>
-            )}
 
-            <h3 className="font-bold mt-4">
-              {form.companyName || "Company Name"}
-            </h3>
+              <ImageUrlBox
+                title="Logo URL"
+                value={form.logo}
+                onChange={(v) => update("logo", v)}
+              />
 
-            <p className="text-sm text-gray-500 mt-1">
-              {form.companyPhone || "Phone number"}
-            </p>
+              <input
+                ref={signatureInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => uploadImage(e, "signature")}
+              />
 
-            <p className="text-xs text-blue-600 mt-2 capitalize">
-              {form.businessType} ERP
-            </p>
+              <ImageUrlBox
+                title="Signature URL"
+                value={form.signature}
+                onChange={(v) => update("signature", v)}
+                onUpload={() => signatureInputRef.current?.click()}
+              />
 
-            <input
-              ref={logoInputRef}
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={uploadLogo}
-            />
+              <input
+                ref={stampInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => uploadImage(e, "stamp")}
+              />
 
-            <button
-              onClick={() => logoInputRef.current?.click()}
-              className="mt-5 inline-flex items-center gap-2 px-4 py-2 rounded-xl border hover:bg-blue-50 hover:text-blue-600"
-            >
-              <Upload size={16} />
-              Upload Logo
-            </button>
-          </div>
+              <ImageUrlBox
+                title="Stamp URL"
+                value={form.stamp}
+                onChange={(v) => update("stamp", v)}
+                onUpload={() => stampInputRef.current?.click()}
+              />
+            </>
+          )}
 
-          <div className="mt-5 bg-blue-50 text-blue-700 rounded-2xl p-4 text-sm">
-            Business Type save করলে Sidebar automatically feature change করবে।
-            Manufacturing দিলে Production menu show হবে।
+          <div className="bg-blue-50 text-blue-700 rounded-2xl p-4 text-sm">
+            Search দিয়ে যেকোনো setting দ্রুত খুঁজুন। User নিজের logo,
+            invoice terms, due mode, print/PDF, credit limit সব setup করতে পারবে।
           </div>
         </div>
       </div>
@@ -407,6 +777,72 @@ function Input({ label, value, onChange, placeholder, type = "text" }) {
         placeholder={placeholder}
         className="w-full mt-1 border rounded-xl p-3 outline-none focus:ring-4 focus:ring-blue-100"
       />
+    </div>
+  );
+}
+
+function Select({ label, value, onChange, options }) {
+  return (
+    <div>
+      <label className="text-xs text-gray-500">{label}</label>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full mt-1 border rounded-xl p-3 outline-none focus:ring-4 focus:ring-blue-100"
+      >
+        {options.map(([value, label]) => (
+          <option key={value} value={value}>
+            {label}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+function Toggle({ label, checked, onChange }) {
+  return (
+    <label className="border rounded-xl p-3 flex items-center justify-between gap-3 cursor-pointer">
+      <span className="text-sm font-medium">{label}</span>
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+      />
+    </label>
+  );
+}
+
+function ImageUrlBox({ title, value, onChange, onUpload }) {
+  return (
+    <div className="border rounded-2xl p-4 space-y-3">
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="font-bold text-sm">{title}</h3>
+
+        {onUpload && (
+          <button
+            onClick={onUpload}
+            className="px-3 py-1 rounded-lg border text-xs hover:bg-blue-50"
+          >
+            Upload
+          </button>
+        )}
+      </div>
+
+      <input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={title}
+        className="w-full border rounded-xl p-3 outline-none focus:ring-4 focus:ring-blue-100 text-sm"
+      />
+
+      {value ? (
+        <img
+          src={value}
+          alt={title}
+          className="max-h-20 rounded-xl border object-contain bg-white"
+        />
+      ) : null}
     </div>
   );
 }
