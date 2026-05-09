@@ -10,6 +10,7 @@ import {
   Download,
   Share2,
   Plus,
+  Sparkles,
 } from "lucide-react";
 
 export default function ProfitModal({ open, onClose }) {
@@ -97,6 +98,49 @@ export default function ProfitModal({ open, onClose }) {
 
   const netProfit = Number(data.netProfit || 0);
 
+  const getAIInsight = () => {
+    const netProfit = Number(data.netProfit || 0);
+    const totalExpense = Number(data.totalExpense || 0);
+    const salesProfit = Number(data.salesProfit || 0);
+    const monthlyProfit = Number(data.monthlyProfit || 0);
+
+    if (netProfit < 0) {
+      return {
+        title: "AI Warning",
+        message:
+          "বর্তমানে business loss এ আছে। খরচ কমানো, slow moving product check করা এবং due collection বাড়ানো দরকার।",
+        color: "bg-red-50 text-red-700 border-red-100",
+      };
+    }
+
+    if (salesProfit > 0 && totalExpense > salesProfit * 0.5) {
+      return {
+        title: "AI Expense Alert",
+        message:
+          "Expense তুলনামূলক বেশি। Salary, office expense, conveyance এবং supplier payment review করুন।",
+        color: "bg-orange-50 text-orange-700 border-orange-100",
+      };
+    }
+
+    if (monthlyProfit > 0) {
+      return {
+        title: "AI Good Performance",
+        message:
+          "এই মাসে profit positive আছে। Best selling product ধরে রাখুন এবং unnecessary expense control করুন।",
+        color: "bg-green-50 text-green-700 border-green-100",
+      };
+    }
+
+    return {
+      title: "AI Business Insight",
+      message:
+        "Business position stable আছে। Regular sales, expense এবং stock profit analysis করলে আরও ভালো decision নেওয়া যাবে।",
+      color: "bg-blue-50 text-blue-700 border-blue-100",
+    };
+  };
+
+  const aiInsight = getAIInsight();
+
   if (!open) return null;
 
   return (
@@ -133,6 +177,15 @@ export default function ProfitModal({ open, onClose }) {
             </div>
           )}
 
+          <div className={`rounded-3xl p-5 border ${aiInsight.color}`}>
+            <div className="flex items-center gap-2">
+              <Sparkles size={18} />
+              <h3 className="text-lg font-bold">{aiInsight.title}</h3>
+            </div>
+
+            <p className="text-sm mt-2">{aiInsight.message}</p>
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-[1fr_190px_auto] gap-3">
             <div className="flex items-center gap-2 border rounded-2xl px-4 py-3 bg-white shadow-sm">
               <Search size={18} className="text-gray-400" />
@@ -167,8 +220,16 @@ export default function ProfitModal({ open, onClose }) {
             <ProfitCard title="Net Profit" value={data.netProfit} highlight />
             <ProfitCard title="Sales Profit" value={data.salesProfit} />
             <ProfitCard title="Total Expense" value={data.totalExpense} danger />
-            <ProfitCard title="Monthly Expense" value={data.monthlyExpense} danger />
-            <ProfitCard title="Yearly Expense" value={data.yearlyExpense} danger />
+            <ProfitCard
+              title="Monthly Expense"
+              value={data.monthlyExpense}
+              danger
+            />
+            <ProfitCard
+              title="Yearly Expense"
+              value={data.yearlyExpense}
+              danger
+            />
           </div>
 
           <div className="flex flex-wrap gap-2">
@@ -252,14 +313,19 @@ export default function ProfitModal({ open, onClose }) {
                         (netProfit * Number(owner.sharePercent || 0)) / 100;
 
                       return (
-                        <tr key={owner._id} className="border-t hover:bg-blue-50/40">
+                        <tr
+                          key={owner._id}
+                          className="border-t hover:bg-blue-50/40"
+                        >
                           <td className="p-3 font-medium">{owner.name}</td>
                           <td className="p-3 text-right">
                             {Number(owner.sharePercent || 0).toFixed(2)}%
                           </td>
                           <td
                             className={`p-3 text-right font-bold ${
-                              shareAmount >= 0 ? "text-green-600" : "text-red-500"
+                              shareAmount >= 0
+                                ? "text-green-600"
+                                : "text-red-500"
                             }`}
                           >
                             ৳ {money(shareAmount)}
@@ -302,11 +368,18 @@ export default function ProfitModal({ open, onClose }) {
                     </tr>
                   ) : (
                     data.productWiseProfit?.map((item) => (
-                      <tr key={item.name} className="border-t hover:bg-blue-50/40">
+                      <tr
+                        key={item.name}
+                        className="border-t hover:bg-blue-50/40"
+                      >
                         <td className="p-3">{item.name}</td>
                         <td className="p-3 text-right">{item.qty}</td>
-                        <td className="p-3 text-right">৳ {money(item.sales)}</td>
-                        <td className="p-3 text-right">৳ {money(item.cost)}</td>
+                        <td className="p-3 text-right">
+                          ৳ {money(item.sales)}
+                        </td>
+                        <td className="p-3 text-right">
+                          ৳ {money(item.cost)}
+                        </td>
                         <td
                           className={`p-3 text-right font-bold ${
                             Number(item.profit) >= 0
@@ -369,9 +442,7 @@ function ProfitCard({ title, value, highlight, danger }) {
         {title}
       </p>
 
-      <h3 className="text-xl md:text-2xl font-bold mt-3">
-        ৳ {money(value)}
-      </h3>
+      <h3 className="text-xl md:text-2xl font-bold mt-3">৳ {money(value)}</h3>
     </div>
   );
 }

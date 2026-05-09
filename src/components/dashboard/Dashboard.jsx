@@ -1,6 +1,17 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import {
+  Wallet,
+  Landmark,
+  TrendingUp,
+  ShoppingCart,
+  Package,
+  Boxes,
+  Receipt,
+  Users,
+} from "lucide-react";
+
 import TotalSalesModal from "./TotalSalesModal";
 import TotalPurchaseModal from "./TotalPurchaseModal";
 import StockModal from "./StockModal";
@@ -61,14 +72,10 @@ export default function Dashboard() {
 
         if (bank.success) setBankBalance(bank.data?.totalBankBalance || 0);
         if (cash.success) setCashInHand(cash.data?.cashInHand || 0);
-
         if (purchase.success) {
           setPurchaseDue(purchase.data?.totalDuePurchase || 0);
         }
-
-        if (stock.success) {
-          setStockValue(stock.data?.totalValue || 0);
-        }
+        if (stock.success) setStockValue(stock.data?.totalValue || 0);
 
         if (profit.success) {
           setProfitCard({
@@ -104,41 +111,81 @@ export default function Dashboard() {
       title: "Cash in Hand",
       value: `৳ ${money(cashInHand)}`,
       action: "cash",
+      icon: Wallet,
+      color: "from-emerald-500 to-green-600",
+      softBg: "bg-emerald-50",
+      iconColor: "text-emerald-600",
+      glow: "bg-emerald-400",
     },
     {
       title: "Bank Balance",
       value: `৳ ${money(bankBalance)}`,
       action: "bank",
+      icon: Landmark,
+      color: "from-blue-500 to-indigo-600",
+      softBg: "bg-blue-50",
+      iconColor: "text-blue-600",
+      glow: "bg-blue-400",
     },
     {
       title: profitCard.title,
       value: profitCard.value,
       action: "profit",
+      icon: TrendingUp,
+      color: "from-violet-500 to-purple-600",
+      softBg: "bg-violet-50",
+      iconColor: "text-violet-600",
+      glow: "bg-violet-400",
     },
     {
       title: "Total Sales",
       value: `৳ ${money(totalSales)}`,
       action: "sales",
+      icon: ShoppingCart,
+      color: "from-cyan-500 to-sky-600",
+      softBg: "bg-cyan-50",
+      iconColor: "text-cyan-600",
+      glow: "bg-cyan-400",
     },
     {
       title: "Total Purchase",
       value: `৳ ${money(purchaseDue)}`,
       action: "purchase",
+      icon: Package,
+      color: "from-orange-500 to-amber-600",
+      softBg: "bg-orange-50",
+      iconColor: "text-orange-600",
+      glow: "bg-orange-400",
     },
     {
       title: "Stock Value",
       value: `৳ ${money(stockValue)}`,
       action: "stock",
+      icon: Boxes,
+      color: "from-pink-500 to-rose-600",
+      softBg: "bg-pink-50",
+      iconColor: "text-pink-600",
+      glow: "bg-pink-400",
     },
     {
       title: expenseCard.title,
       value: expenseCard.value,
       action: "expense",
+      icon: Receipt,
+      color: "from-red-500 to-rose-600",
+      softBg: "bg-red-50",
+      iconColor: "text-red-600",
+      glow: "bg-red-400",
     },
     {
       title: "Employee",
       value: `${employeeCount}`,
       action: "employee",
+      icon: Users,
+      color: "from-slate-600 to-gray-800",
+      softBg: "bg-slate-100",
+      iconColor: "text-slate-700",
+      glow: "bg-slate-400",
     },
   ];
 
@@ -156,21 +203,117 @@ export default function Dashboard() {
   return (
     <>
       <div className="w-full grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-5">
-        {cards.map((card, i) => (
-          <div
-            key={i}
-            onClick={() => handleCardClick(card)}
-            className="bg-white p-4 md:p-5 rounded-[24px] border border-gray-100 shadow-[0_8px_24px_rgba(15,23,42,0.04)] transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_16px_40px_rgba(59,130,246,0.14)] hover:border-blue-100 cursor-pointer"
-          >
-            <p className="text-[#5e7695] text-sm md:text-[15px] font-medium">
-              {card.title}
-            </p>
+        {cards.map((card, i) => {
+          const Icon = card.icon;
 
-            <h2 className="text-[20px] md:text-[26px] font-bold mt-5 leading-tight">
-              {card.value}
-            </h2>
-          </div>
-        ))}
+          return (
+            <div
+              key={i}
+              onClick={() => handleCardClick(card)}
+              className="
+                group relative overflow-hidden
+                bg-gray-50/80 backdrop-blur-2xl
+                p-4 md:p-5
+                rounded-[30px]
+                border border-white/70
+                shadow-[0_8px_32px_rgba(31,38,135,0.10)]
+                transition-all duration-500 ease-out
+                hover:-translate-y-3
+                hover:scale-[1.02]
+                hover:bg-gray-50/90
+                hover:shadow-[0_25px_60px_rgba(31,38,135,0.18)]
+                cursor-pointer
+                before:absolute
+                before:inset-0
+                before:rounded-[30px]
+                before:bg-gradient-to-br
+                before:from-white/60
+                before:via-white/20
+                before:to-transparent
+                before:pointer-events-none
+              "
+            >
+              <div
+                className={`
+                  absolute -right-16 -top-16
+                  w-44 h-44 rounded-full
+                  ${card.glow}
+                  blur-3xl
+                  opacity-[0.12]
+                  group-hover:opacity-[0.24]
+                  transition-all duration-700
+                `}
+              />
+
+              <div
+                className={`
+                  absolute left-0 bottom-0
+                  w-36 h-36 rounded-full
+                  ${card.glow}
+                  blur-3xl
+                  opacity-[0.07]
+                  group-hover:opacity-[0.16]
+                  transition-all duration-700
+                `}
+              />
+
+              <div className="relative z-10 flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-[#5e7695] text-sm md:text-[15px] font-medium truncate">
+                    {card.title}
+                  </p>
+
+                  <h2 className="text-[20px] md:text-[28px] font-bold mt-5 leading-tight text-[#111827] break-words">
+                    {card.value}
+                  </h2>
+                </div>
+
+                <div
+                  className={`
+                    relative shrink-0
+                    w-12 h-12 md:w-14 md:h-14
+                    rounded-[20px]
+                    flex items-center justify-center
+                    ${card.softBg}
+                    border border-white/70
+                    shadow-[0_10px_30px_rgba(255,255,255,0.35),inset_0_1px_1px_rgba(255,255,255,0.9)]
+                    backdrop-blur-xl
+                    transition-all duration-500
+                    group-hover:scale-110
+                    group-hover:rotate-6
+                  `}
+                >
+                  <div
+                    className={`
+                      absolute inset-0 rounded-[20px]
+                      bg-gradient-to-br ${card.color}
+                      opacity-[0.10]
+                    `}
+                  />
+
+                  <Icon size={26} className={`relative z-10 ${card.iconColor}`} />
+                </div>
+              </div>
+
+              <div className="relative z-10 mt-5 flex items-center justify-between">
+                <span className="text-xs text-gray-400 font-medium">
+                  Live Data
+                </span>
+
+                <span
+                  className={`
+                    text-[11px] font-semibold px-2.5 py-1 rounded-full
+                    ${card.softBg} ${card.iconColor}
+                    border border-white/70
+                    shadow-sm
+                  `}
+                >
+                  Active
+                </span>
+              </div>
+            </div>
+          );
+        })}
       </div>
 
       <div className="relative z-[999999]">

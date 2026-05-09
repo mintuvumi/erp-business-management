@@ -10,6 +10,22 @@ export async function POST(req) {
     const body = await req.json();
     const { purchaseId, amount, date, note } = body;
 
+    const paymentAmount = Number(amount || 0);
+
+    if (!purchaseId) {
+      return NextResponse.json(
+        { success: false, message: "Purchase id is required" },
+        { status: 400 }
+      );
+    }
+
+    if (paymentAmount <= 0) {
+      return NextResponse.json(
+        { success: false, message: "Valid payment amount required" },
+        { status: 400 }
+      );
+    }
+
     const purchase = await Purchase.findById(purchaseId);
 
     if (!purchase) {
@@ -19,15 +35,36 @@ export async function POST(req) {
       );
     }
 
-    const newPaidAmount =
-      Number(purchase.paidAmount || 0) + Number(amount || 0);
+    if (purchase.status === "cancelled") {
+      return NextResponse.json(
+        { success: false, message: "Cancelled purchase cannot be paid" },
+        { status: 400 }
+      );
+    }
 
-    const newDueAmount = Math.max(Number(purchase.total || 0) - newPaidAmount, 0);
+    const grandTotal = Number(purchase.grandTotal || purchase.total || 0);
+    const oldPaidAmount = Number(purchase.paidAmount || 0);
+    const oldDueAmount = Math.max(grandTotal - oldPaidAmount, 0);
+
+    if (paymentAmount > oldDueAmount) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: `Payment cannot be greater than due amount ৳ ${oldDueAmount.toFixed(
+            2
+          )}`,
+        },
+        { status: 400 }
+      );
+    }
+
+    const newPaidAmount = oldPaidAmount + paymentAmount;
+    const newDueAmount = Math.max(grandTotal - newPaidAmount, 0);
 
     const paymentType =
       newPaidAmount <= 0
         ? "credit"
-        : newPaidAmount >= Number(purchase.total || 0)
+        : newPaidAmount >= grandTotal
         ? "cash"
         : "partial";
 
@@ -41,7 +78,7 @@ export async function POST(req) {
       type: "out",
       category: "supplier_payment",
       title: `Supplier payment to ${purchase.supplierName || "Supplier"}`,
-      amount: Number(amount || 0),
+      amount: paymentAmount,
       date: date || new Date().toISOString().slice(0, 10),
       note: note || "",
       refType: "purchase",
@@ -57,7 +94,10 @@ export async function POST(req) {
     console.error("SUPPLIER_PAYMENT_ERROR:", error);
 
     return NextResponse.json(
-      { success: false, message: "Failed to save supplier payment" },
+      {
+        success: false,
+        message: error.message || "Failed to save supplier payment",
+      },
       { status: 500 }
     );
   }

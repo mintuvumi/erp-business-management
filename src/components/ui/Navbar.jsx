@@ -40,6 +40,7 @@ export default function Navbar({ setOpen }) {
   const [openQuick, setOpenQuick] = useState(false);
   const [openProfile, setOpenProfile] = useState(false);
   const [openNotification, setOpenNotification] = useState(false);
+  const [openPasswordModal, setOpenPasswordModal] = useState(false);
 
   const [openSearch, setOpenSearch] = useState(false);
   const [micActive, setMicActive] = useState(false);
@@ -55,17 +56,67 @@ export default function Navbar({ setOpen }) {
   const [currentImage, setCurrentImage] = useState(fallbackImages[0]);
   const [imageFade, setImageFade] = useState(true);
 
+  const [searchText, setSearchText] = useState("");
+  const [searchResults, setSearchResults] = useState([]);
+  const [aiAnswer, setAiAnswer] = useState(null);
+  const [searchLoading, setSearchLoading] = useState(false);
+
   const fetchNotifications = async () => {
     try {
       setNotificationLoading(true);
 
-      const res = await fetch("/api/notifications");
-      const data = await res.json();
+      let finalNotifications = [];
 
-      if (data.success) {
-        setNotifications(data.data.notifications || []);
-        setUnreadCount(data.data.unreadCount || 0);
+      try {
+        const res = await fetch("/api/notifications");
+
+        if (res.ok) {
+          const data = await res.json();
+
+          if (data.success) {
+            finalNotifications = data.data?.notifications || [];
+            setUnreadCount(data.data?.unreadCount || 0);
+          }
+        }
+      } catch (error) {
+        console.warn("NORMAL_NOTIFICATION_API_NOT_FOUND:", error);
       }
+
+      try {
+        const aiRes = await fetch("/api/ai-search?q=business summary");
+
+        if (aiRes.ok) {
+          const aiData = await aiRes.json();
+
+          if (aiData.success && aiData.data) {
+            const aiNotifications = [
+              {
+                title: aiData.data.title || "AI Business Summary",
+                message: aiData.data.answer || "Business summary ready",
+                type: "info",
+                refType: "ai_business",
+                path: "/dashboard",
+              },
+              ...(aiData.data.suggestions || []).map((item, index) => ({
+                title: `AI Suggestion ${index + 1}`,
+                message: item,
+                type: "warning",
+                refType: "ai_suggestion",
+                path: "/dashboard",
+              })),
+            ];
+
+            finalNotifications = [...aiNotifications, ...finalNotifications];
+          }
+        }
+      } catch (error) {
+        console.warn("AI_NOTIFICATION_ERROR:", error);
+      }
+
+      setNotifications(finalNotifications);
+      setUnreadCount((prev) =>
+        finalNotifications.length > 0 ? finalNotifications.length : prev
+      );
     } catch (error) {
       console.error("NOTIFICATION_LOAD_ERROR:", error);
     } finally {
@@ -76,7 +127,18 @@ export default function Navbar({ setOpen }) {
   useEffect(() => {
     const fetchUserPhotos = async () => {
       try {
+        const localPhoto = localStorage.getItem("profilePhoto");
+
+        if (localPhoto) {
+          setOwnerImages([localPhoto, ...fallbackImages]);
+          setCurrentImage(localPhoto);
+          return;
+        }
+
         const res = await fetch("/api/users/photos");
+
+        if (!res.ok) return;
+
         const data = await res.json();
 
         if (data.success && data.data?.length > 0) {
@@ -105,7 +167,7 @@ export default function Navbar({ setOpen }) {
         setCurrentImage((prev) => {
           const currentIndex = ownerImages.indexOf(prev);
           const nextIndex = (currentIndex + 1) % ownerImages.length;
-          return ownerImages[nextIndex];
+          return ownerImages[nextIndex] || ownerImages[0];
         });
 
         setImageFade(true);
@@ -115,15 +177,84 @@ export default function Navbar({ setOpen }) {
     return () => clearInterval(interval);
   }, [ownerImages]);
 
+  useEffect(() => {
+    const timer = setTimeout(async () => {
+      if (!searchText.trim()) {
+        setSearchResults([]);
+        setAiAnswer(null);
+        return;
+      }
+
+      try {
+        setSearchLoading(true);
+
+        const [searchRes, aiRes] = await Promise.all([
+          fetch(`/api/global-search?q=${encodeURIComponent(searchText)}`),
+          fetch(`/api/ai-search?q=${encodeURIComponent(searchText)}`),
+        ]);
+
+        if (searchRes.ok) {
+          const searchData = await searchRes.json();
+          setSearchResults(searchData?.data || []);
+        } else {
+          setSearchResults([]);
+        }
+
+        if (aiRes.ok) {
+          const aiData = await aiRes.json();
+          setAiAnswer(aiData?.data || null);
+        } else {
+          setAiAnswer(null);
+        }
+
+        localStorage.setItem("searchHistory", searchText);
+      } catch (error) {
+        console.error("SEARCH_ERROR:", error);
+        setSearchResults([]);
+        setAiAnswer(null);
+      } finally {
+        setSearchLoading(false);
+      }
+    }, 250);
+
+    return () => clearTimeout(timer);
+  }, [searchText]);
+
+  useEffect(() => {
+    const keyHandler = (e) => {
+      if (e.ctrlKey && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        document.getElementById("premium-navbar-search")?.focus();
+      }
+    };
+
+    window.addEventListener("keydown", keyHandler);
+    return () => window.removeEventListener("keydown", keyHandler);
+  }, []);
+
   const goTo = (path) => {
+    if (!path) return;
+
     setOpenQuick(false);
     setOpenProfile(false);
     setOpenNotification(false);
+    setOpenSearch(false);
+    setSearchText("");
+    setSearchResults([]);
+    setAiAnswer(null);
+
     router.push(path);
   };
 
   const logout = async () => {
-    await fetch("/api/auth/logout", { method: "POST" });
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+    } catch (error) {
+      console.error("LOGOUT_ERROR:", error);
+    }
+
+    localStorage.removeItem("user");
+    localStorage.removeItem("token");
     window.location.href = "/login";
   };
 
@@ -144,37 +275,93 @@ export default function Navbar({ setOpen }) {
     if (!file) return;
 
     try {
-      const formData = new FormData();
-      formData.append("file", file);
+      const reader = new FileReader();
 
-      const res = await fetch("/api/upload", {
-        method: "POST",
-        body: formData,
-      });
+      reader.onload = async () => {
+        const localUrl = reader.result;
 
-      const data = await res.json();
+        localStorage.setItem("profilePhoto", localUrl);
+        setOwnerImages((prev) => [localUrl, ...prev]);
+        setCurrentImage(localUrl);
 
-      if (data.success) {
-        await fetch("/api/users/profile-photo", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name: "Company User",
-            role: "Admin / Owner",
-            photo: data.url,
-          }),
-        });
+        try {
+          const formData = new FormData();
+          formData.append("file", file);
 
-        setOwnerImages((prev) => [data.url, ...prev]);
-        setCurrentImage(data.url);
-        alert("Photo uploaded and saved ✅");
-      } else {
-        alert("Photo upload failed");
-      }
+          const res = await fetch("/api/upload", {
+            method: "POST",
+            body: formData,
+          });
+
+          if (!res.ok) {
+            alert("Photo saved locally ✅");
+            return;
+          }
+
+          const data = await res.json();
+
+          if (data.success) {
+            await fetch("/api/users/profile-photo", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                name: "Company User",
+                role: "Admin / Owner",
+                photo: data.url,
+              }),
+            });
+
+            localStorage.setItem("profilePhoto", data.url);
+            setOwnerImages((prev) => [data.url, ...prev]);
+            setCurrentImage(data.url);
+
+            alert("Photo uploaded and saved ✅");
+          } else {
+            alert("Photo saved locally ✅");
+          }
+        } catch (error) {
+          console.warn("UPLOAD_API_ERROR:", error);
+          alert("Photo saved locally ✅");
+        }
+      };
+
+      reader.readAsDataURL(file);
     } catch (error) {
       console.error(error);
       alert("Photo upload failed");
     }
+  };
+
+  const startVoiceSearch = () => {
+    if (typeof window === "undefined") return;
+
+    if (!("webkitSpeechRecognition" in window)) {
+      alert("Voice search not supported in this browser");
+      return;
+    }
+
+    const recognition = new window.webkitSpeechRecognition();
+    recognition.lang = "bn-BD";
+    recognition.continuous = false;
+    recognition.interimResults = false;
+
+    setMicActive(true);
+
+    recognition.onresult = (event) => {
+      const transcript = event.results[0][0].transcript;
+      setSearchText(transcript);
+      setOpenSearch(true);
+    };
+
+    recognition.onerror = () => {
+      setMicActive(false);
+    };
+
+    recognition.onend = () => {
+      setMicActive(false);
+    };
+
+    recognition.start();
   };
 
   return (
@@ -275,7 +462,7 @@ export default function Navbar({ setOpen }) {
                 </button>
 
                 <div
-                  className={`flex items-center rounded-full px-4 py-2.5 transition-all duration-500 ease-in-out border ${
+                  className={`relative flex items-center rounded-full px-4 py-2.5 transition-all duration-500 ease-in-out border ${
                     openSearch
                       ? "w-[260px] md:w-[520px] bg-blue-50 border-blue-200 shadow-[0_0_0_4px_rgba(59,130,246,0.08)]"
                       : "w-[220px] md:w-[420px] bg-white border-gray-200 hover:border-blue-100 hover:shadow-sm"
@@ -284,15 +471,20 @@ export default function Navbar({ setOpen }) {
                   <Search size={17} className="text-gray-400 mr-2" />
 
                   <input
+                    id="premium-navbar-search"
+                    value={searchText}
+                    onChange={(e) => {
+                      setSearchText(e.target.value);
+                      setOpenSearch(true);
+                    }}
                     onFocus={() => setOpenSearch(true)}
-                    onBlur={() => setOpenSearch(false)}
                     className="bg-transparent outline-none w-full text-xs md:text-sm placeholder:text-gray-400"
                     placeholder="Search sales, purchase, stock, bank, employee..."
                   />
 
                   <button
                     type="button"
-                    onClick={() => setMicActive(!micActive)}
+                    onClick={startVoiceSearch}
                     className={`w-8 h-8 rounded-full flex items-center justify-center transition-all duration-300 ${
                       micActive
                         ? "bg-blue-500 text-white shadow-[0_0_0_4px_rgba(59,130,246,0.15)]"
@@ -301,6 +493,86 @@ export default function Navbar({ setOpen }) {
                   >
                     <Mic size={16} />
                   </button>
+
+                  {openSearch && searchText.trim() && (
+                    <div className="absolute left-0 right-0 top-[54px] bg-white/95 backdrop-blur-xl border rounded-[22px] shadow-[0_24px_70px_rgba(15,23,42,0.18)] overflow-hidden z-[999999]">
+                      {searchLoading && (
+                        <div className="p-4 text-sm text-gray-500">
+                          Searching...
+                        </div>
+                      )}
+
+                      {aiAnswer && (
+                        <button
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => goTo("/dashboard")}
+                          className="w-full text-left p-4 bg-blue-50 hover:bg-blue-100 border-b transition-all"
+                        >
+                          <p className="text-sm font-bold text-blue-700">
+                            {aiAnswer.title || "AI Business Assistant"}
+                          </p>
+
+                          <p className="text-xs text-gray-600 mt-1 leading-relaxed">
+                            {aiAnswer.answer}
+                          </p>
+
+                          {aiAnswer.suggestions?.length > 0 && (
+                            <div className="mt-2 space-y-1">
+                              {aiAnswer.suggestions.slice(0, 3).map((s, i) => (
+                                <p key={i} className="text-[11px] text-gray-500">
+                                  • {s}
+                                </p>
+                              ))}
+                            </div>
+                          )}
+                        </button>
+                      )}
+
+                      {searchResults.length > 0 ? (
+                        searchResults.map((item, index) => (
+                          <button
+                            key={`${item.type || "item"}-${item.title || item.name}-${index}`}
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => goTo(item.path || item.route || "/dashboard")}
+                            className="w-full text-left p-4 border-b last:border-b-0 hover:bg-blue-50 transition-all"
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <p className="text-sm font-semibold text-gray-900">
+                                  {item.title || item.name}
+                                </p>
+
+                                {item.subtitle && (
+                                  <p className="text-xs text-gray-500 mt-1">
+                                    {item.subtitle}
+                                  </p>
+                                )}
+                              </div>
+
+                              <div className="text-right shrink-0">
+                                <p className="text-[11px] text-blue-600 uppercase">
+                                  {item.type}
+                                </p>
+
+                                {item.amount !== undefined && (
+                                  <p className="text-[11px] text-gray-500 mt-1">
+                                    ৳ {Number(item.amount || 0).toFixed(2)}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          </button>
+                        ))
+                      ) : (
+                        !searchLoading &&
+                        !aiAnswer && (
+                          <div className="p-4 text-sm text-gray-500">
+                            No result found
+                          </div>
+                        )
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -372,9 +644,7 @@ export default function Navbar({ setOpen }) {
                         {n.message}
                       </p>
                       <p className="text-[11px] text-gray-400 mt-2 capitalize">
-                        {n.refType
-                          ? n.refType.replaceAll("_", " ")
-                          : "system"}
+                        {n.refType ? n.refType.replaceAll("_", " ") : "system"}
                       </p>
                     </div>
                   </div>
@@ -406,7 +676,11 @@ export default function Navbar({ setOpen }) {
           </div>
 
           <div className="p-2">
-            <ProfileItem icon={<User size={16} />} title="Profile" />
+            <ProfileItem
+              icon={<User size={16} />}
+              title="Profile"
+              onClick={() => goTo("/profile")}
+            />
 
             <ProfileItem
               icon={<Image size={16} />}
@@ -414,7 +688,14 @@ export default function Navbar({ setOpen }) {
               onClick={() => fileInputRef.current?.click()}
             />
 
-            <ProfileItem icon={<Lock size={16} />} title="Change Password" />
+            <ProfileItem
+              icon={<Lock size={16} />}
+              title="Change Password"
+              onClick={() => {
+                setOpenProfile(false);
+                setOpenPasswordModal(true);
+              }}
+            />
 
             <ProfileItem
               icon={<Settings size={16} />}
@@ -506,6 +787,10 @@ export default function Navbar({ setOpen }) {
         </div>
       )}
 
+      {openPasswordModal && (
+        <ChangePasswordModal onClose={() => setOpenPasswordModal(false)} />
+      )}
+
       <style jsx global>{`
         .avatar-focus-wrap {
           filter: drop-shadow(0 10px 22px rgba(59, 130, 246, 0.2));
@@ -579,6 +864,137 @@ export default function Navbar({ setOpen }) {
         }
       `}</style>
     </>
+  );
+}
+
+function ChangePasswordModal({ onClose }) {
+  const [form, setForm] = useState({
+    oldPassword: "",
+    newPassword: "",
+    confirmPassword: "",
+  });
+
+  const [loading, setLoading] = useState(false);
+
+  const changePassword = async (e) => {
+    e.preventDefault();
+
+    if (form.newPassword !== form.confirmPassword) {
+      alert("New password and confirm password do not match");
+      return;
+    }
+
+    if (form.newPassword.length < 6) {
+      alert("Password must be at least 6 characters");
+      return;
+    }
+
+    try {
+      setLoading(true);
+
+      const user =
+        typeof window !== "undefined"
+          ? JSON.parse(localStorage.getItem("user") || "null")
+          : null;
+
+      const token =
+        typeof window !== "undefined" ? localStorage.getItem("token") : "";
+
+      const res = await fetch("/api/auth/change-password", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token || ""}`,
+        },
+        body: JSON.stringify({
+          userId: user?._id || user?.id,
+          oldPassword: form.oldPassword,
+          newPassword: form.newPassword,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!data.success) {
+        alert(data.message || "Password change failed");
+        return;
+      }
+
+      alert("Password changed successfully ✅");
+      onClose();
+    } catch (error) {
+      console.error("CHANGE_PASSWORD_ERROR:", error);
+      alert("Something went wrong");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[9999999] bg-black/30 backdrop-blur-[3px] flex items-center justify-center p-4">
+      <form
+        onSubmit={changePassword}
+        className="w-full max-w-sm bg-white/95 backdrop-blur-xl rounded-[28px] border border-white/70 shadow-[0_30px_80px_rgba(15,23,42,0.25)] overflow-hidden animate-quickFloat"
+      >
+        <div className="p-5 border-b flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-bold">Change Password</h2>
+            <p className="text-sm text-gray-500">Update your account password</p>
+          </div>
+
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-9 h-9 rounded-full border flex items-center justify-center hover:bg-red-50 hover:text-red-500"
+          >
+            <X size={17} />
+          </button>
+        </div>
+
+        <div className="p-5 space-y-3">
+          <input
+            type="password"
+            placeholder="Old password"
+            value={form.oldPassword}
+            onChange={(e) =>
+              setForm({ ...form, oldPassword: e.target.value })
+            }
+            className="w-full rounded-2xl border px-4 py-3 text-sm outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-300"
+            required
+          />
+
+          <input
+            type="password"
+            placeholder="New password"
+            value={form.newPassword}
+            onChange={(e) =>
+              setForm({ ...form, newPassword: e.target.value })
+            }
+            className="w-full rounded-2xl border px-4 py-3 text-sm outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-300"
+            required
+          />
+
+          <input
+            type="password"
+            placeholder="Confirm new password"
+            value={form.confirmPassword}
+            onChange={(e) =>
+              setForm({ ...form, confirmPassword: e.target.value })
+            }
+            className="w-full rounded-2xl border px-4 py-3 text-sm outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-300"
+            required
+          />
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full mt-2 rounded-2xl bg-blue-500 text-white py-3 text-sm font-semibold hover:bg-blue-600 disabled:opacity-60"
+          >
+            {loading ? "Changing..." : "Change Password"}
+          </button>
+        </div>
+      </form>
+    </div>
   );
 }
 

@@ -10,10 +10,12 @@ import {
   Share2,
   Wallet,
   X,
+  Sparkles,
 } from "lucide-react";
 
 export default function SupplierLedgerPage() {
   const [supplier, setSupplier] = useState("");
+  const [aiSearch, setAiSearch] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
 
@@ -53,6 +55,46 @@ export default function SupplierLedgerPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const applyAISearch = () => {
+    const text = aiSearch.toLowerCase().trim();
+    if (!text) return;
+
+    setSupplier(aiSearch);
+
+    if (text.includes("today") || text.includes("আজ")) {
+      const today = new Date().toISOString().slice(0, 10);
+      setFrom(today);
+      setTo(today);
+    }
+
+    if (text.includes("this month") || text.includes("এই মাস")) {
+      const now = new Date();
+
+      setFrom(
+        new Date(now.getFullYear(), now.getMonth(), 1)
+          .toISOString()
+          .slice(0, 10)
+      );
+
+      setTo(
+        new Date(now.getFullYear(), now.getMonth() + 1, 0)
+          .toISOString()
+          .slice(0, 10)
+      );
+    }
+
+    setTimeout(fetchLedger, 100);
+  };
+
+  const resetFilter = () => {
+    setSupplier("");
+    setAiSearch("");
+    setFrom("");
+    setTo("");
+    setRows([]);
+    setSummary({});
   };
 
   const openPayment = (row) => {
@@ -102,6 +144,24 @@ export default function SupplierLedgerPage() {
     }
   };
 
+  const shareLedger = async () => {
+    const text = `Supplier Ledger
+Total Purchase: ৳ ${money(summary.totalPurchase)}
+Total Paid: ৳ ${money(summary.totalPaid)}
+Total Due: ৳ ${money(summary.totalDue)}
+Closing Balance: ৳ ${money(summary.closingBalance)}`;
+
+    if (navigator.share) {
+      await navigator.share({
+        title: "Supplier Ledger",
+        text,
+      });
+    } else {
+      await navigator.clipboard.writeText(text);
+      alert("Supplier ledger copied");
+    }
+  };
+
   return (
     <div className="space-y-5 print:bg-white">
       <div className="bg-white border rounded-[28px] shadow-sm overflow-hidden">
@@ -117,6 +177,14 @@ export default function SupplierLedgerPage() {
 
           <div className="flex flex-wrap gap-2 print:hidden">
             <button
+              onClick={fetchLedger}
+              className="px-4 py-2 rounded-xl border flex items-center gap-2 hover:bg-gray-50"
+            >
+              <RefreshCcw size={16} className={loading ? "animate-spin" : ""} />
+              Refresh
+            </button>
+
+            <button
               onClick={() => window.print()}
               className="px-4 py-2 rounded-xl border flex items-center gap-2 hover:bg-gray-50"
             >
@@ -124,12 +192,18 @@ export default function SupplierLedgerPage() {
               Print
             </button>
 
-            <button className="px-4 py-2 rounded-xl border flex items-center gap-2 hover:bg-gray-50">
+            <button
+              onClick={() => window.print()}
+              className="px-4 py-2 rounded-xl border flex items-center gap-2 hover:bg-gray-50"
+            >
               <Download size={16} />
               PDF
             </button>
 
-            <button className="px-4 py-2 rounded-xl border flex items-center gap-2 hover:bg-gray-50">
+            <button
+              onClick={shareLedger}
+              className="px-4 py-2 rounded-xl border flex items-center gap-2 hover:bg-gray-50"
+            >
               <Share2 size={16} />
               Share
             </button>
@@ -137,13 +211,45 @@ export default function SupplierLedgerPage() {
         </div>
 
         <div className="p-5 md:p-7 space-y-5">
+          <div className="bg-purple-50 border border-purple-100 rounded-3xl p-4 print:hidden">
+            <div className="flex items-center gap-2 mb-3">
+              <Sparkles size={18} className="text-purple-600" />
+              <h2 className="font-semibold text-purple-700">
+                AI Supplier Ledger Search
+              </h2>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_auto] gap-3">
+              <input
+                value={aiSearch}
+                onChange={(e) => setAiSearch(e.target.value)}
+                placeholder="Example: Rahim supplier this month / bill no 102 / today due"
+                className="border rounded-xl px-4 py-3 outline-none"
+              />
+
+              <button
+                onClick={applyAISearch}
+                className="bg-purple-600 text-white px-5 py-3 rounded-xl hover:bg-purple-700"
+              >
+                AI Search
+              </button>
+
+              <button
+                onClick={resetFilter}
+                className="border px-5 py-3 rounded-xl hover:bg-gray-50"
+              >
+                Reset
+              </button>
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-[1fr_170px_170px_48px] gap-3 print:hidden">
             <div className="flex items-center gap-2 border rounded-2xl px-4 py-3 bg-white shadow-sm">
               <Search size={18} className="text-gray-400" />
               <input
                 value={supplier}
                 onChange={(e) => setSupplier(e.target.value)}
-                placeholder="Search supplier name..."
+                placeholder="Search supplier / bill no / invoice no / item..."
                 className="w-full outline-none text-sm"
               />
             </div>
@@ -196,13 +302,17 @@ export default function SupplierLedgerPage() {
             </div>
 
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[1050px] text-sm">
+              <table className="w-full min-w-[1280px] text-sm">
                 <thead className="bg-gray-50">
                   <tr>
                     <th className="p-3 text-left">Date</th>
+                    <th className="p-3 text-left">Purchase No</th>
+                    <th className="p-3 text-left">Bill No</th>
+                    <th className="p-3 text-left">Invoice No</th>
                     <th className="p-3 text-left">Supplier</th>
+                    <th className="p-3 text-left">Phone</th>
                     <th className="p-3 text-left">Item</th>
-                    <th className="p-3 text-left">Purchase Type</th>
+                    <th className="p-3 text-left">Type</th>
                     <th className="p-3 text-left">Payment</th>
                     <th className="p-3 text-right">Total</th>
                     <th className="p-3 text-right">Paid</th>
@@ -215,18 +325,28 @@ export default function SupplierLedgerPage() {
                 <tbody>
                   {rows.length === 0 ? (
                     <tr>
-                      <td colSpan="10" className="p-6 text-center text-gray-500">
+                      <td colSpan="14" className="p-6 text-center text-gray-500">
                         No supplier ledger found
                       </td>
                     </tr>
                   ) : (
                     rows.map((row) => (
                       <tr key={row._id} className="border-t hover:bg-blue-50/40">
-                        <td className="p-3">{row.date}</td>
-                        <td className="p-3">{row.supplierName}</td>
-                        <td className="p-3">{row.itemName}</td>
-                        <td className="p-3 capitalize">{row.purchaseType}</td>
-                        <td className="p-3 capitalize">{row.paymentType}</td>
+                        <td className="p-3">{row.date || "-"}</td>
+                        <td className="p-3">{row.purchaseNo || "-"}</td>
+                        <td className="p-3">{row.supplierBillNo || "-"}</td>
+                        <td className="p-3">{row.supplierInvoiceNo || "-"}</td>
+                        <td className="p-3 font-medium">
+                          {row.supplierName || "-"}
+                        </td>
+                        <td className="p-3">{row.supplierPhone || "-"}</td>
+                        <td className="p-3">{row.itemName || "-"}</td>
+                        <td className="p-3 capitalize">
+                          {row.purchaseType || "-"}
+                        </td>
+                        <td className="p-3 capitalize">
+                          {row.paymentType || "-"}
+                        </td>
                         <td className="p-3 text-right">
                           ৳ {money(row.total)}
                         </td>
@@ -262,7 +382,7 @@ export default function SupplierLedgerPage() {
                 {rows.length > 0 && (
                   <tfoot className="bg-gray-50 font-bold">
                     <tr>
-                      <td className="p-3" colSpan="5">
+                      <td className="p-3" colSpan="9">
                         Total
                       </td>
                       <td className="p-3 text-right">
@@ -294,7 +414,8 @@ export default function SupplierLedgerPage() {
               <div>
                 <h2 className="text-lg font-bold">Supplier Payment</h2>
                 <p className="text-sm text-gray-500 mt-1">
-                  {selectedPurchase?.supplierName} • {selectedPurchase?.itemName}
+                  {selectedPurchase?.supplierName} • Bill{" "}
+                  {selectedPurchase?.supplierBillNo || "-"}
                 </p>
               </div>
 
@@ -312,12 +433,14 @@ export default function SupplierLedgerPage() {
                   <span>Total Purchase</span>
                   <strong>৳ {money(selectedPurchase?.total)}</strong>
                 </div>
+
                 <div className="flex justify-between">
                   <span>Paid</span>
                   <strong className="text-green-600">
                     ৳ {money(selectedPurchase?.paidAmount)}
                   </strong>
                 </div>
+
                 <div className="flex justify-between">
                   <span>Due</span>
                   <strong className="text-red-500">

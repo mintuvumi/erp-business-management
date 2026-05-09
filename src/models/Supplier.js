@@ -1,63 +1,61 @@
 import mongoose from "mongoose";
 
-const BankAccountSchema = new mongoose.Schema(
+const SupplierSchema = new mongoose.Schema(
   {
-    bankName: {
+    name: {
       type: String,
       required: true,
       trim: true,
       index: true,
     },
 
-    accountName: {
+    phone: {
+      type: String,
+      default: "",
+      trim: true,
+      index: true,
+    },
+
+    email: {
       type: String,
       default: "",
       trim: true,
     },
 
-    // OLD SUPPORT
-    accountNo: {
+    address: {
       type: String,
       default: "",
       trim: true,
     },
 
-    // NEW STANDARD
-    accountNumber: {
+    companyName: {
       type: String,
       default: "",
       trim: true,
     },
 
-    branchName: {
+    contactPerson: {
       type: String,
       default: "",
       trim: true,
     },
 
-    routingNumber: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-
-    bankType: {
-      type: String,
-      enum: [
-        "bank",
-        "mobile_banking",
-        "digital_wallet",
-      ],
-      default: "bank",
-    },
-
-    openingBalance: {
+    openingDue: {
       type: Number,
       default: 0,
-      min: 0,
     },
 
-    currentBalance: {
+    currentDue: {
+      type: Number,
+      default: 0,
+    },
+
+    totalPurchase: {
+      type: Number,
+      default: 0,
+    },
+
+    totalPaid: {
       type: Number,
       default: 0,
     },
@@ -78,5 +76,7 @@ const BankAccountSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-export default mongoose.models.BankAccount ||
-  mongoose.model("BankAccount", BankAccountSchema);
+SupplierSchema.index({ name: 1, phone: 1 });
+
+export default mongoose.models.Supplier ||
+  mongoose.model("Supplier", SupplierSchema);

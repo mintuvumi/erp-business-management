@@ -7,14 +7,23 @@ export async function GET(req) {
     await connectDB();
 
     const { searchParams } = new URL(req.url);
+
     const supplier = searchParams.get("supplier") || "";
     const from = searchParams.get("from") || "";
     const to = searchParams.get("to") || "";
 
-    const query = {};
+    const query = {
+      status: { $ne: "cancelled" },
+    };
 
     if (supplier) {
-      query.supplierName = { $regex: supplier, $options: "i" };
+      query.$or = [
+        { supplierName: { $regex: supplier, $options: "i" } },
+        { supplierPhone: { $regex: supplier, $options: "i" } },
+        { supplierBillNo: { $regex: supplier, $options: "i" } },
+        { supplierInvoiceNo: { $regex: supplier, $options: "i" } },
+        { itemName: { $regex: supplier, $options: "i" } },
+      ];
     }
 
     if (from || to) {
@@ -31,7 +40,10 @@ export async function GET(req) {
     let balance = 0;
 
     const rows = purchases.map((purchase) => {
-      const total = Number(purchase.total || 0);
+      const total = Number(
+        purchase.grandTotal || purchase.total || 0
+      );
+
       const paidAmount = Number(purchase.paidAmount || 0);
       const dueAmount = Number(purchase.dueAmount || 0);
 
@@ -40,34 +52,51 @@ export async function GET(req) {
       return {
         _id: purchase._id,
         date: purchase.date,
+
+        purchaseNo: purchase.purchaseNo || "",
+        supplierBillNo: purchase.supplierBillNo || "",
+        supplierInvoiceNo: purchase.supplierInvoiceNo || "",
+
         supplierName: purchase.supplierName || "Cash Supplier",
-        itemName: purchase.itemName,
-        purchaseType: purchase.purchaseType,
-        paymentType: purchase.paymentType,
+        supplierPhone: purchase.supplierPhone || "",
+        supplierAddress: purchase.supplierAddress || "",
+
+        itemName: purchase.itemName || "",
+        purchaseType: purchase.purchaseType || "",
+        paymentType: purchase.paymentType || "",
+
         total,
         paidAmount,
         dueAmount,
         balance,
+
         note: purchase.note || "",
       };
     });
 
     const summary = {
-      totalPurchase: rows.reduce((s, r) => s + r.total, 0),
-      paidTotal: rows.reduce((s, r) => s + r.paidAmount, 0),
-      dueTotal: rows.reduce((s, r) => s + r.dueAmount, 0),
+      totalPurchase: rows.reduce((s, r) => s + Number(r.total || 0), 0),
+      totalPaid: rows.reduce((s, r) => s + Number(r.paidAmount || 0), 0),
+      totalDue: rows.reduce((s, r) => s + Number(r.dueAmount || 0), 0),
       closingBalance: balance,
+      totalEntry: rows.length,
     };
 
     return NextResponse.json({
       success: true,
-      data: { rows, summary },
+      data: {
+        rows,
+        summary,
+      },
     });
   } catch (error) {
     console.error("SUPPLIER_LEDGER_ERROR:", error);
 
     return NextResponse.json(
-      { success: false, message: "Failed to load supplier ledger" },
+      {
+        success: false,
+        message: "Failed to load supplier ledger",
+      },
       { status: 500 }
     );
   }

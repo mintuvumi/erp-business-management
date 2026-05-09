@@ -1,48 +1,211 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   RefreshCcw,
   Plus,
   Wallet,
-  Landmark,
-  HandCoins,
-  Banknote,
+  Search,
+  Printer,
+  Share2,
+  FileDown,
+  Sparkles,
+  Wand2,
 } from "lucide-react";
 
 export default function AccountsPage() {
   const [summary, setSummary] = useState({});
   const [banks, setBanks] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
 
-  const [incomeForm, setIncomeForm] = useState({
-    type: "owner_capital",
-    receiveTo: "cash",
-    bankId: "",
+  const [search, setSearch] = useState("");
+  const [aiText, setAiText] = useState("");
+
+  const [transactionForm, setTransactionForm] = useState({
+    transactionType: "income",
+    categoryName: "",
     title: "",
     amount: "",
+    direction: "in",
+    paymentFrom: "cash",
+    receiveTo: "cash",
+    fromBankId: "",
+    toBankId: "",
+    personType: "none",
+    personName: "",
+    paymentMethod: "cash",
     note: "",
   });
 
-  const [loanForm, setLoanForm] = useState({
-    loanType: "personal",
-    lenderName: "",
-    amount: "",
-    receiveTo: "cash",
-    bankId: "",
-    note: "",
-  });
+  const transactionTypes = [
+    { value: "income", label: "Receive Money", direction: "in" },
+    { value: "expense", label: "Expense", direction: "out" },
+    { value: "salary_payment", label: "Salary Payment", direction: "out" },
+    { value: "customer_collection", label: "Customer Collection", direction: "in" },
+    { value: "supplier_payment", label: "Supplier Payment", direction: "out" },
+    { value: "loan_receive", label: "Loan Receive", direction: "in" },
+    { value: "loan_payment", label: "Loan Payment", direction: "out" },
+    { value: "bank_transfer", label: "Bank Transfer", direction: "transfer" },
+    { value: "cash_sale", label: "Cash Sale", direction: "in" },
+    { value: "owner_capital", label: "Owner Capital", direction: "in" },
+  ];
+
+  const aiSuggestions = [
+    {
+      key: "salary",
+      words: ["salary", "বেতন", "staff", "employee"],
+      data: {
+        transactionType: "salary_payment",
+        direction: "out",
+        categoryName: "Salary",
+        title: "Salary Payment",
+        personType: "employee",
+        paymentFrom: "cash",
+      },
+    },
+    {
+      key: "conveyance",
+      words: ["conveyance", "transport", "যাতায়াত", "ভাড়া", "bus", "rickshaw"],
+      data: {
+        transactionType: "expense",
+        direction: "out",
+        categoryName: "Conveyance",
+        title: "Conveyance Expense",
+        personType: "none",
+        paymentFrom: "cash",
+      },
+    },
+    {
+      key: "rent",
+      words: ["rent", "office rent", "ভাড়া", "দোকান ভাড়া"],
+      data: {
+        transactionType: "expense",
+        direction: "out",
+        categoryName: "Office Rent",
+        title: "Office Rent Payment",
+        personType: "other",
+        paymentFrom: "cash",
+      },
+    },
+    {
+      key: "electric",
+      words: ["electric", "electricity", "বিদ্যুৎ", "bill"],
+      data: {
+        transactionType: "expense",
+        direction: "out",
+        categoryName: "Electric Bill",
+        title: "Electric Bill Payment",
+        personType: "none",
+        paymentFrom: "cash",
+      },
+    },
+    {
+      key: "customer_collection",
+      words: ["customer", "collection", "due collection", "কালেকশন", "কাস্টমার"],
+      data: {
+        transactionType: "customer_collection",
+        direction: "in",
+        categoryName: "Customer Collection",
+        title: "Customer Due Collection",
+        personType: "customer",
+        receiveTo: "cash",
+      },
+    },
+    {
+      key: "supplier",
+      words: ["supplier", "vendor", "সাপ্লায়ার"],
+      data: {
+        transactionType: "supplier_payment",
+        direction: "out",
+        categoryName: "Supplier Payment",
+        title: "Supplier Payment",
+        personType: "supplier",
+        paymentFrom: "cash",
+      },
+    },
+    {
+      key: "loan_receive",
+      words: ["loan receive", "loan nilam", "লোন নিলাম", "ঋণ নিলাম"],
+      data: {
+        transactionType: "loan_receive",
+        direction: "in",
+        categoryName: "Loan Receive",
+        title: "Loan Receive",
+        personType: "lender",
+        receiveTo: "cash",
+      },
+    },
+    {
+      key: "loan_payment",
+      words: ["loan payment", "loan paid", "লোন দিলাম", "ঋণ পরিশোধ"],
+      data: {
+        transactionType: "loan_payment",
+        direction: "out",
+        categoryName: "Loan Payment",
+        title: "Loan Payment",
+        personType: "lender",
+        paymentFrom: "cash",
+      },
+    },
+    {
+      key: "cash_sale",
+      words: ["cash sale", "sale", "বিক্রি", "ক্যাশ সেল"],
+      data: {
+        transactionType: "cash_sale",
+        direction: "in",
+        categoryName: "Cash Sale",
+        title: "Cash Sale",
+        personType: "customer",
+        receiveTo: "cash",
+      },
+    },
+    {
+      key: "owner_capital",
+      words: ["capital", "owner", "মালিক", "মূলধন"],
+      data: {
+        transactionType: "owner_capital",
+        direction: "in",
+        categoryName: "Owner Capital",
+        title: "Owner Capital",
+        personType: "owner",
+        receiveTo: "cash",
+      },
+    },
+  ];
+
+  const filteredTransactions = useMemo(() => {
+    if (!search) return transactions;
+
+    const q = search.toLowerCase();
+
+    return transactions.filter((t) =>
+      [
+        t.transactionNo,
+        t.title,
+        t.categoryName,
+        t.personName,
+        t.bankName,
+        t.note,
+        t.transactionType,
+      ]
+        .join(" ")
+        .toLowerCase()
+        .includes(q)
+    );
+  }, [transactions, search]);
 
   const fetchSummary = async () => {
     try {
       setLoading(true);
-
       const res = await fetch("/api/accounts/summary");
       const data = await res.json();
 
       if (data.success) {
-        setSummary(data.data);
-        setBanks(data.data.banks || []);
+        setSummary(data.data || {});
+        setBanks(data.data?.banks || []);
       }
     } catch (error) {
       console.error(error);
@@ -52,102 +215,196 @@ export default function AccountsPage() {
     }
   };
 
+  const fetchCategories = async () => {
+    try {
+      const res = await fetch("/api/accounts/categories");
+      const data = await res.json();
+
+      if (data.success) setCategories(data.data || []);
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  const fetchTransactions = async () => {
+    try {
+      const res = await fetch("/api/accounts/transactions?limit=100");
+      const data = await res.json();
+
+      if (data.success) setTransactions(data.data || []);
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  const refreshAll = async () => {
+    await fetchSummary();
+    await fetchCategories();
+    await fetchTransactions();
+  };
+
   useEffect(() => {
-    fetchSummary();
+    refreshAll();
   }, []);
 
-  const saveIncome = async () => {
-    if (!incomeForm.title || !incomeForm.amount) {
-      return alert("Title and amount required");
-    }
+  const handleTransactionTypeChange = (value) => {
+    const selected = transactionTypes.find((item) => item.value === value);
 
-    const amount = Number(incomeForm.amount) || 0;
-
-    if (incomeForm.receiveTo === "cash") {
-      const res = await fetch("/api/cash", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          type: "in",
-          category: "other_income",
-          title: incomeForm.title,
-          amount,
-          note: incomeForm.note,
-          refType:
-            incomeForm.type === "owner_capital" ? "owner_capital" : "manual",
-        }),
-      });
-
-      const data = await res.json();
-      if (!data.success) return alert(data.message || "Failed");
-    }
-
-    if (incomeForm.receiveTo === "bank") {
-      if (!incomeForm.bankId) return alert("Select bank");
-
-      const res = await fetch("/api/bank", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "transaction",
-          bankId: incomeForm.bankId,
-          type: "in",
-          category: "other_income",
-          title: incomeForm.title,
-          amount,
-          note: incomeForm.note,
-          refType:
-            incomeForm.type === "owner_capital" ? "owner_capital" : "manual",
-        }),
-      });
-
-      const data = await res.json();
-      if (!data.success) return alert(data.message || "Failed");
-    }
-
-    alert("Income saved ✅");
-    setIncomeForm({
-      type: "owner_capital",
-      receiveTo: "cash",
-      bankId: "",
-      title: "",
-      amount: "",
-      note: "",
-    });
-    fetchSummary();
+    setTransactionForm((prev) => ({
+      ...prev,
+      transactionType: value,
+      direction: selected?.direction || "in",
+      paymentFrom: selected?.direction === "in" ? "cash" : prev.paymentFrom,
+      receiveTo: selected?.direction === "out" ? "cash" : prev.receiveTo,
+      fromBankId: "",
+      toBankId: "",
+    }));
   };
 
-  const saveLoan = async () => {
-    if (!loanForm.lenderName || !loanForm.amount) {
-      return alert("Lender name and amount required");
+  const applyAISuggestion = () => {
+    const text = aiText.toLowerCase().trim();
+
+    if (!text) return alert("AI suggestion text লিখুন");
+
+    const matched = aiSuggestions.find((item) =>
+      item.words.some((word) => text.includes(word.toLowerCase()))
+    );
+
+    if (!matched) {
+      return alert("AI বুঝতে পারেনি। Example: salary paid 5000 / customer collection 10000");
     }
 
-    const res = await fetch("/api/loan", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        ...loanForm,
-        amount: Number(loanForm.amount) || 0,
-      }),
-    });
+    const amountMatch = text.match(/\d+(\.\d+)?/);
+    const amount = amountMatch ? amountMatch[0] : "";
 
-    const data = await res.json();
+    setTransactionForm((prev) => ({
+      ...prev,
+      ...matched.data,
+      amount: amount || prev.amount,
+      note: aiText,
+      fromBankId: "",
+      toBankId: "",
+    }));
+  };
 
-    if (data.success) {
-      alert("Loan saved ✅");
-      setLoanForm({
-        loanType: "personal",
-        lenderName: "",
+  const smartFillByType = () => {
+    const selected = transactionTypes.find(
+      (item) => item.value === transactionForm.transactionType
+    );
+
+    const categoryMap = {
+      income: "Other Income",
+      expense: "General Expense",
+      salary_payment: "Salary",
+      customer_collection: "Customer Collection",
+      supplier_payment: "Supplier Payment",
+      loan_receive: "Loan Receive",
+      loan_payment: "Loan Payment",
+      bank_transfer: "Bank Transfer",
+      cash_sale: "Cash Sale",
+      owner_capital: "Owner Capital",
+    };
+
+    setTransactionForm((prev) => ({
+      ...prev,
+      direction: selected?.direction || prev.direction,
+      categoryName: prev.categoryName || categoryMap[prev.transactionType] || "",
+      title:
+        prev.title ||
+        String(selected?.label || "")
+          .replaceAll("_", " ")
+          .trim(),
+    }));
+  };
+
+  const saveTransaction = async () => {
+    try {
+      if (!transactionForm.title.trim()) return alert("Title required");
+      if (!transactionForm.categoryName.trim()) return alert("Category required");
+      if (!transactionForm.amount || Number(transactionForm.amount) <= 0) {
+        return alert("Valid amount required");
+      }
+
+      if (
+        transactionForm.direction === "out" &&
+        transactionForm.paymentFrom === "bank" &&
+        !transactionForm.fromBankId
+      ) {
+        return alert("Select payment bank");
+      }
+
+      if (
+        transactionForm.direction === "in" &&
+        transactionForm.receiveTo === "bank" &&
+        !transactionForm.toBankId
+      ) {
+        return alert("Select receive bank");
+      }
+
+      if (transactionForm.direction === "transfer") {
+        if (transactionForm.paymentFrom === "bank" && !transactionForm.fromBankId) {
+          return alert("Select source bank");
+        }
+
+        if (transactionForm.receiveTo === "bank" && !transactionForm.toBankId) {
+          return alert("Select destination bank");
+        }
+      }
+
+      setSaving(true);
+
+      const payload = {
+        ...transactionForm,
+        amount: Number(transactionForm.amount),
+        categoryType:
+          transactionForm.direction === "in"
+            ? "income"
+            : transactionForm.direction === "out"
+            ? "expense"
+            : "transfer",
+      };
+
+      const res = await fetch("/api/accounts/transactions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json();
+
+      if (!data.success) return alert(data.message || "Transaction failed");
+
+      alert("Transaction saved ✅");
+
+      setTransactionForm({
+        transactionType: "income",
+        categoryName: "",
+        title: "",
         amount: "",
+        direction: "in",
+        paymentFrom: "cash",
         receiveTo: "cash",
-        bankId: "",
+        fromBankId: "",
+        toBankId: "",
+        personType: "none",
+        personName: "",
+        paymentMethod: "cash",
         note: "",
       });
-      fetchSummary();
-    } else {
-      alert(data.message || "Failed");
+
+      setAiText("");
+      refreshAll();
+    } catch (error) {
+      console.error(error);
+      alert("Transaction failed");
+    } finally {
+      setSaving(false);
     }
   };
+
+  const printStatement = () => window.print();
 
   return (
     <div className="space-y-5">
@@ -156,12 +413,12 @@ export default function AccountsPage() {
           <div>
             <h1 className="text-2xl font-bold">Accounts Control</h1>
             <p className="text-sm text-gray-500 mt-1">
-              Capital, income, loan, cash, bank and company position
+              Cash, bank, receive, payment, salary, loan and full statement
             </p>
           </div>
 
           <button
-            onClick={fetchSummary}
+            onClick={refreshAll}
             className="px-4 py-2 rounded-xl border flex items-center gap-2 hover:bg-gray-50"
           >
             <RefreshCcw size={16} className={loading ? "animate-spin" : ""} />
@@ -181,229 +438,350 @@ export default function AccountsPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
-        <div className="bg-white border rounded-[28px] p-5 shadow-sm">
-          <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-2xl bg-green-50 text-green-600 flex items-center justify-center">
-              <HandCoins size={20} />
-            </div>
-            <div>
-              <h2 className="font-bold">Owner Capital / Other Income</h2>
-              <p className="text-sm text-gray-500">
-                Add capital or income to cash/bank
-              </p>
-            </div>
+      <div className="bg-white border rounded-[28px] p-5 shadow-sm">
+        <div className="flex items-center gap-3">
+          <div className="w-11 h-11 rounded-2xl bg-purple-50 text-purple-600 flex items-center justify-center">
+            <Sparkles size={20} />
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-5">
-            <select
-              value={incomeForm.type}
-              onChange={(e) =>
-                setIncomeForm({ ...incomeForm, type: e.target.value })
-              }
-              className="border rounded-xl p-3"
-            >
-              <option value="owner_capital">Owner Capital</option>
-              <option value="other_income">Other Income</option>
-            </select>
-
-            <select
-              value={incomeForm.receiveTo}
-              onChange={(e) =>
-                setIncomeForm({ ...incomeForm, receiveTo: e.target.value })
-              }
-              className="border rounded-xl p-3"
-            >
-              <option value="cash">Receive To Cash</option>
-              <option value="bank">Receive To Bank</option>
-            </select>
-
-            <select
-              value={incomeForm.bankId}
-              onChange={(e) =>
-                setIncomeForm({ ...incomeForm, bankId: e.target.value })
-              }
-              disabled={incomeForm.receiveTo === "cash"}
-              className="border rounded-xl p-3 disabled:bg-gray-100"
-            >
-              <option value="">Select Bank</option>
-              {banks.map((b) => (
-                <option key={b._id} value={b._id}>
-                  {b.bankName} - ৳ {money(b.currentBalance)}
-                </option>
-              ))}
-            </select>
-
-            <input
-              value={incomeForm.title}
-              onChange={(e) =>
-                setIncomeForm({ ...incomeForm, title: e.target.value })
-              }
-              placeholder="Title"
-              className="border rounded-xl p-3"
-            />
-
-            <input
-              type="number"
-              value={incomeForm.amount}
-              onChange={(e) =>
-                setIncomeForm({ ...incomeForm, amount: e.target.value })
-              }
-              placeholder="Amount"
-              className="border rounded-xl p-3"
-            />
-
-            <textarea
-              value={incomeForm.note}
-              onChange={(e) =>
-                setIncomeForm({ ...incomeForm, note: e.target.value })
-              }
-              placeholder="Note"
-              className="md:col-span-2 border rounded-xl p-3"
-            />
+          <div>
+            <h2 className="font-bold">AI Smart Entry</h2>
+            <p className="text-sm text-gray-500">
+              Example: salary paid 5000, customer collection 10000, cash sale 2000
+            </p>
           </div>
-
-          <button
-            onClick={saveIncome}
-            className="mt-4 inline-flex items-center gap-2 bg-green-500 text-white px-5 py-3 rounded-xl hover:bg-green-600"
-          >
-            <Plus size={16} />
-            Save Income
-          </button>
         </div>
 
-        <div className="bg-white border rounded-[28px] p-5 shadow-sm">
-          <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-2xl bg-red-50 text-red-600 flex items-center justify-center">
-              <Banknote size={20} />
-            </div>
-            <div>
-              <h2 className="font-bold">Bank / Personal Loan</h2>
-              <p className="text-sm text-gray-500">
-                Add loan and receive to cash/bank
-              </p>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-5">
-            <select
-              value={loanForm.loanType}
-              onChange={(e) =>
-                setLoanForm({ ...loanForm, loanType: e.target.value })
-              }
-              className="border rounded-xl p-3"
-            >
-              <option value="personal">Personal Loan</option>
-              <option value="bank">Bank Loan</option>
-            </select>
-
-            <input
-              value={loanForm.lenderName}
-              onChange={(e) =>
-                setLoanForm({ ...loanForm, lenderName: e.target.value })
-              }
-              placeholder="Lender Name"
-              className="border rounded-xl p-3"
-            />
-
-            <select
-              value={loanForm.receiveTo}
-              onChange={(e) =>
-                setLoanForm({ ...loanForm, receiveTo: e.target.value })
-              }
-              className="border rounded-xl p-3"
-            >
-              <option value="cash">Receive To Cash</option>
-              <option value="bank">Receive To Bank</option>
-            </select>
-
-            <select
-              value={loanForm.bankId}
-              onChange={(e) =>
-                setLoanForm({ ...loanForm, bankId: e.target.value })
-              }
-              disabled={loanForm.receiveTo === "cash"}
-              className="border rounded-xl p-3 disabled:bg-gray-100"
-            >
-              <option value="">Select Bank</option>
-              {banks.map((b) => (
-                <option key={b._id} value={b._id}>
-                  {b.bankName} - ৳ {money(b.currentBalance)}
-                </option>
-              ))}
-            </select>
-
-            <input
-              type="number"
-              value={loanForm.amount}
-              onChange={(e) =>
-                setLoanForm({ ...loanForm, amount: e.target.value })
-              }
-              placeholder="Loan Amount"
-              className="border rounded-xl p-3"
-            />
-
-            <textarea
-              value={loanForm.note}
-              onChange={(e) =>
-                setLoanForm({ ...loanForm, note: e.target.value })
-              }
-              placeholder="Note"
-              className="md:col-span-2 border rounded-xl p-3"
-            />
-          </div>
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto_auto] gap-3 mt-5">
+          <input
+            value={aiText}
+            onChange={(e) => setAiText(e.target.value)}
+            placeholder="AI লিখুন: salary paid 5000 from bank / customer collection 10000"
+            className="border rounded-xl p-3 outline-none focus:ring-2 focus:ring-purple-400"
+          />
 
           <button
-            onClick={saveLoan}
-            className="mt-4 inline-flex items-center gap-2 bg-red-500 text-white px-5 py-3 rounded-xl hover:bg-red-600"
+            onClick={applyAISuggestion}
+            className="inline-flex items-center justify-center gap-2 bg-purple-600 text-white px-5 py-3 rounded-xl hover:bg-purple-700"
           >
-            <Plus size={16} />
-            Save Loan
+            <Sparkles size={16} />
+            AI Fill
+          </button>
+
+          <button
+            onClick={smartFillByType}
+            className="inline-flex items-center justify-center gap-2 border px-5 py-3 rounded-xl hover:bg-gray-50"
+          >
+            <Wand2 size={16} />
+            Smart Fill
           </button>
         </div>
       </div>
 
+      <div className="bg-white border rounded-[28px] p-5 shadow-sm">
+        <div className="flex items-center gap-3">
+          <div className="w-11 h-11 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center">
+            <Wallet size={20} />
+          </div>
+
+          <div>
+            <h2 className="font-bold">Accounts Transaction</h2>
+            <p className="text-sm text-gray-500">
+              Receive, payment, expense, salary, collection, loan and transfer
+            </p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 mt-5">
+          <select
+            value={transactionForm.transactionType}
+            onChange={(e) => handleTransactionTypeChange(e.target.value)}
+            className="border rounded-xl p-3"
+          >
+            {transactionTypes.map((item) => (
+              <option key={item.value} value={item.value}>
+                {item.label}
+              </option>
+            ))}
+          </select>
+
+          <input
+            list="categoryList"
+            value={transactionForm.categoryName}
+            onChange={(e) =>
+              setTransactionForm({
+                ...transactionForm,
+                categoryName: e.target.value,
+              })
+            }
+            placeholder="Category: Salary, Conveyance, Bank Loan"
+            className="border rounded-xl p-3"
+          />
+
+          <datalist id="categoryList">
+            {categories.map((cat) => (
+              <option key={cat._id} value={cat.name} />
+            ))}
+          </datalist>
+
+          <input
+            value={transactionForm.title}
+            onChange={(e) =>
+              setTransactionForm({ ...transactionForm, title: e.target.value })
+            }
+            placeholder="Title"
+            className="border rounded-xl p-3"
+          />
+
+          <input
+            type="number"
+            value={transactionForm.amount}
+            onChange={(e) =>
+              setTransactionForm({ ...transactionForm, amount: e.target.value })
+            }
+            placeholder="Amount"
+            className="border rounded-xl p-3"
+          />
+
+          <select
+            value={transactionForm.direction}
+            onChange={(e) =>
+              setTransactionForm({
+                ...transactionForm,
+                direction: e.target.value,
+              })
+            }
+            className="border rounded-xl p-3"
+          >
+            <option value="in">Money Receive</option>
+            <option value="out">Money Payment</option>
+            <option value="transfer">Transfer</option>
+          </select>
+
+          {(transactionForm.direction === "out" ||
+            transactionForm.direction === "transfer") && (
+            <>
+              <select
+                value={transactionForm.paymentFrom}
+                onChange={(e) =>
+                  setTransactionForm({
+                    ...transactionForm,
+                    paymentFrom: e.target.value,
+                    fromBankId: "",
+                  })
+                }
+                className="border rounded-xl p-3"
+              >
+                <option value="cash">Payment From Cash</option>
+                <option value="bank">Payment From Bank</option>
+              </select>
+
+              <select
+                value={transactionForm.fromBankId}
+                onChange={(e) =>
+                  setTransactionForm({
+                    ...transactionForm,
+                    fromBankId: e.target.value,
+                  })
+                }
+                disabled={transactionForm.paymentFrom === "cash"}
+                className="border rounded-xl p-3 disabled:bg-gray-100"
+              >
+                <option value="">Select Payment Bank</option>
+                {banks.map((bank) => (
+                  <option key={bank._id} value={bank._id}>
+                    {bank.bankName} - ৳ {money(bank.currentBalance)}
+                  </option>
+                ))}
+              </select>
+            </>
+          )}
+
+          {(transactionForm.direction === "in" ||
+            transactionForm.direction === "transfer") && (
+            <>
+              <select
+                value={transactionForm.receiveTo}
+                onChange={(e) =>
+                  setTransactionForm({
+                    ...transactionForm,
+                    receiveTo: e.target.value,
+                    toBankId: "",
+                  })
+                }
+                className="border rounded-xl p-3"
+              >
+                <option value="cash">Receive To Cash</option>
+                <option value="bank">Receive To Bank</option>
+              </select>
+
+              <select
+                value={transactionForm.toBankId}
+                onChange={(e) =>
+                  setTransactionForm({
+                    ...transactionForm,
+                    toBankId: e.target.value,
+                  })
+                }
+                disabled={transactionForm.receiveTo === "cash"}
+                className="border rounded-xl p-3 disabled:bg-gray-100"
+              >
+                <option value="">Select Receive Bank</option>
+                {banks.map((bank) => (
+                  <option key={bank._id} value={bank._id}>
+                    {bank.bankName} - ৳ {money(bank.currentBalance)}
+                  </option>
+                ))}
+              </select>
+            </>
+          )}
+
+          <select
+            value={transactionForm.personType}
+            onChange={(e) =>
+              setTransactionForm({
+                ...transactionForm,
+                personType: e.target.value,
+              })
+            }
+            className="border rounded-xl p-3"
+          >
+            <option value="none">No Person</option>
+            <option value="customer">Customer</option>
+            <option value="supplier">Supplier</option>
+            <option value="employee">Employee</option>
+            <option value="lender">Lender</option>
+            <option value="owner">Owner</option>
+            <option value="other">Other</option>
+          </select>
+
+          <input
+            value={transactionForm.personName}
+            onChange={(e) =>
+              setTransactionForm({
+                ...transactionForm,
+                personName: e.target.value,
+              })
+            }
+            placeholder="Customer / Supplier / Employee / Lender Name"
+            className="border rounded-xl p-3"
+          />
+
+          <textarea
+            value={transactionForm.note}
+            onChange={(e) =>
+              setTransactionForm({ ...transactionForm, note: e.target.value })
+            }
+            placeholder="Note"
+            className="md:col-span-2 xl:col-span-3 border rounded-xl p-3"
+          />
+        </div>
+
+        <button
+          onClick={saveTransaction}
+          disabled={saving}
+          className="mt-5 inline-flex items-center gap-2 bg-blue-600 text-white px-5 py-3 rounded-xl hover:bg-blue-700 disabled:opacity-60"
+        >
+          <Plus size={16} />
+          {saving ? "Saving..." : "Save Transaction"}
+        </button>
+      </div>
+
       <div className="bg-white border rounded-[28px] overflow-hidden shadow-sm">
-        <div className="p-5 border-b">
-          <h2 className="font-bold">Loan List</h2>
-          <p className="text-xs text-gray-500">Bank and personal loan summary</p>
+        <div className="p-5 border-b flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+          <div>
+            <h2 className="font-bold">Accounts Statement</h2>
+            <p className="text-xs text-gray-500">
+              Cash, bank, receive, payment and transfer history
+            </p>
+          </div>
+
+          <div className="flex flex-col md:flex-row gap-2">
+            <div className="relative">
+              <Search
+                size={16}
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+              />
+
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search transaction..."
+                className="border rounded-xl pl-9 pr-3 py-2 w-full md:w-72"
+              />
+            </div>
+
+            <button
+              onClick={printStatement}
+              className="border px-4 py-2 rounded-xl flex items-center gap-2 hover:bg-gray-50"
+            >
+              <Printer size={16} />
+              Print
+            </button>
+
+            <button
+              onClick={printStatement}
+              className="border px-4 py-2 rounded-xl flex items-center gap-2 hover:bg-gray-50"
+            >
+              <FileDown size={16} />
+              PDF
+            </button>
+
+            <button
+              onClick={() =>
+                alert("Share option can be connected with WhatsApp/Email later")
+              }
+              className="border px-4 py-2 rounded-xl flex items-center gap-2 hover:bg-gray-50"
+            >
+              <Share2 size={16} />
+              Share
+            </button>
+          </div>
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[780px] text-sm">
+          <table className="w-full min-w-[1000px] text-sm">
             <thead className="bg-gray-50">
               <tr>
                 <th className="p-4 text-left">Date</th>
+                <th className="p-4 text-left">No</th>
                 <th className="p-4 text-left">Type</th>
-                <th className="p-4 text-left">Lender</th>
-                <th className="p-4 text-right">Amount</th>
-                <th className="p-4 text-right">Paid</th>
-                <th className="p-4 text-right">Due</th>
+                <th className="p-4 text-left">Category</th>
+                <th className="p-4 text-left">Title</th>
+                <th className="p-4 text-left">Source</th>
+                <th className="p-4 text-left">Person</th>
+                <th className="p-4 text-right">In</th>
+                <th className="p-4 text-right">Out</th>
                 <th className="p-4 text-left">Note</th>
               </tr>
             </thead>
 
             <tbody>
-              {summary.loans?.length === 0 ? (
+              {filteredTransactions.length === 0 ? (
                 <tr>
-                  <td colSpan="7" className="p-5 text-center text-gray-500">
-                    No loan found
+                  <td colSpan="10" className="p-5 text-center text-gray-500">
+                    No transaction found
                   </td>
                 </tr>
               ) : (
-                summary.loans?.map((loan) => (
-                  <tr key={loan._id} className="border-t hover:bg-blue-50/40">
-                    <td className="p-4">{loan.date}</td>
-                    <td className="p-4 capitalize">{loan.loanType}</td>
-                    <td className="p-4">{loan.lenderName}</td>
-                    <td className="p-4 text-right">৳ {money(loan.amount)}</td>
-                    <td className="p-4 text-right text-green-600">
-                      ৳ {money(loan.paidAmount)}
+                filteredTransactions.map((item) => (
+                  <tr key={item._id} className="border-t hover:bg-blue-50/40">
+                    <td className="p-4">{formatDate(item.transactionDate)}</td>
+                    <td className="p-4">{item.transactionNo || "-"}</td>
+                    <td className="p-4 capitalize">
+                      {String(item.transactionType || "").replaceAll("_", " ")}
                     </td>
-                    <td className="p-4 text-right text-red-500">
-                      ৳ {money(loan.dueAmount)}
+                    <td className="p-4">{item.categoryName || "-"}</td>
+                    <td className="p-4 font-medium">{item.title}</td>
+                    <td className="p-4">{sourceText(item)}</td>
+                    <td className="p-4">{item.personName || "-"}</td>
+                    <td className="p-4 text-right text-green-600 font-semibold">
+                      {item.direction === "in" ? `৳ ${money(item.amount)}` : "-"}
                     </td>
-                    <td className="p-4">{loan.note || "-"}</td>
+                    <td className="p-4 text-right text-red-500 font-semibold">
+                      {item.direction === "out" ? `৳ ${money(item.amount)}` : "-"}
+                    </td>
+                    <td className="p-4">{item.note || "-"}</td>
                   </tr>
                 ))
               )}
@@ -426,15 +804,38 @@ function Card({ title, value, highlight, danger }) {
           : "bg-white"
       }`}
     >
-      <p className={`text-xs md:text-sm ${highlight ? "text-blue-50" : "text-gray-500"}`}>
+      <p
+        className={`text-xs md:text-sm ${
+          highlight ? "text-blue-50" : "text-gray-500"
+        }`}
+      >
         {title}
       </p>
 
-      <h3 className="text-xl md:text-2xl font-bold mt-3">
-        ৳ {money(value)}
-      </h3>
+      <h3 className="text-xl md:text-2xl font-bold mt-3">৳ {money(value)}</h3>
     </div>
   );
+}
+
+function sourceText(item) {
+  if (item.direction === "in") {
+    return item.receiveTo === "bank"
+      ? `Receive to Bank${item.bankName ? ` - ${item.bankName}` : ""}`
+      : "Receive to Cash";
+  }
+
+  if (item.direction === "out") {
+    return item.paymentFrom === "bank"
+      ? `Payment from Bank${item.bankName ? ` - ${item.bankName}` : ""}`
+      : "Payment from Cash";
+  }
+
+  return item.bankName || "Transfer";
+}
+
+function formatDate(value) {
+  if (!value) return "-";
+  return new Date(value).toLocaleDateString("en-GB");
 }
 
 function money(value) {
