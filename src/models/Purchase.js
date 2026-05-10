@@ -17,6 +17,13 @@ const PurchaseItemSchema = new mongoose.Schema(
 
 const PurchaseSchema = new mongoose.Schema(
   {
+    companyId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Company",
+      required: true,
+      index: true,
+    },
+
     purchaseNo: {
       type: String,
       default: "",
@@ -181,6 +188,18 @@ const PurchaseSchema = new mongoose.Schema(
       index: true,
     },
 
+    createdByUserId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+
+    updatedByUserId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+
     createdBy: {
       type: String,
       default: "",
@@ -193,6 +212,12 @@ const PurchaseSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+PurchaseSchema.index({ companyId: 1, date: -1 });
+PurchaseSchema.index({ companyId: 1, supplierName: 1 });
+PurchaseSchema.index({ companyId: 1, purchaseNo: 1 });
+PurchaseSchema.index({ companyId: 1, supplierBillNo: 1 });
+PurchaseSchema.index({ companyId: 1, status: 1 });
 
 PurchaseSchema.pre("save", function (next) {
   if (!this.purchaseNo) {

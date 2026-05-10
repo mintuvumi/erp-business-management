@@ -1,20 +1,35 @@
 import { NextResponse } from "next/server";
 import connectDB from "@/lib/db";
 import Supplier from "@/models/Supplier";
+import { getTenant } from "@/lib/tenant";
 
 export async function GET(req) {
   try {
     await connectDB();
 
+    const tenant = getTenant(req);
+
+    if (!tenant.companyId) {
+      return NextResponse.json(
+        { success: false, message: "Unauthorized" },
+        { status: 401 }
+      );
+    }
+
     const { searchParams } = new URL(req.url);
     const search = searchParams.get("search") || "";
 
-    const query = { status: "active" };
+    const query = {
+      companyId: tenant.companyId,
+      status: "active",
+    };
 
     if (search) {
       query.$or = [
+        { supplierCode: { $regex: search, $options: "i" } },
         { name: { $regex: search, $options: "i" } },
         { phone: { $regex: search, $options: "i" } },
+        { email: { $regex: search, $options: "i" } },
         { companyName: { $regex: search, $options: "i" } },
         { contactPerson: { $regex: search, $options: "i" } },
       ];
@@ -43,6 +58,15 @@ export async function POST(req) {
   try {
     await connectDB();
 
+    const tenant = getTenant(req);
+
+    if (!tenant.companyId) {
+      return NextResponse.json(
+        { success: false, message: "Unauthorized" },
+        { status: 401 }
+      );
+    }
+
     const body = await req.json();
 
     if (!body.name?.trim()) {
@@ -53,6 +77,7 @@ export async function POST(req) {
     }
 
     const exists = await Supplier.findOne({
+      companyId: tenant.companyId,
       name: body.name.trim(),
       phone: body.phone || "",
       status: "active",
@@ -66,12 +91,19 @@ export async function POST(req) {
     }
 
     const supplier = await Supplier.create({
+      companyId: tenant.companyId,
+      createdByUserId: tenant.user.id,
+      createdBy: tenant.user.name || "",
+
       name: body.name.trim(),
       phone: body.phone || "",
       email: body.email || "",
       address: body.address || "",
       companyName: body.companyName || "",
       contactPerson: body.contactPerson || "",
+      tradeLicense: body.tradeLicense || "",
+      taxNumber: body.taxNumber || "",
+
       openingDue: Number(body.openingDue || 0),
       currentDue: Number(body.openingDue || 0),
       note: body.note || "",
@@ -100,6 +132,15 @@ export async function PATCH(req) {
   try {
     await connectDB();
 
+    const tenant = getTenant(req);
+
+    if (!tenant.companyId) {
+      return NextResponse.json(
+        { success: false, message: "Unauthorized" },
+        { status: 401 }
+      );
+    }
+
     const body = await req.json();
 
     if (!body._id) {
@@ -109,7 +150,10 @@ export async function PATCH(req) {
       );
     }
 
-    const supplier = await Supplier.findById(body._id);
+    const supplier = await Supplier.findOne({
+      _id: body._id,
+      companyId: tenant.companyId,
+    });
 
     if (!supplier) {
       return NextResponse.json(
@@ -133,9 +177,17 @@ export async function PATCH(req) {
     if (body.email !== undefined) supplier.email = body.email;
     if (body.address !== undefined) supplier.address = body.address;
     if (body.companyName !== undefined) supplier.companyName = body.companyName;
-    if (body.contactPerson !== undefined) supplier.contactPerson = body.contactPerson;
-    if (body.openingDue !== undefined) supplier.openingDue = Number(body.openingDue || 0);
-    if (body.currentDue !== undefined) supplier.currentDue = Number(body.currentDue || 0);
+    if (body.contactPerson !== undefined) {
+      supplier.contactPerson = body.contactPerson;
+    }
+    if (body.tradeLicense !== undefined) supplier.tradeLicense = body.tradeLicense;
+    if (body.taxNumber !== undefined) supplier.taxNumber = body.taxNumber;
+    if (body.openingDue !== undefined) {
+      supplier.openingDue = Number(body.openingDue || 0);
+    }
+    if (body.currentDue !== undefined) {
+      supplier.currentDue = Number(body.currentDue || 0);
+    }
     if (body.note !== undefined) supplier.note = body.note;
 
     await supplier.save();

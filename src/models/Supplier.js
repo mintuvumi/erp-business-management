@@ -2,6 +2,19 @@ import mongoose from "mongoose";
 
 const SupplierSchema = new mongoose.Schema(
   {
+    companyId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Company",
+      required: true,
+      index: true,
+    },
+
+    supplierCode: {
+      type: String,
+      default: "",
+      index: true,
+    },
+
     name: {
       type: String,
       required: true,
@@ -40,6 +53,18 @@ const SupplierSchema = new mongoose.Schema(
       trim: true,
     },
 
+    tradeLicense: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    taxNumber: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
     openingDue: {
       type: Number,
       default: 0,
@@ -60,7 +85,29 @@ const SupplierSchema = new mongoose.Schema(
       default: 0,
     },
 
+    lastPurchaseDate: {
+      type: String,
+      default: "",
+    },
+
+    photo: {
+      type: String,
+      default: "",
+    },
+
     note: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    createdByUserId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+
+    createdBy: {
       type: String,
       default: "",
       trim: true,
@@ -76,7 +123,29 @@ const SupplierSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-SupplierSchema.index({ name: 1, phone: 1 });
+SupplierSchema.index(
+  {
+    companyId: 1,
+    name: 1,
+    phone: 1,
+  },
+  { unique: true }
+);
+
+SupplierSchema.index({
+  companyId: 1,
+  supplierCode: 1,
+});
+
+SupplierSchema.pre("save", function (next) {
+  if (!this.supplierCode) {
+    this.supplierCode =
+      "SUP-" +
+      Math.random().toString(36).substring(2, 8).toUpperCase();
+  }
+
+  next();
+});
 
 export default mongoose.models.Supplier ||
   mongoose.model("Supplier", SupplierSchema);

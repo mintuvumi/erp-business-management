@@ -4,11 +4,16 @@ import Purchase from "@/models/Purchase";
 import Stock from "@/models/Stock";
 import CashTransaction from "@/models/CashTransaction";
 import BankAccount from "@/models/BankAccount";
+import { getTenant } from "@/lib/tenant";
 
-async function updateBankBalance({ bankId, amount }) {
+async function updateBankBalance({ bankId, amount, companyId }) {
   if (!bankId) return;
 
-  const bank = await BankAccount.findById(bankId);
+  const bank = await BankAccount.findOne({
+    _id: bankId,
+    companyId,
+  });
+
   if (!bank) return;
 
   if (Number(bank.currentBalance || 0) < Number(amount || 0)) {
@@ -19,7 +24,7 @@ async function updateBankBalance({ bankId, amount }) {
   await bank.save();
 }
 
-async function updateStock(items = [], purchaseType = "stock") {
+async function updateStock(items = [], purchaseType = "stock", companyId) {
   if (purchaseType !== "stock") return;
 
   for (const item of items) {
@@ -30,10 +35,14 @@ async function updateStock(items = [], purchaseType = "stock") {
 
     if (!itemName || qty <= 0) continue;
 
-    let stock = await Stock.findOne({ itemName });
+    let stock = await Stock.findOne({
+      companyId,
+      itemName,
+    });
 
     if (!stock) {
       await Stock.create({
+        companyId,
         itemName,
         qty,
         avgCost: price,
@@ -56,6 +65,15 @@ export async function POST(req) {
   try {
     await connectDB();
 
+    const tenant = getTenant(req);
+
+    if (!tenant.companyId) {
+      return NextResponse.json(
+        { success: false, message: "Unauthorized" },
+        { status: 401 }
+      );
+    }
+
     const body = await req.json();
 
     const items =
@@ -76,7 +94,10 @@ export async function POST(req) {
             },
           ];
 
-    const subTotal = items.reduce((sum, item) => sum + Number(item.total || 0), 0);
+    const subTotal = items.reduce(
+      (sum, item) => sum + Number(item.total || 0),
+      0
+    );
 
     const discount = Number(body.discount || 0);
     const transportCost = Number(body.transportCost || 0);
@@ -87,7 +108,11 @@ export async function POST(req) {
     const dueAmount = Math.max(grandTotal - paidAmount, 0);
 
     const paymentType =
-      paidAmount <= 0 ? "credit" : paidAmount >= grandTotal ? "cash" : "partial";
+      paidAmount <= 0
+        ? "credit"
+        : paidAmount >= grandTotal
+        ? "cash"
+        : "partial";
 
     if (!body.supplierName?.trim()) {
       return NextResponse.json(
@@ -114,11 +139,16 @@ export async function POST(req) {
       await updateBankBalance({
         bankId: body.bankId,
         amount: paidAmount,
+        companyId: tenant.companyId,
       });
     }
 
     const purchase = await Purchase.create({
       ...body,
+
+      companyId: tenant.companyId,
+      createdByUserId: tenant.user.id,
+      createdBy: tenant.user.name || "",
 
       supplierBillNo: body.supplierBillNo || "",
       supplierInvoiceNo: body.supplierInvoiceNo || "",
@@ -151,10 +181,11 @@ export async function POST(req) {
       status: "active",
     });
 
-    await updateStock(items, body.purchaseType || "stock");
+    await updateStock(items, body.purchaseType || "stock", tenant.companyId);
 
     if (paidAmount > 0) {
       await CashTransaction.create({
+        companyId: tenant.companyId,
         type: "out",
         category: "cash_purchase",
         title: `Purchase payment - ${purchase.supplierName}`,
@@ -191,6 +222,15 @@ export async function GET(req) {
   try {
     await connectDB();
 
+    const tenant = getTenant(req);
+
+    if (!tenant.companyId) {
+      return NextResponse.json(
+        { success: false, message: "Unauthorized" },
+        { status: 401 }
+      );
+    }
+
     const { searchParams } = new URL(req.url);
 
     const search = searchParams.get("search") || "";
@@ -202,6 +242,7 @@ export async function GET(req) {
     const limit = Number(searchParams.get("limit") || 500);
 
     const query = {
+      companyId: tenant.companyId,
       status: { $ne: "cancelled" },
     };
 
@@ -276,6 +317,15 @@ export async function PATCH(req) {
   try {
     await connectDB();
 
+    const tenant = getTenant(req);
+
+    if (!tenant.companyId) {
+      return NextResponse.json(
+        { success: false, message: "Unauthorized" },
+        { status: 401 }
+      );
+    }
+
     const body = await req.json();
 
     if (!body._id) {
@@ -285,7 +335,10 @@ export async function PATCH(req) {
       );
     }
 
-    const purchase = await Purchase.findById(body._id);
+    const purchase = await Purchase.findOne({
+      _id: body._id,
+      companyId: tenant.companyId,
+    });
 
     if (!purchase) {
       return NextResponse.json(
@@ -296,7 +349,8 @@ export async function PATCH(req) {
 
     if (body.cancel === true) {
       purchase.status = "cancelled";
-      purchase.updatedBy = body.updatedBy || "";
+      purchase.updatedByUserId = tenant.user.id;
+      purchase.updatedBy = tenant.user.name || "";
       await purchase.save();
 
       return NextResponse.json({
@@ -305,14 +359,36 @@ export async function PATCH(req) {
       });
     }
 
-    if (body.supplierBillNo !== undefined) purchase.supplierBillNo = body.supplierBillNo;
-    if (body.supplierInvoiceNo !== undefined) purchase.supplierInvoiceNo = body.supplierInvoiceNo;
-    if (body.supplierName !== undefined) purchase.supplierName = body.supplierName;
-    if (body.supplierPhone !== undefined) purchase.supplierPhone = body.supplierPhone;
-    if (body.supplierAddress !== undefined) purchase.supplierAddress = body.supplierAddress;
-    if (body.note !== undefined) purchase.note = body.note;
-    if (body.date !== undefined) purchase.date = body.date;
-    if (body.updatedBy !== undefined) purchase.updatedBy = body.updatedBy;
+    if (body.supplierBillNo !== undefined) {
+      purchase.supplierBillNo = body.supplierBillNo;
+    }
+
+    if (body.supplierInvoiceNo !== undefined) {
+      purchase.supplierInvoiceNo = body.supplierInvoiceNo;
+    }
+
+    if (body.supplierName !== undefined) {
+      purchase.supplierName = body.supplierName;
+    }
+
+    if (body.supplierPhone !== undefined) {
+      purchase.supplierPhone = body.supplierPhone;
+    }
+
+    if (body.supplierAddress !== undefined) {
+      purchase.supplierAddress = body.supplierAddress;
+    }
+
+    if (body.note !== undefined) {
+      purchase.note = body.note;
+    }
+
+    if (body.date !== undefined) {
+      purchase.date = body.date;
+    }
+
+    purchase.updatedByUserId = tenant.user.id;
+    purchase.updatedBy = tenant.user.name || "";
 
     await purchase.save();
 

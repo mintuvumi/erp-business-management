@@ -2,6 +2,13 @@ import mongoose from "mongoose";
 
 const BankAccountSchema = new mongoose.Schema(
   {
+    companyId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Company",
+      required: true,
+      index: true,
+    },
+
     bankName: {
       type: String,
       required: true,
@@ -15,14 +22,12 @@ const BankAccountSchema = new mongoose.Schema(
       trim: true,
     },
 
-    // OLD SUPPORT
     accountNo: {
       type: String,
       default: "",
       trim: true,
     },
 
-    // NEW STANDARD
     accountNumber: {
       type: String,
       default: "",
@@ -49,6 +54,7 @@ const BankAccountSchema = new mongoose.Schema(
         "digital_wallet",
       ],
       default: "bank",
+      index: true,
     },
 
     openingBalance: {
@@ -62,7 +68,36 @@ const BankAccountSchema = new mongoose.Schema(
       default: 0,
     },
 
+    currency: {
+      type: String,
+      default: "BDT",
+    },
+
     note: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    accountHolderPhone: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    accountHolderEmail: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    createdByUserId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+
+    createdBy: {
       type: String,
       default: "",
       trim: true,
@@ -77,6 +112,24 @@ const BankAccountSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+BankAccountSchema.index(
+  {
+    companyId: 1,
+    accountNumber: 1,
+  },
+  { unique: true }
+);
+
+BankAccountSchema.index({
+  companyId: 1,
+  bankName: 1,
+});
+
+BankAccountSchema.index({
+  companyId: 1,
+  bankType: 1,
+});
 
 export default mongoose.models.BankAccount ||
   mongoose.model("BankAccount", BankAccountSchema);

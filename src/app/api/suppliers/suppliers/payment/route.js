@@ -2,10 +2,20 @@ import { NextResponse } from "next/server";
 import connectDB from "@/lib/db";
 import Purchase from "@/models/Purchase";
 import CashTransaction from "@/models/CashTransaction";
+import { getTenant } from "@/lib/tenant";
 
 export async function POST(req) {
   try {
     await connectDB();
+
+    const tenant = getTenant(req);
+
+    if (!tenant.companyId) {
+      return NextResponse.json(
+        { success: false, message: "Unauthorized" },
+        { status: 401 }
+      );
+    }
 
     const body = await req.json();
     const { purchaseId, amount, date, note } = body;
@@ -26,7 +36,10 @@ export async function POST(req) {
       );
     }
 
-    const purchase = await Purchase.findById(purchaseId);
+    const purchase = await Purchase.findOne({
+      _id: purchaseId,
+      companyId: tenant.companyId,
+    });
 
     if (!purchase) {
       return NextResponse.json(
@@ -71,10 +84,13 @@ export async function POST(req) {
     purchase.paidAmount = newPaidAmount;
     purchase.dueAmount = newDueAmount;
     purchase.paymentType = paymentType;
+    purchase.updatedByUserId = tenant.user.id;
+    purchase.updatedBy = tenant.user.name || "";
 
     await purchase.save();
 
     await CashTransaction.create({
+      companyId: tenant.companyId,
       type: "out",
       category: "supplier_payment",
       title: `Supplier payment to ${purchase.supplierName || "Supplier"}`,
@@ -83,6 +99,8 @@ export async function POST(req) {
       note: note || "",
       refType: "purchase",
       refId: purchase._id.toString(),
+      createdByUserId: tenant.user.id,
+      createdBy: tenant.user.name || "",
     });
 
     return NextResponse.json({

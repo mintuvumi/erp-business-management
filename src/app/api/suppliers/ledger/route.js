@@ -1,10 +1,20 @@
 import { NextResponse } from "next/server";
 import connectDB from "@/lib/db";
 import Purchase from "@/models/Purchase";
+import { getTenant } from "@/lib/tenant";
 
 export async function GET(req) {
   try {
     await connectDB();
+
+    const tenant = getTenant(req);
+
+    if (!tenant.companyId) {
+      return NextResponse.json(
+        { success: false, message: "Unauthorized" },
+        { status: 401 }
+      );
+    }
 
     const { searchParams } = new URL(req.url);
 
@@ -13,6 +23,7 @@ export async function GET(req) {
     const to = searchParams.get("to") || "";
 
     const query = {
+      companyId: tenant.companyId,
       status: { $ne: "cancelled" },
     };
 
@@ -23,6 +34,7 @@ export async function GET(req) {
         { supplierBillNo: { $regex: supplier, $options: "i" } },
         { supplierInvoiceNo: { $regex: supplier, $options: "i" } },
         { itemName: { $regex: supplier, $options: "i" } },
+        { purchaseNo: { $regex: supplier, $options: "i" } },
       ];
     }
 
@@ -40,10 +52,7 @@ export async function GET(req) {
     let balance = 0;
 
     const rows = purchases.map((purchase) => {
-      const total = Number(
-        purchase.grandTotal || purchase.total || 0
-      );
-
+      const total = Number(purchase.grandTotal || purchase.total || 0);
       const paidAmount = Number(purchase.paidAmount || 0);
       const dueAmount = Number(purchase.dueAmount || 0);
 
@@ -95,7 +104,7 @@ export async function GET(req) {
     return NextResponse.json(
       {
         success: false,
-        message: "Failed to load supplier ledger",
+        message: error.message || "Failed to load supplier ledger",
       },
       { status: 500 }
     );
