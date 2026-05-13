@@ -3,15 +3,20 @@ import connectDB from "@/lib/db";
 import AccountTransaction from "@/models/AccountTransaction";
 import AccountCategory from "@/models/AccountCategory";
 import BankAccount from "@/models/BankAccount";
+import { getTenant } from "@/lib/tenant";
 
 function isValidAmount(amount) {
   return Number(amount) > 0;
 }
 
-async function updateBankBalance({ bankId, type, amount }) {
+async function updateBankBalance({ bankId, type, amount, companyId }) {
   if (!bankId) return;
 
-  const bank = await BankAccount.findById(bankId);
+  const bank = await BankAccount.findOne({
+    _id: bankId,
+    companyId,
+  });
+
   if (!bank) return;
 
   const current = Number(bank.currentBalance || 0);
@@ -32,6 +37,15 @@ export async function GET(req) {
   try {
     await connectDB();
 
+    const tenant = getTenant(req);
+
+    if (!tenant.companyId) {
+      return NextResponse.json(
+        { success: false, message: "Unauthorized" },
+        { status: 401 }
+      );
+    }
+
     const { searchParams } = new URL(req.url);
 
     const search = searchParams.get("search") || "";
@@ -45,7 +59,10 @@ export async function GET(req) {
     const toDate = searchParams.get("toDate") || "";
     const limit = Number(searchParams.get("limit") || 100);
 
-    const query = { status: "active" };
+    const query = {
+      companyId: tenant.companyId,
+      status: "active",
+    };
 
     if (transactionType) query.transactionType = transactionType;
     if (direction) query.direction = direction;
@@ -93,7 +110,7 @@ export async function GET(req) {
     return NextResponse.json(
       {
         success: false,
-        message: "Transaction load failed",
+        message: error.message || "Transaction load failed",
       },
       { status: 500 }
     );
@@ -103,6 +120,15 @@ export async function GET(req) {
 export async function POST(req) {
   try {
     await connectDB();
+
+    const tenant = getTenant(req);
+
+    if (!tenant.companyId) {
+      return NextResponse.json(
+        { success: false, message: "Unauthorized" },
+        { status: 401 }
+      );
+    }
 
     const body = await req.json();
 
@@ -130,7 +156,6 @@ export async function POST(req) {
       transactionDate,
       note,
       attachments,
-      createdBy,
     } = body;
 
     if (!transactionType) {
@@ -244,45 +269,60 @@ export async function POST(req) {
     let toBankName = "";
 
     if (fromBankId) {
-      const fromBank = await BankAccount.findById(fromBankId);
+      const fromBank = await BankAccount.findOne({
+        _id: fromBankId,
+        companyId: tenant.companyId,
+      });
+
       if (!fromBank) {
         return NextResponse.json(
           { success: false, message: "Source bank not found" },
           { status: 404 }
         );
       }
+
       fromBankName = fromBank.bankName || "";
     }
 
     if (toBankId) {
-      const toBank = await BankAccount.findById(toBankId);
+      const toBank = await BankAccount.findOne({
+        _id: toBankId,
+        companyId: tenant.companyId,
+      });
+
       if (!toBank) {
         return NextResponse.json(
           { success: false, message: "Destination bank not found" },
           { status: 404 }
         );
       }
+
       toBankName = toBank.bankName || "";
     }
 
     let category = await AccountCategory.findOne({
+      companyId: tenant.companyId,
       name: categoryName.trim(),
       isActive: true,
     });
 
     if (!category) {
       category = await AccountCategory.create({
+        companyId: tenant.companyId,
         name: categoryName.trim(),
         type: categoryType || "others",
         transactionType,
         direction,
         isSystem: false,
         isActive: true,
-        createdBy: createdBy || "",
+        createdByUserId: tenant.user.id,
+        createdBy: tenant.user.name || "",
       });
     }
 
     const transaction = await AccountTransaction.create({
+      companyId: tenant.companyId,
+
       transactionType,
       categoryName: category.name,
       categoryType: category.type || categoryType || "others",
@@ -323,7 +363,8 @@ export async function POST(req) {
       note: note || "",
       attachments: attachments || [],
 
-      createdBy: createdBy || "",
+      createdByUserId: tenant.user.id,
+      createdBy: tenant.user.name || "",
     });
 
     if (direction === "in" && receiveTo === "bank" && toBankId) {
@@ -331,6 +372,7 @@ export async function POST(req) {
         bankId: toBankId,
         type: "add",
         amount,
+        companyId: tenant.companyId,
       });
     }
 
@@ -339,6 +381,7 @@ export async function POST(req) {
         bankId: fromBankId,
         type: "subtract",
         amount,
+        companyId: tenant.companyId,
       });
     }
 
@@ -348,6 +391,7 @@ export async function POST(req) {
           bankId: fromBankId,
           type: "subtract",
           amount,
+          companyId: tenant.companyId,
         });
       }
 
@@ -356,6 +400,7 @@ export async function POST(req) {
           bankId: toBankId,
           type: "add",
           amount,
+          companyId: tenant.companyId,
         });
       }
     }
@@ -382,6 +427,15 @@ export async function PATCH(req) {
   try {
     await connectDB();
 
+    const tenant = getTenant(req);
+
+    if (!tenant.companyId) {
+      return NextResponse.json(
+        { success: false, message: "Unauthorized" },
+        { status: 401 }
+      );
+    }
+
     const body = await req.json();
 
     if (!body._id) {
@@ -391,7 +445,10 @@ export async function PATCH(req) {
       );
     }
 
-    const transaction = await AccountTransaction.findById(body._id);
+    const transaction = await AccountTransaction.findOne({
+      _id: body._id,
+      companyId: tenant.companyId,
+    });
 
     if (!transaction) {
       return NextResponse.json(
@@ -411,6 +468,7 @@ export async function PATCH(req) {
             bankId: transaction.toBankId,
             type: "subtract",
             amount: transaction.amount,
+            companyId: tenant.companyId,
           });
         }
 
@@ -423,6 +481,7 @@ export async function PATCH(req) {
             bankId: transaction.fromBankId,
             type: "add",
             amount: transaction.amount,
+            companyId: tenant.companyId,
           });
         }
 
@@ -432,6 +491,7 @@ export async function PATCH(req) {
               bankId: transaction.fromBankId,
               type: "add",
               amount: transaction.amount,
+              companyId: tenant.companyId,
             });
           }
 
@@ -440,13 +500,15 @@ export async function PATCH(req) {
               bankId: transaction.toBankId,
               type: "subtract",
               amount: transaction.amount,
+              companyId: tenant.companyId,
             });
           }
         }
       }
 
       transaction.status = "cancelled";
-      transaction.updatedBy = body.updatedBy || "";
+      transaction.updatedByUserId = tenant.user.id;
+      transaction.updatedBy = tenant.user.name || "";
       await transaction.save();
 
       return NextResponse.json({
@@ -476,7 +538,9 @@ export async function PATCH(req) {
 
     if (body.note !== undefined) transaction.note = body.note;
     if (body.personName !== undefined) transaction.personName = body.personName;
-    if (body.updatedBy !== undefined) transaction.updatedBy = body.updatedBy;
+
+    transaction.updatedByUserId = tenant.user.id;
+    transaction.updatedBy = tenant.user.name || "";
 
     await transaction.save();
 
@@ -491,7 +555,7 @@ export async function PATCH(req) {
     return NextResponse.json(
       {
         success: false,
-        message: "Transaction update failed",
+        message: error.message || "Transaction update failed",
       },
       { status: 500 }
     );

@@ -12,7 +12,11 @@ export function getTenant(req) {
   }
 
   return {
-    user,
+    user: {
+      ...user,
+      id: user.id,
+      name: user.name || "",
+    },
     companyId: user.companyId,
     role: user.role,
     permissions: user.permissions || {},

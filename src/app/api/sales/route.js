@@ -3,9 +3,10 @@ import Sale from "@/models/Sale";
 import Stock from "@/models/Stock";
 import Customer from "@/models/Customer";
 import CompanySetting from "@/models/CompanySetting";
+import CashTransaction from "@/models/CashTransaction";
 import connectDB from "@/lib/db";
 import generateBillNo from "@/utils/generateBillNo";
-import CashTransaction from "@/models/CashTransaction";
+import { getTenant } from "@/lib/tenant";
 
 function calculateTax({ salesAmount, vatPercent, aitPercent, amountType }) {
   const amount = Number(salesAmount) || 0;
@@ -48,26 +49,32 @@ function getPaymentType({ paidAmount, targetAmount }) {
   return "partial";
 }
 
-async function getCustomerPreviousDue(customerName) {
+async function getCustomerPreviousDue(customerName, companyId) {
   const sales = await Sale.find({
+    companyId,
     customerName: { $regex: `^${customerName}$`, $options: "i" },
     status: { $ne: "cancelled" },
   });
 
-  return sales.reduce((sum, sale) => {
-    return sum + Number(sale.statementDueAmount || sale.dueAmount || 0);
-  }, 0);
+  return sales.reduce(
+    (sum, sale) => sum + Number(sale.statementDueAmount || sale.dueAmount || 0),
+    0
+  );
 }
 
-async function getOrCreateCustomer(body) {
+async function getOrCreateCustomer(body, tenant) {
   const customerName = String(body.customerName || "").trim();
 
   let customer = await Customer.findOne({
+    companyId: tenant.companyId,
     name: { $regex: `^${customerName}$`, $options: "i" },
   });
 
   if (!customer) {
     customer = await Customer.create({
+      companyId: tenant.companyId,
+      createdByUserId: tenant.user.id,
+      createdBy: tenant.user.name || "",
       name: customerName,
       phone: body.customerPhone || "",
       address: body.customerAddress || "",
@@ -89,9 +96,7 @@ async function getOrCreateCustomer(body) {
     changed = true;
   }
 
-  if (changed) {
-    await customer.save();
-  }
+  if (changed) await customer.save();
 
   return customer;
 }
@@ -99,6 +104,15 @@ async function getOrCreateCustomer(body) {
 export async function POST(req) {
   try {
     await connectDB();
+
+    const tenant = getTenant(req);
+
+    if (!tenant.companyId) {
+      return NextResponse.json(
+        { success: false, message: "Unauthorized" },
+        { status: 401 }
+      );
+    }
 
     const body = await req.json();
 
@@ -120,7 +134,10 @@ export async function POST(req) {
     const manualBillNo = String(body.manualBillNo || "").trim();
 
     if (manualBillNo) {
-      const exists = await Sale.findOne({ billNo: manualBillNo });
+      const exists = await Sale.findOne({
+        companyId: tenant.companyId,
+        billNo: manualBillNo,
+      });
 
       if (exists) {
         return NextResponse.json(
@@ -153,7 +170,10 @@ export async function POST(req) {
       }
 
       if (item.sourceType === "stock") {
-        const stock = await Stock.findOne({ itemName: item.name });
+        const stock = await Stock.findOne({
+          companyId: tenant.companyId,
+          itemName: item.name,
+        });
 
         if (!stock) {
           return NextResponse.json(
@@ -210,7 +230,6 @@ export async function POST(req) {
 
     const afterDiscount = Math.max(subTotal - discount, 0);
     const amountType = body.amountType || "exclusive";
-
     const salesAmount =
       Number(body.salesAmount) > 0 ? Number(body.salesAmount) : afterDiscount;
 
@@ -244,10 +263,17 @@ export async function POST(req) {
     const statementDueAmount = Math.max(tax.netReceivable - paidAmount, 0);
     const dueAmount = statementDueAmount;
 
-    const settings = await CompanySetting.findOne();
-    const customer = await getOrCreateCustomer(body);
+    const settings = await CompanySetting.findOne({
+      companyId: tenant.companyId,
+    });
 
-    const previousDue = await getCustomerPreviousDue(customerName);
+    const customer = await getOrCreateCustomer(body, tenant);
+
+    const previousDue = await getCustomerPreviousDue(
+      customerName,
+      tenant.companyId
+    );
+
     const totalDueAfterSale = previousDue + statementDueAmount;
 
     const creditApprovalRequired =
@@ -289,7 +315,10 @@ export async function POST(req) {
 
     for (const item of items) {
       if (item.sourceType === "stock") {
-        const stock = await Stock.findOne({ itemName: item.name });
+        const stock = await Stock.findOne({
+          companyId: tenant.companyId,
+          itemName: item.name,
+        });
 
         if (stock) {
           stock.qty = Number(stock.qty || 0) - Number(item.qty || 0);
@@ -299,7 +328,10 @@ export async function POST(req) {
       }
     }
 
-    const count = await Sale.countDocuments();
+    const count = await Sale.countDocuments({
+      companyId: tenant.companyId,
+    });
+
     const autoBillNo = generateBillNo(count);
     const billNo = manualBillNo || autoBillNo;
 
@@ -311,10 +343,15 @@ export async function POST(req) {
     const sale = await Sale.create({
       ...body,
 
+      companyId: tenant.companyId,
+      createdByUserId: tenant.user.id,
+      createdBy: tenant.user.name || "",
+
       billNo,
       manualBillNo,
       autoBillNo,
 
+      customerId: customer?._id || null,
       customerName,
       customerPhone: body.customerPhone || customer?.phone || "",
       customerAddress: body.customerAddress || customer?.address || "",
@@ -327,7 +364,6 @@ export async function POST(req) {
 
       amountType,
       salesAmount,
-
       baseSalesAmount: tax.baseSalesAmount,
 
       vatPercent,
@@ -353,6 +389,9 @@ export async function POST(req) {
       paidAmount,
       paymentType,
 
+      paymentTo: body.paymentTo || "cash",
+      bankId: body.paymentTo === "bank" ? body.bankId : null,
+
       vatDocumentReceived: Boolean(body.vatDocumentReceived),
       aitDocumentReceived: Boolean(body.aitDocumentReceived),
       vatDocumentNote: body.vatDocumentNote || "",
@@ -367,6 +406,7 @@ export async function POST(req) {
 
     if (paidAmount > 0) {
       await CashTransaction.create({
+        companyId: tenant.companyId,
         type: "in",
         category: paymentType === "cash" ? "cash_sale" : "due_collection",
         title: `Cash received from sale ${billNo}`,
@@ -375,6 +415,8 @@ export async function POST(req) {
         note: body.note || "",
         refType: "sale",
         refId: sale._id.toString(),
+        createdByUserId: tenant.user.id,
+        createdBy: tenant.user.name || "",
       });
     }
 
@@ -404,11 +446,22 @@ export async function POST(req) {
   }
 }
 
-export async function GET() {
+export async function GET(req) {
   try {
     await connectDB();
 
-    const sales = await Sale.find().sort({ createdAt: -1 });
+    const tenant = getTenant(req);
+
+    if (!tenant.companyId) {
+      return NextResponse.json(
+        { success: false, message: "Unauthorized" },
+        { status: 401 }
+      );
+    }
+
+    const sales = await Sale.find({
+      companyId: tenant.companyId,
+    }).sort({ createdAt: -1 });
 
     return NextResponse.json(
       {

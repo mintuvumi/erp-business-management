@@ -6,15 +6,17 @@ export function generateToken(user) {
   return jwt.sign(
     {
       id: user._id,
+      userId: user.userId || "",
+
+      name: user.name || "",
+      email: user.email || "",
+      phone: user.phone || "",
 
       companyId: user.companyId,
-
       companyCode: user.companyCode || "",
 
       role: user.role,
-
       permissions: user.permissions || {},
-
       branch: user.branch || "Main Branch",
     },
     SECRET,
@@ -27,7 +29,7 @@ export function generateToken(user) {
 export function verifyToken(token) {
   try {
     return jwt.verify(token, SECRET);
-  } catch (error) {
+  } catch {
     return null;
   }
 }
@@ -48,7 +50,6 @@ export function getUserFromRequest(req) {
 
 export function hasPermission(user, permissionKey) {
   if (!user) return false;
-
   if (user.role === "owner") return true;
 
   return Boolean(user.permissions?.[permissionKey]);

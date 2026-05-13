@@ -5,6 +5,12 @@ const SaleItemSchema = new mongoose.Schema(
     name: { type: String, required: true, trim: true },
     description: { type: String, default: "", trim: true },
 
+    productId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Stock",
+      default: null,
+    },
+
     qty: { type: Number, required: true, default: 1 },
     unit: {
       type: String,
@@ -31,12 +37,18 @@ const SaleItemSchema = new mongoose.Schema(
 
 const SaleSchema = new mongoose.Schema(
   {
-    // Invoice info
+    companyId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Company",
+      required: true,
+      index: true,
+    },
+
     billNo: {
       type: String,
       required: true,
-      unique: true,
       trim: true,
+      index: true,
     },
 
     manualBillNo: {
@@ -54,13 +66,21 @@ const SaleSchema = new mongoose.Schema(
     date: {
       type: String,
       required: true,
+      index: true,
     },
 
-    // Customer info
+    customerId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Customer",
+      default: null,
+      index: true,
+    },
+
     customerName: {
       type: String,
       required: true,
       trim: true,
+      index: true,
     },
 
     customerPhone: {
@@ -75,14 +95,12 @@ const SaleSchema = new mongoose.Schema(
       trim: true,
     },
 
-    // Product items
     items: {
       type: [SaleItemSchema],
       required: true,
       default: [],
     },
 
-    // Sales calculation
     subTotal: { type: Number, default: 0 },
     discount: { type: Number, default: 0 },
     afterDiscount: { type: Number, default: 0 },
@@ -93,54 +111,50 @@ const SaleSchema = new mongoose.Schema(
       default: "exclusive",
     },
 
-    // Main sales amount after discount
     salesAmount: { type: Number, default: 0 },
     baseSalesAmount: { type: Number, default: 0 },
 
-    // VAT
     vatPercent: { type: Number, default: 0 },
     vatAmount: { type: Number, default: 0 },
 
-    // AIT
     aitPercent: { type: Number, default: 0 },
     aitAmount: { type: Number, default: 0 },
 
     taxTotal: { type: Number, default: 0 },
 
-    /*
-      Invoice / Bill Logic:
-      Invoice Total = Sales Amount + VAT
-      AIT invoice total-e add hobe na
-    */
     invoiceTotal: { type: Number, default: 0 },
     invoiceDueAmount: { type: Number, default: 0 },
 
-    /*
-      Customer Statement Logic:
-      Net Receivable = Sales Amount - VAT - AIT
-      Statement Due = Net Receivable - Paid
-    */
     netReceivable: { type: Number, default: 0 },
     statementDueAmount: { type: Number, default: 0 },
 
-    // Dashboard Total Sales unchanged
     netSalesAmount: { type: Number, default: 0 },
 
-    // Old compatible fields
     grossAmount: { type: Number, default: 0 },
     netTotal: { type: Number, default: 0 },
     dueAmount: { type: Number, default: 0 },
 
-    // Payment
     paidAmount: { type: Number, default: 0 },
 
     paymentType: {
       type: String,
       enum: ["cash", "credit", "partial"],
       default: "credit",
+      index: true,
     },
 
-    // VAT / AIT document tracking
+    paymentTo: {
+      type: String,
+      enum: ["cash", "bank"],
+      default: "cash",
+    },
+
+    bankId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "BankAccount",
+      default: null,
+    },
+
     vatDocumentReceived: { type: Boolean, default: false },
     aitDocumentReceived: { type: Boolean, default: false },
 
@@ -156,7 +170,6 @@ const SaleSchema = new mongoose.Schema(
       trim: true,
     },
 
-    // Profit
     totalCost: { type: Number, default: 0 },
     totalProfit: { type: Number, default: 0 },
 
@@ -166,17 +179,44 @@ const SaleSchema = new mongoose.Schema(
       trim: true,
     },
 
+    createdByUserId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+
+    updatedByUserId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+
+    createdBy: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    updatedBy: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
     status: {
       type: String,
       enum: ["completed", "draft", "cancelled"],
       default: "completed",
+      index: true,
     },
   },
   { timestamps: true }
 );
 
-SaleSchema.index({ customerName: 1 });
-SaleSchema.index({ date: 1 });
-SaleSchema.index({ billNo: 1 });
+SaleSchema.index({ companyId: 1, customerName: 1 });
+SaleSchema.index({ companyId: 1, date: -1 });
+SaleSchema.index({ companyId: 1, billNo: 1 }, { unique: true });
+SaleSchema.index({ companyId: 1, status: 1 });
+SaleSchema.index({ companyId: 1, paymentType: 1 });
 
 export default mongoose.models.Sale || mongoose.model("Sale", SaleSchema);

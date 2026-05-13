@@ -8,44 +8,136 @@ import BankAccount from "@/models/BankAccount";
 import Loan from "@/models/Loan";
 import AccountTransaction from "@/models/AccountTransaction";
 
-export async function GET() {
+import { getTenant } from "@/lib/tenant";
+
+export async function GET(req) {
   try {
     await connectDB();
 
-    const sales = await Sale.find().lean();
-    const purchases = await Purchase.find().lean();
-    const stocks = await Stock.find().lean();
-    const banks = await BankAccount.find().lean();
-    const loans = await Loan.find().lean();
+    const tenant = getTenant(req);
 
-    const transactions = await AccountTransaction.find({
+    if (!tenant.companyId) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Unauthorized",
+        },
+        { status: 401 }
+      );
+    }
+
+    const companyFilter = {
+      companyId: tenant.companyId,
+    };
+
+    const sales = await Sale.find({
+      ...companyFilter,
+      status: { $ne: "cancelled" },
+    }).lean();
+
+    const purchases = await Purchase.find({
+      ...companyFilter,
+      status: { $ne: "cancelled" },
+    }).lean();
+
+    const stocks = await Stock.find({
+      ...companyFilter,
       status: "active",
     }).lean();
+
+    const banks = await BankAccount.find({
+      ...companyFilter,
+      status: "active",
+    }).lean();
+
+    const loans = await Loan.find({
+      ...companyFilter,
+      status: { $ne: "cancelled" },
+    }).lean();
+
+    const transactions = await AccountTransaction.find({
+      ...companyFilter,
+      status: "active",
+    }).lean();
+
+    // =========================
+    // SALES
+    // =========================
+
+    const totalSales = sales.reduce(
+      (sum, sale) =>
+        sum + Number(sale.invoiceTotal || sale.netTotal || 0),
+      0
+    );
+
+    const totalSalesPaid = sales.reduce(
+      (sum, sale) => sum + Number(sale.paidAmount || 0),
+      0
+    );
+
+    const totalSalesDue = sales.reduce(
+      (sum, sale) =>
+        sum +
+        Number(
+          sale.statementDueAmount ||
+            sale.invoiceDueAmount ||
+            sale.dueAmount ||
+            0
+        ),
+      0
+    );
+
+    const totalProfit = sales.reduce(
+      (sum, sale) => sum + Number(sale.totalProfit || 0),
+      0
+    );
+
+    // =========================
+    // PURCHASE
+    // =========================
+
+    const totalPurchase = purchases.reduce(
+      (sum, purchase) =>
+        sum +
+        Number(
+          purchase.grandTotal ||
+            purchase.total ||
+            0
+        ),
+      0
+    );
+
+    const totalPurchasePaid = purchases.reduce(
+      (sum, purchase) =>
+        sum + Number(purchase.paidAmount || 0),
+      0
+    );
+
+    const totalPurchaseDue = purchases.reduce(
+      (sum, purchase) =>
+        sum + Number(purchase.dueAmount || 0),
+      0
+    );
 
     // =========================
     // RECEIVABLE
     // =========================
 
-    const accountReceivable = sales.reduce(
-      (sum, sale) => sum + Number(sale.dueAmount || 0),
-      0
-    );
+    const accountReceivable = totalSalesDue;
 
     // =========================
     // PAYABLE
     // =========================
 
-    const accountPayable = purchases.reduce(
-      (sum, purchase) => sum + Number(purchase.dueAmount || 0),
-      0
-    );
+    const accountPayable = totalPurchaseDue;
 
     // =========================
     // STOCK VALUE
     // =========================
 
     const stockValue = stocks.reduce(
-      (sum, stock) => sum + Number(stock.totalValue || 0),
+      (sum, stock) =>
+        sum + Number(stock.totalValue || 0),
       0
     );
 
@@ -56,11 +148,13 @@ export async function GET() {
     const cashReceive = transactions
       .filter(
         (t) =>
-          t.status === "active" &&
           t.direction === "in" &&
           t.receiveTo === "cash"
       )
-      .reduce((sum, t) => sum + Number(t.amount || 0), 0);
+      .reduce(
+        (sum, t) => sum + Number(t.amount || 0),
+        0
+      );
 
     // =========================
     // CASH PAYMENT
@@ -69,11 +163,13 @@ export async function GET() {
     const cashPayment = transactions
       .filter(
         (t) =>
-          t.status === "active" &&
           t.direction === "out" &&
           t.paymentFrom === "cash"
       )
-      .reduce((sum, t) => sum + Number(t.amount || 0), 0);
+      .reduce(
+        (sum, t) => sum + Number(t.amount || 0),
+        0
+      );
 
     // =========================
     // CASH TRANSFER IN
@@ -82,12 +178,14 @@ export async function GET() {
     const transferCashIn = transactions
       .filter(
         (t) =>
-          t.status === "active" &&
           t.direction === "transfer" &&
           t.paymentFrom === "bank" &&
           t.receiveTo === "cash"
       )
-      .reduce((sum, t) => sum + Number(t.amount || 0), 0);
+      .reduce(
+        (sum, t) => sum + Number(t.amount || 0),
+        0
+      );
 
     // =========================
     // CASH TRANSFER OUT
@@ -96,12 +194,14 @@ export async function GET() {
     const transferCashOut = transactions
       .filter(
         (t) =>
-          t.status === "active" &&
           t.direction === "transfer" &&
           t.paymentFrom === "cash" &&
           t.receiveTo === "bank"
       )
-      .reduce((sum, t) => sum + Number(t.amount || 0), 0);
+      .reduce(
+        (sum, t) => sum + Number(t.amount || 0),
+        0
+      );
 
     // =========================
     // FINAL CASH
@@ -117,12 +217,9 @@ export async function GET() {
     // BANK BALANCE
     // =========================
 
-    // IMPORTANT:
-    // currentBalance already auto updated
-    // from transactions route
-
     const bankBalance = banks.reduce(
-      (sum, bank) => sum + Number(bank.currentBalance || 0),
+      (sum, bank) =>
+        sum + Number(bank.currentBalance || 0),
       0
     );
 
@@ -131,25 +228,32 @@ export async function GET() {
     // =========================
 
     const totalLoan = loans.reduce(
-      (sum, loan) => sum + Number(loan.dueAmount || 0),
+      (sum, loan) =>
+        sum + Number(loan.dueAmount || 0),
       0
     );
 
     const loanReceive = transactions
       .filter(
         (t) =>
-          t.status === "active" &&
-          t.transactionType === "loan_receive"
+          t.transactionType ===
+          "loan_receive"
       )
-      .reduce((sum, t) => sum + Number(t.amount || 0), 0);
+      .reduce(
+        (sum, t) => sum + Number(t.amount || 0),
+        0
+      );
 
     const loanPayment = transactions
       .filter(
         (t) =>
-          t.status === "active" &&
-          t.transactionType === "loan_payment"
+          t.transactionType ===
+          "loan_payment"
       )
-      .reduce((sum, t) => sum + Number(t.amount || 0), 0);
+      .reduce(
+        (sum, t) => sum + Number(t.amount || 0),
+        0
+      );
 
     const finalLoanDue =
       totalLoan +
@@ -163,10 +267,13 @@ export async function GET() {
     const ownerCapital = transactions
       .filter(
         (t) =>
-          t.status === "active" &&
-          t.transactionType === "owner_capital"
+          t.transactionType ===
+          "owner_capital"
       )
-      .reduce((sum, t) => sum + Number(t.amount || 0), 0);
+      .reduce(
+        (sum, t) => sum + Number(t.amount || 0),
+        0
+      );
 
     // =========================
     // OTHER INCOME
@@ -175,14 +282,16 @@ export async function GET() {
     const otherIncome = transactions
       .filter(
         (t) =>
-          t.status === "active" &&
           t.direction === "in" &&
           ![
             "loan_receive",
             "owner_capital",
           ].includes(t.transactionType)
       )
-      .reduce((sum, t) => sum + Number(t.amount || 0), 0);
+      .reduce(
+        (sum, t) => sum + Number(t.amount || 0),
+        0
+      );
 
     // =========================
     // TOTAL EXPENSE
@@ -191,13 +300,15 @@ export async function GET() {
     const totalExpense = transactions
       .filter(
         (t) =>
-          t.status === "active" &&
           t.direction === "out" &&
           ![
             "loan_payment",
           ].includes(t.transactionType)
       )
-      .reduce((sum, t) => sum + Number(t.amount || 0), 0);
+      .reduce(
+        (sum, t) => sum + Number(t.amount || 0),
+        0
+      );
 
     // =========================
     // ASSET
@@ -222,13 +333,22 @@ export async function GET() {
     // =========================
 
     const netPosition =
-      totalAsset -
-      totalLiability;
+      totalAsset - totalLiability;
 
     return NextResponse.json({
       success: true,
 
       data: {
+        totalSales,
+        totalSalesPaid,
+        totalSalesDue,
+
+        totalPurchase,
+        totalPurchasePaid,
+        totalPurchaseDue,
+
+        totalProfit,
+
         accountReceivable,
         accountPayable,
 
@@ -248,13 +368,16 @@ export async function GET() {
 
         netPosition,
 
+        totalCustomer: sales.length,
+        totalSupplier: purchases.length,
+
         loans,
         banks,
       },
     });
   } catch (error) {
     console.error(
-      "ACCOUNTS_SUMMARY_ERROR:",
+      "DASHBOARD_SUMMARY_ERROR:",
       error
     );
 
@@ -262,7 +385,8 @@ export async function GET() {
       {
         success: false,
         message:
-          "Failed to load accounts summary",
+          error.message ||
+          "Failed to load dashboard summary",
       },
       {
         status: 500,

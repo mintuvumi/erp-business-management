@@ -2,9 +2,15 @@ import mongoose from "mongoose";
 
 const AccountTransactionSchema = new mongoose.Schema(
   {
+    companyId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Company",
+      required: true,
+      index: true,
+    },
+
     transactionNo: {
       type: String,
-      unique: true,
       index: true,
     },
 
@@ -70,7 +76,7 @@ const AccountTransactionSchema = new mongoose.Schema(
 
     fromBankId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "Bank",
+      ref: "BankAccount",
       default: null,
     },
 
@@ -82,7 +88,7 @@ const AccountTransactionSchema = new mongoose.Schema(
 
     toBankId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "Bank",
+      ref: "BankAccount",
       default: null,
     },
 
@@ -178,6 +184,18 @@ const AccountTransactionSchema = new mongoose.Schema(
       index: true,
     },
 
+    createdByUserId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+
+    updatedByUserId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+
     createdBy: {
       type: String,
       default: "",
@@ -191,6 +209,12 @@ const AccountTransactionSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+AccountTransactionSchema.index({ companyId: 1, transactionNo: 1 }, { unique: true });
+AccountTransactionSchema.index({ companyId: 1, transactionDate: -1 });
+AccountTransactionSchema.index({ companyId: 1, transactionType: 1 });
+AccountTransactionSchema.index({ companyId: 1, direction: 1 });
+AccountTransactionSchema.index({ companyId: 1, status: 1 });
+
 AccountTransactionSchema.pre("save", async function (next) {
   if (!this.transactionNo) {
     const date = new Date();
@@ -199,6 +223,7 @@ AccountTransactionSchema.pre("save", async function (next) {
     const d = String(date.getDate()).padStart(2, "0");
 
     const count = await mongoose.models.AccountTransaction.countDocuments({
+      companyId: this.companyId,
       createdAt: {
         $gte: new Date(`${y}-${m}-${d}T00:00:00.000Z`),
         $lte: new Date(`${y}-${m}-${d}T23:59:59.999Z`),

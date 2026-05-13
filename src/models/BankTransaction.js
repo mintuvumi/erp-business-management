@@ -2,6 +2,19 @@ import mongoose from "mongoose";
 
 const BankTransactionSchema = new mongoose.Schema(
   {
+    companyId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Company",
+      required: true,
+      index: true,
+    },
+
+    transactionNo: {
+      type: String,
+      default: "",
+      index: true,
+    },
+
     bankId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "BankAccount",
@@ -56,6 +69,49 @@ const BankTransactionSchema = new mongoose.Schema(
       min: 0,
     },
 
+    paymentMethod: {
+      type: String,
+      enum: [
+        "cash",
+        "bank",
+        "mobile_banking",
+        "cheque",
+        "online",
+      ],
+      default: "bank",
+    },
+
+    chequeNo: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    transactionId: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    personName: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    personType: {
+      type: String,
+      enum: [
+        "customer",
+        "supplier",
+        "employee",
+        "owner",
+        "other",
+        "none",
+      ],
+      default: "none",
+    },
+
     date: {
       type: String,
       default: () => new Date().toISOString().slice(0, 10),
@@ -79,6 +135,28 @@ const BankTransactionSchema = new mongoose.Schema(
       default: "",
     },
 
+    createdByUserId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+
+    updatedByUserId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+
+    createdBy: {
+      type: String,
+      default: "",
+    },
+
+    updatedBy: {
+      type: String,
+      default: "",
+    },
+
     status: {
       type: String,
       enum: ["active", "cancelled"],
@@ -88,6 +166,47 @@ const BankTransactionSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+BankTransactionSchema.index({
+  companyId: 1,
+  bankId: 1,
+});
+
+BankTransactionSchema.index({
+  companyId: 1,
+  date: -1,
+});
+
+BankTransactionSchema.index({
+  companyId: 1,
+  category: 1,
+});
+
+BankTransactionSchema.pre("save", async function (next) {
+  if (!this.transactionNo) {
+    const date = new Date();
+
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, "0");
+    const d = String(date.getDate()).padStart(2, "0");
+
+    const count =
+      await mongoose.models.BankTransaction.countDocuments({
+        companyId: this.companyId,
+
+        createdAt: {
+          $gte: new Date(`${y}-${m}-${d}T00:00:00.000Z`),
+          $lte: new Date(`${y}-${m}-${d}T23:59:59.999Z`),
+        },
+      });
+
+    this.transactionNo =
+      `BT-${y}${m}${d}-` +
+      String(count + 1).padStart(5, "0");
+  }
+
+  next();
+});
 
 export default mongoose.models.BankTransaction ||
   mongoose.model("BankTransaction", BankTransactionSchema);

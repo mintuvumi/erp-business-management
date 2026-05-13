@@ -3,10 +3,20 @@ import connectDB from "@/lib/db";
 import BankAccount from "@/models/BankAccount";
 import BankTransaction from "@/models/BankTransaction";
 import CashTransaction from "@/models/CashTransaction";
+import { getTenant } from "@/lib/tenant";
 
 export async function POST(req) {
   try {
     await connectDB();
+
+    const tenant = getTenant(req);
+
+    if (!tenant.companyId) {
+      return NextResponse.json(
+        { success: false, message: "Unauthorized" },
+        { status: 401 }
+      );
+    }
 
     const body = await req.json();
 
@@ -21,10 +31,17 @@ export async function POST(req) {
       }
 
       const bank = await BankAccount.create({
+        companyId: tenant.companyId,
+        createdByUserId: tenant.user.id,
+        createdBy: tenant.user.name || "",
+
         bankName: body.bankName.trim(),
         accountName: body.accountName || "",
         accountNo: body.accountNo || body.accountNumber || "",
         accountNumber: body.accountNumber || body.accountNo || "",
+        branchName: body.branchName || "",
+        routingNumber: body.routingNumber || "",
+        bankType: body.bankType || "bank",
         openingBalance,
         currentBalance: openingBalance,
         note: body.note || "",
@@ -76,7 +93,10 @@ export async function POST(req) {
         );
       }
 
-      const bank = await BankAccount.findById(body.bankId);
+      const bank = await BankAccount.findOne({
+        _id: body.bankId,
+        companyId: tenant.companyId,
+      });
 
       if (!bank) {
         return NextResponse.json(
@@ -100,6 +120,10 @@ export async function POST(req) {
       await bank.save();
 
       const transaction = await BankTransaction.create({
+        companyId: tenant.companyId,
+        createdByUserId: tenant.user.id,
+        createdBy: tenant.user.name || "",
+
         bankId: bank._id,
         type,
         category: body.category,
@@ -114,6 +138,10 @@ export async function POST(req) {
 
       if (body.category === "cash_deposit") {
         await CashTransaction.create({
+          companyId: tenant.companyId,
+          createdByUserId: tenant.user.id,
+          createdBy: tenant.user.name || "",
+
           type: "out",
           category: "bank_deposit",
           title: `Cash deposit to ${bank.bankName}`,
@@ -127,6 +155,10 @@ export async function POST(req) {
 
       if (body.category === "cash_withdraw") {
         await CashTransaction.create({
+          companyId: tenant.companyId,
+          createdByUserId: tenant.user.id,
+          createdBy: tenant.user.name || "",
+
           type: "in",
           category: "bank_withdraw",
           title: `Cash withdraw from ${bank.bankName}`,
@@ -169,6 +201,15 @@ export async function GET(req) {
   try {
     await connectDB();
 
+    const tenant = getTenant(req);
+
+    if (!tenant.companyId) {
+      return NextResponse.json(
+        { success: false, message: "Unauthorized" },
+        { status: 401 }
+      );
+    }
+
     const { searchParams } = new URL(req.url);
 
     const search = searchParams.get("search") || "";
@@ -178,12 +219,14 @@ export async function GET(req) {
     const bankId = searchParams.get("bankId") || "";
 
     const banks = await BankAccount.find({
+      companyId: tenant.companyId,
       status: { $ne: "inactive" },
     })
       .sort({ createdAt: -1 })
       .lean();
 
     const query = {
+      companyId: tenant.companyId,
       status: { $ne: "cancelled" },
     };
 
@@ -239,7 +282,7 @@ export async function GET(req) {
     return NextResponse.json(
       {
         success: false,
-        message: "Failed to load bank data",
+        message: error.message || "Failed to load bank data",
       },
       { status: 500 }
     );
@@ -250,6 +293,15 @@ export async function PATCH(req) {
   try {
     await connectDB();
 
+    const tenant = getTenant(req);
+
+    if (!tenant.companyId) {
+      return NextResponse.json(
+        { success: false, message: "Unauthorized" },
+        { status: 401 }
+      );
+    }
+
     const body = await req.json();
 
     if (!body._id) {
@@ -259,7 +311,10 @@ export async function PATCH(req) {
       );
     }
 
-    const transaction = await BankTransaction.findById(body._id);
+    const transaction = await BankTransaction.findOne({
+      _id: body._id,
+      companyId: tenant.companyId,
+    });
 
     if (!transaction) {
       return NextResponse.json(
@@ -268,7 +323,10 @@ export async function PATCH(req) {
       );
     }
 
-    const bank = await BankAccount.findById(transaction.bankId);
+    const bank = await BankAccount.findOne({
+      _id: transaction.bankId,
+      companyId: tenant.companyId,
+    });
 
     if (!bank) {
       return NextResponse.json(
@@ -292,6 +350,8 @@ export async function PATCH(req) {
         await bank.save();
 
         transaction.status = "cancelled";
+        transaction.updatedByUserId = tenant.user.id;
+        transaction.updatedBy = tenant.user.name || "";
         await transaction.save();
       }
 
@@ -340,6 +400,8 @@ export async function PATCH(req) {
     transaction.amount = newAmount;
     transaction.date = body.date || transaction.date;
     transaction.note = body.note ?? transaction.note;
+    transaction.updatedByUserId = tenant.user.id;
+    transaction.updatedBy = tenant.user.name || "";
 
     await transaction.save();
 

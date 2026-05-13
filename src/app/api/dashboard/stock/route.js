@@ -3,12 +3,15 @@ import connectDB from "@/lib/db";
 import Stock from "@/models/Stock";
 import Purchase from "@/models/Purchase";
 import Sale from "@/models/Sale";
+import { getTenant } from "@/lib/tenant";
 
 function isToday(date) {
   return date === new Date().toISOString().slice(0, 10);
 }
 
 function isThisMonth(dateString) {
+  if (!dateString) return false;
+
   const now = new Date();
   const date = new Date(dateString);
 
@@ -18,13 +21,33 @@ function isThisMonth(dateString) {
   );
 }
 
-export async function GET() {
+export async function GET(req) {
   try {
     await connectDB();
 
-    const stocks = await Stock.find().sort({ itemName: 1 });
-    const purchases = await Purchase.find();
-    const sales = await Sale.find().sort({ createdAt: -1 });
+    const tenant = getTenant(req);
+
+    if (!tenant.companyId) {
+      return NextResponse.json(
+        { success: false, message: "Unauthorized" },
+        { status: 401 }
+      );
+    }
+
+    const stocks = await Stock.find({
+      companyId: tenant.companyId,
+      status: "active",
+    }).sort({ itemName: 1 });
+
+    const purchases = await Purchase.find({
+      companyId: tenant.companyId,
+      status: { $ne: "cancelled" },
+    });
+
+    const sales = await Sale.find({
+      companyId: tenant.companyId,
+      status: { $ne: "cancelled" },
+    }).sort({ createdAt: -1 });
 
     const stockPurchases = purchases.filter(
       (p) => p && p.purchaseType === "stock"
@@ -89,17 +112,18 @@ export async function GET() {
     });
 
     const totalPcs = stocks.reduce(
-      (sum, s) => sum + Number(s.qty || 0),
+      (sum, stock) => sum + Number(stock.qty || 0),
       0
     );
 
     const totalValue = stocks.reduce(
-      (sum, s) => sum + Number(s.totalValue || 0),
+      (sum, stock) => sum + Number(stock.totalValue || 0),
       0
     );
 
     const lowStock = enrichedStocks.filter(
-      (s) => Number(s.qty || 0) <= Number(s.lowStockLimit || 5)
+      (stock) =>
+        Number(stock.qty || 0) <= Number(stock.lowStockLimit || 5)
     );
 
     return NextResponse.json({
@@ -125,7 +149,10 @@ export async function GET() {
     console.error("STOCK_DASHBOARD_ERROR:", error);
 
     return NextResponse.json(
-      { success: false, message: "Failed to load stock dashboard" },
+      {
+        success: false,
+        message: error.message || "Failed to load stock dashboard",
+      },
       { status: 500 }
     );
   }

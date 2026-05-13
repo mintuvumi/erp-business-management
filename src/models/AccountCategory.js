@@ -2,6 +2,13 @@ import mongoose from "mongoose";
 
 const AccountCategorySchema = new mongoose.Schema(
   {
+    companyId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Company",
+      required: true,
+      index: true,
+    },
+
     name: {
       type: String,
       required: true,
@@ -86,6 +93,18 @@ const AccountCategorySchema = new mongoose.Schema(
       default: "",
     },
 
+    createdByUserId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+
+    updatedByUserId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+
     createdBy: {
       type: String,
       default: "",
@@ -106,8 +125,8 @@ AccountCategorySchema.pre("validate", function (next) {
       .toLowerCase()
       .trim()
       .replace(/\s+/g, "-")
-      .replace(/[^\w\-]+/g, "")
-      .replace(/\-\-+/g, "-")
+      .replace(/[^\w-]+/g, "")
+      .replace(/--+/g, "-")
       .replace(/^-+/, "")
       .replace(/-+$/, "");
   }
@@ -116,9 +135,12 @@ AccountCategorySchema.pre("validate", function (next) {
 });
 
 AccountCategorySchema.index(
-  { slug: 1, type: 1 },
+  { companyId: 1, slug: 1, type: 1 },
   { unique: true, partialFilterExpression: { isActive: true } }
 );
+
+AccountCategorySchema.index({ companyId: 1, transactionType: 1 });
+AccountCategorySchema.index({ companyId: 1, direction: 1 });
 
 export default mongoose.models.AccountCategory ||
   mongoose.model("AccountCategory", AccountCategorySchema);
