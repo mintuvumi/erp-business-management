@@ -1,10 +1,13 @@
+"use client";
+
 import React, { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { toast } from "react-toastify";
 import axios from "axios";
 
 const Login = () => {
-  const navigate = useNavigate();
+  const router = useRouter();
 
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
@@ -18,35 +21,32 @@ const Login = () => {
     try {
       setLoading(true);
 
-      const payload = identifier.includes("@")
-        ? { email: identifier, password }
-        : { phone: identifier, password };
-
-      const res = await axios.post(
-        "http://localhost:5000/api/auth/login",
-        payload
-      );
+      const res = await axios.post("/api/auth/login", {
+        identifier,
+        password,
+      });
 
       const data = res.data;
 
       console.log("LOGIN RESPONSE:", data);
 
-      // ✅ FIXED CONDITION
       if (data.success) {
         toast.success("🎉 Login Successful!");
 
-        localStorage.setItem("user", JSON.stringify(data.user));
-        localStorage.setItem("token", data.token);
+        localStorage.setItem("user", JSON.stringify(data.data || data.user));
+        localStorage.setItem("token", data.token || "");
 
-        // ✅ SAFE REDIRECT
-        navigate("/dashboard");
+        router.push("/dashboard");
       } else {
-        toast.error(data.msg || "Login failed");
+        toast.error(data.message || data.msg || "Login failed");
       }
-
     } catch (err) {
       console.log("LOGIN ERROR:", err);
-      toast.error(err.response?.data?.msg || "❌ Server error");
+      toast.error(
+        err.response?.data?.message ||
+          err.response?.data?.msg ||
+          "❌ Server error"
+      );
     } finally {
       setLoading(false);
     }
@@ -54,9 +54,7 @@ const Login = () => {
 
   return (
     <div className="h-screen flex items-center justify-center bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500">
-
       <div className="w-[380px] p-8 rounded-3xl bg-white/20 backdrop-blur-xl">
-
         <h2 className="text-3xl font-bold text-white text-center mb-6">
           Login
         </h2>
@@ -86,11 +84,10 @@ const Login = () => {
 
         <p className="text-center text-white mt-5 text-sm">
           Don’t have account?{" "}
-          <Link to="/register" className="underline">
+          <Link href="/register" className="underline">
             Register
           </Link>
         </p>
-
       </div>
     </div>
   );

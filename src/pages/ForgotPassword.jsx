@@ -1,11 +1,12 @@
+"use client";
+
 import React, { useState } from "react";
-import { useAuth } from "../auth/AuthContext";
 import { toast } from "react-toastify";
-import { useNavigate } from "react-router-dom";
+import { useRouter } from "next/navigation";
+import axios from "axios";
 
 const ForgotPassword = () => {
-  const { forgotPassword } = useAuth();
-  const navigate = useNavigate();
+  const router = useRouter();
 
   const [identifier, setIdentifier] = useState("");
   const [loading, setLoading] = useState(false);
@@ -18,19 +19,27 @@ const ForgotPassword = () => {
     try {
       setLoading(true);
 
-      const res = await forgotPassword(identifier);
+      const res = await axios.post("/api/auth/forgot-password", {
+        identifier,
+      });
 
-      if (res.success) {
+      const data = res.data;
+
+      if (data.success) {
         toast.success("✅ Reset token generated");
 
-        // 🔥 dev mode → direct navigate
-        navigate(`/reset-password?token=${res.token}`);
+        if (data.token) {
+          router.push(`/reset-password?token=${data.token}`);
+        } else {
+          router.push("/login");
+        }
       } else {
-        toast.error(res.message);
+        toast.error(data.message || "Reset request failed");
       }
-
     } catch (err) {
-      toast.error("❌ Something went wrong");
+      toast.error(
+        err.response?.data?.message || "❌ Something went wrong"
+      );
     } finally {
       setLoading(false);
     }
@@ -38,7 +47,6 @@ const ForgotPassword = () => {
 
   return (
     <div className="h-screen flex items-center justify-center bg-gradient-to-br from-blue-500 to-indigo-600">
-
       <div className="bg-white p-8 rounded-xl shadow-lg w-[350px]">
         <h2 className="text-xl font-bold mb-4 text-center">
           Forgot Password
@@ -59,7 +67,6 @@ const ForgotPassword = () => {
           {loading ? "Sending..." : "Send Reset Link"}
         </button>
       </div>
-
     </div>
   );
 };

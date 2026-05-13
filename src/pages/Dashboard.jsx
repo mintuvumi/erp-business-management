@@ -1,5 +1,7 @@
+"use client";
+
 import React, { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useRouter } from "next/navigation";
 import { useCompany } from "../context/CompanyContext";
 import { socket } from "../socket";
 
@@ -13,7 +15,8 @@ import {
 } from "react-icons/fa";
 
 const Dashboard = () => {
-  const navigate = useNavigate();
+  const router = useRouter();
+
   const { activeCompany } = useCompany();
 
   const [sales, setSales] = useState([]);
@@ -24,19 +27,21 @@ const Dashboard = () => {
 
   const companyId = activeCompany?.id;
 
-  // 🔒 LOGIN CHECK
+  // LOGIN CHECK
   useEffect(() => {
     const user = localStorage.getItem("user");
-    if (!user) {
-      navigate("/login");
-    }
-  }, []);
 
-  /* 🔴 SOCKET CONNECT */
+    if (!user) {
+      router.push("/login");
+    }
+  }, [router]);
+
+  // SOCKET CONNECT
   useEffect(() => {
     if (!companyId) return;
 
     socket.connect();
+
     socket.emit("joinCompany", companyId);
 
     const handleSale = (sale) => {
@@ -51,7 +56,7 @@ const Dashboard = () => {
     };
   }, [companyId]);
 
-  /* 📦 LOAD DATA SAFE */
+  // LOAD DATA
   useEffect(() => {
     if (!companyId) return;
 
@@ -70,7 +75,7 @@ const Dashboard = () => {
     setProducts(safeParse(`products_${companyId}`));
   }, [companyId]);
 
-  // ❌ NO COMPANY SELECTED
+  // NO COMPANY
   if (!activeCompany) {
     return (
       <div className="p-10 text-center">
@@ -79,7 +84,7 @@ const Dashboard = () => {
         </h1>
 
         <button
-          onClick={() => navigate("/")}
+          onClick={() => router.push("/")}
           className="bg-blue-500 text-white px-4 py-2 rounded"
         >
           Go Home
@@ -88,22 +93,41 @@ const Dashboard = () => {
     );
   }
 
-  /* 📊 CALCULATIONS */
-  const totalSales = sales.reduce((s, v) => s + (v?.total || 0), 0);
-  const totalExpense = expenses.reduce((s, v) => s + (v?.amount || 0), 0);
-  const totalPurchase = purchases.reduce((s, v) => s + (v?.total || 0), 0);
+  // CALCULATIONS
+  const totalSales = sales.reduce(
+    (s, v) => s + (v?.total || 0),
+    0
+  );
 
-  const bankTotal = banks.reduce((s, v) => s + (v?.balance || 0), 0);
-  const cash = sales.reduce((s, v) => s + (v?.paid || 0), 0);
+  const totalExpense = expenses.reduce(
+    (s, v) => s + (v?.amount || 0),
+    0
+  );
+
+  const totalPurchase = purchases.reduce(
+    (s, v) => s + (v?.total || 0),
+    0
+  );
+
+  const bankTotal = banks.reduce(
+    (s, v) => s + (v?.balance || 0),
+    0
+  );
+
+  const cash = sales.reduce(
+    (s, v) => s + (v?.paid || 0),
+    0
+  );
 
   const stockValue = products.reduce(
     (s, p) => s + (p?.price || 0) * (p?.qty || 0),
     0
   );
 
-  const profit = totalSales - totalExpense - totalPurchase;
+  const profit =
+    totalSales - totalExpense - totalPurchase;
 
-  /* 🧠 AI INSIGHT */
+  // AI INSIGHT
   const insight =
     profit > 0
       ? "📈 Profit is growing"
@@ -111,26 +135,31 @@ const Dashboard = () => {
       ? "⚠️ You are in loss"
       : "➖ Break-even";
 
-  /* 🏆 TOP PRODUCT */
+  // TOP PRODUCT
   const topProduct =
     products.length > 0
-      ? [...products].sort((a, b) => (b.qty || 0) - (a.qty || 0))[0]
+      ? [...products].sort(
+          (a, b) => (b.qty || 0) - (a.qty || 0)
+        )[0]
       : null;
 
-  /* ⚠️ LOW STOCK */
-  const lowStock = products.filter((p) => (p.qty || 0) < 5);
+  // LOW STOCK
+  const lowStock = products.filter(
+    (p) => (p.qty || 0) < 5
+  );
 
   const cardStyle =
     "bg-white p-5 rounded-2xl shadow hover:-translate-y-1 transition duration-300";
 
   return (
     <div className="p-6 bg-gray-50 min-h-screen">
-
       <h1 className="text-xl font-bold mb-2">
         Dashboard (Live SaaS)
       </h1>
 
-      <p className="mb-4 text-sm text-gray-600">{insight}</p>
+      <p className="mb-4 text-sm text-gray-600">
+        {insight}
+      </p>
 
       {/* LOSS ALERT */}
       {profit < 0 && (
@@ -158,38 +187,62 @@ const Dashboard = () => {
 
         <div className={cardStyle}>
           <FaMoneyBillWave className="text-green-500 text-xl mb-2" />
+
           <p className="text-gray-500">Cash</p>
-          <p className="font-bold text-lg">৳ {cash}</p>
+
+          <p className="font-bold text-lg">
+            ৳ {cash}
+          </p>
         </div>
 
         <div className={cardStyle}>
           <FaUniversity className="text-blue-500 text-xl mb-2" />
+
           <p className="text-gray-500">Bank</p>
-          <p className="font-bold text-lg">৳ {bankTotal}</p>
+
+          <p className="font-bold text-lg">
+            ৳ {bankTotal}
+          </p>
         </div>
 
         <div className={cardStyle}>
           <FaChartLine className="text-indigo-500 text-xl mb-2" />
+
           <p className="text-gray-500">Profit</p>
-          <p className="font-bold text-lg">৳ {profit}</p>
+
+          <p className="font-bold text-lg">
+            ৳ {profit}
+          </p>
         </div>
 
         <div className={cardStyle}>
           <FaShoppingCart className="text-orange-500 text-xl mb-2" />
+
           <p className="text-gray-500">Sales</p>
-          <p className="font-bold text-lg">৳ {totalSales}</p>
+
+          <p className="font-bold text-lg">
+            ৳ {totalSales}
+          </p>
         </div>
 
         <div className={cardStyle}>
           <FaExclamationTriangle className="text-red-500 text-xl mb-2" />
+
           <p className="text-gray-500">Purchase</p>
-          <p className="font-bold text-lg">৳ {totalPurchase}</p>
+
+          <p className="font-bold text-lg">
+            ৳ {totalPurchase}
+          </p>
         </div>
 
         <div className={cardStyle}>
           <FaBoxOpen className="text-purple-500 text-xl mb-2" />
+
           <p className="text-gray-500">Stock Value</p>
-          <p className="font-bold text-lg">৳ {stockValue}</p>
+
+          <p className="font-bold text-lg">
+            ৳ {stockValue}
+          </p>
         </div>
 
       </div>

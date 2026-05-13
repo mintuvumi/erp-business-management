@@ -1,14 +1,15 @@
+"use client";
+
 import React, { useState } from "react";
-import { useAuth } from "../auth/AuthContext";
 import { toast } from "react-toastify";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useRouter, useSearchParams } from "next/navigation";
+import axios from "axios";
 
 const ResetPassword = () => {
-  const { resetPassword } = useAuth();
-  const navigate = useNavigate();
-  const location = useLocation();
+  const router = useRouter();
+  const searchParams = useSearchParams();
 
-  const token = new URLSearchParams(location.search).get("token");
+  const token = searchParams.get("token");
 
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -18,21 +19,29 @@ const ResetPassword = () => {
       return toast.error("❌ Enter new password");
     }
 
+    if (!token) {
+      return toast.error("❌ Reset token missing");
+    }
+
     try {
       setLoading(true);
 
-      const res = await resetPassword(token, password);
+      const res = await axios.post("/api/auth/reset-password", {
+        token,
+        password,
+      });
 
-      if (res.success) {
+      const data = res.data;
+
+      if (data.success) {
         toast.success("🎉 Password Updated");
 
-        setTimeout(() => navigate("/login"), 1000);
+        setTimeout(() => router.push("/login"), 1000);
       } else {
-        toast.error(res.message);
+        toast.error(data.message || "Password reset failed");
       }
-
     } catch (err) {
-      toast.error("❌ Error");
+      toast.error(err.response?.data?.message || "❌ Error");
     } finally {
       setLoading(false);
     }
@@ -40,7 +49,6 @@ const ResetPassword = () => {
 
   return (
     <div className="h-screen flex items-center justify-center bg-gradient-to-br from-green-500 to-teal-600">
-
       <div className="bg-white p-8 rounded-xl shadow-lg w-[350px]">
         <h2 className="text-xl font-bold mb-4 text-center">
           Reset Password
@@ -62,7 +70,6 @@ const ResetPassword = () => {
           {loading ? "Updating..." : "Update Password"}
         </button>
       </div>
-
     </div>
   );
 };

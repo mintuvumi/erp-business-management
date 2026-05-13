@@ -1,3 +1,5 @@
+"use client";
+
 import React, { useState, useRef, useEffect } from "react";
 import {
   FaBell,
@@ -6,8 +8,9 @@ import {
   FaBars,
   FaMicrophone,
 } from "react-icons/fa";
+
 import { useAuth } from "../../auth/AuthContext";
-import { useNavigate } from "react-router-dom";
+import { useRouter } from "next/navigation";
 import useOutsideClick from "../../hooks/useOutsideClick";
 import { useCompany } from "../../context/CompanyContext";
 import { socket } from "../../socket";
@@ -15,7 +18,8 @@ import { socket } from "../../socket";
 const Navbar = ({ setOpen }) => {
   const { user, logout } = useAuth();
   const { activeCompany, companies, setActiveCompany } = useCompany();
-  const navigate = useNavigate();
+
+  const router = useRouter();
 
   const [showAdd, setShowAdd] = useState(false);
   const [showNotif, setShowNotif] = useState(false);
@@ -37,27 +41,24 @@ const Navbar = ({ setOpen }) => {
   useOutsideClick(profileRef, () => setShowProfile(false));
   useOutsideClick(searchRef, () => setResults([]));
 
-  /* 🔥 FIX: COMPANY ID SAFE */
   const companyId = activeCompany?.id;
 
-  /* 🏢 JOIN COMPANY */
   useEffect(() => {
     if (companyId) {
       socket.emit("joinCompany", companyId);
     }
   }, [companyId]);
 
-  /* 🔴 NOTIFICATION */
   useEffect(() => {
     const handler = (data) => {
       setNotifications((prev) => [data, ...prev]);
     };
 
     socket.on("notification", handler);
+
     return () => socket.off("notification", handler);
   }, []);
 
-  /* 🔥 CTRL + K */
   useEffect(() => {
     const keyHandler = (e) => {
       if (e.ctrlKey && e.key === "k") {
@@ -65,11 +66,12 @@ const Navbar = ({ setOpen }) => {
         setOpenSearchModal(true);
       }
     };
+
     window.addEventListener("keydown", keyHandler);
+
     return () => window.removeEventListener("keydown", keyHandler);
   }, []);
 
-  /* 🔍 REAL SEARCH (FIXED + FAST) */
   useEffect(() => {
     if (!search.trim() || !companyId) {
       setResults([]);
@@ -78,6 +80,7 @@ const Navbar = ({ setOpen }) => {
 
     const sales =
       JSON.parse(localStorage.getItem(`sales_${companyId}`)) || [];
+
     const products =
       JSON.parse(localStorage.getItem(`products_${companyId}`)) || [];
 
@@ -87,6 +90,7 @@ const Navbar = ({ setOpen }) => {
         name: p.name,
         route: "/products",
       })),
+
       ...sales.map((s) => ({
         type: "Sale",
         name: `Invoice ${s.id || ""}`,
@@ -101,7 +105,6 @@ const Navbar = ({ setOpen }) => {
     setResults(filtered);
   }, [search, companyId]);
 
-  /* 🎤 VOICE */
   const startVoice = () => {
     if (!("webkitSpeechRecognition" in window)) {
       alert("Not supported");
@@ -109,14 +112,19 @@ const Navbar = ({ setOpen }) => {
     }
 
     const rec = new window.webkitSpeechRecognition();
-    rec.onresult = (e) => setSearch(e.results[0][0].transcript);
+
+    rec.onresult = (e) => {
+      setSearch(e.results[0][0].transcript);
+    };
+
     rec.start();
   };
 
-  /* ✨ HIGHLIGHT */
   const highlight = (text) => {
     if (!search) return text;
+
     const regex = new RegExp(`(${search})`, "gi");
+
     return text.replace(
       regex,
       `<mark class="bg-yellow-200 px-1 rounded">$1</mark>`
@@ -129,34 +137,48 @@ const Navbar = ({ setOpen }) => {
 
         {/* LEFT */}
         <div className="flex items-center gap-3">
-          <FaBars onClick={() => setOpen(true)} className="md:hidden cursor-pointer" />
+          <FaBars
+            onClick={() => setOpen(true)}
+            className="md:hidden cursor-pointer"
+          />
 
           <select
             value={companyId || ""}
             onChange={(e) => {
-              const selected = companies.find(c => c.id === e.target.value);
+              const selected = companies.find(
+                (c) => c.id === e.target.value
+              );
+
               setActiveCompany(selected);
             }}
             className="font-semibold outline-none"
           >
             <option value="">Select Company</option>
+
             {companies.map((c) => (
-              <option key={c.id} value={c.id}>{c.name}</option>
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
             ))}
           </select>
         </div>
 
-        {/* 🔥 SEARCH */}
+        {/* SEARCH */}
         <div ref={searchRef} className="hidden md:block relative w-96">
           <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-white shadow-lg border focus-within:ring-2 focus-within:ring-blue-400">
             <FaSearch />
+
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search (Ctrl + K)"
               className="w-full outline-none bg-transparent"
             />
-            <FaMicrophone onClick={startVoice} className="cursor-pointer text-blue-500" />
+
+            <FaMicrophone
+              onClick={startVoice}
+              className="cursor-pointer text-blue-500"
+            />
           </div>
 
           {results.length > 0 && (
@@ -165,13 +187,20 @@ const Navbar = ({ setOpen }) => {
                 <div
                   key={i}
                   onClick={() => {
-                    navigate(r.route);
+                    router.push(r.route);
                     setSearch("");
                   }}
                   className="p-3 hover:bg-blue-50 cursor-pointer flex justify-between"
                 >
-                  <span dangerouslySetInnerHTML={{ __html: highlight(r.name) }} />
-                  <span className="text-xs text-gray-400">{r.type}</span>
+                  <span
+                    dangerouslySetInnerHTML={{
+                      __html: highlight(r.name),
+                    }}
+                  />
+
+                  <span className="text-xs text-gray-400">
+                    {r.type}
+                  </span>
                 </div>
               ))}
             </div>
@@ -182,19 +211,24 @@ const Navbar = ({ setOpen }) => {
         <div className="flex items-center gap-4">
 
           <div ref={addRef}>
-            <button onClick={() => setShowAdd(!showAdd)} className="bg-blue-500 text-white px-3 py-2 rounded">
+            <button
+              onClick={() => setShowAdd(!showAdd)}
+              className="bg-blue-500 text-white px-3 py-2 rounded"
+            >
               <FaPlus />
             </button>
           </div>
 
-          <FaBell onClick={() => setShowNotif(!showNotif)} className="cursor-pointer" />
+          <FaBell
+            onClick={() => setShowNotif(!showNotif)}
+            className="cursor-pointer"
+          />
 
           <img
             onClick={() => setShowProfile(!showProfile)}
             src={user?.avatar || "https://i.pravatar.cc/40"}
             className="w-9 h-9 rounded-full cursor-pointer"
           />
-
         </div>
       </div>
     </>
