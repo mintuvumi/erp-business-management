@@ -1,3 +1,5 @@
+"use client";
+
 import React, { useState } from "react";
 
 const Inventory = () => {
@@ -19,7 +21,6 @@ const Inventory = () => {
     setQty(0);
   };
 
-  // 👉 Total Stock Value
   const stockValue = items.reduce(
     (sum, i) => sum + i.price * i.qty,
     0
@@ -27,7 +28,6 @@ const Inventory = () => {
 
   return (
     <div className="p-6">
-
       <h1 className="text-xl font-bold mb-4">Inventory</h1>
 
       <input
@@ -63,7 +63,6 @@ const Inventory = () => {
       <h2 className="mt-4 font-bold">
         Stock Value: ৳ {stockValue}
       </h2>
-
     </div>
   );
 };
