@@ -31,14 +31,18 @@ export function middleware(req) {
   );
 
   if (isProtected && !token) {
-    const loginUrl = new URL("/login", req.url);
+    const loginUrl = req.nextUrl.clone();
+    loginUrl.pathname = "/login";
     loginUrl.searchParams.set("redirect", pathname);
 
     return NextResponse.redirect(loginUrl);
   }
 
   if (isAuthRoute && token) {
-    return NextResponse.redirect(new URL("/dashboard", req.url));
+    const dashboardUrl = req.nextUrl.clone();
+    dashboardUrl.pathname = "/dashboard";
+
+    return NextResponse.redirect(dashboardUrl);
   }
 
   return NextResponse.next();
