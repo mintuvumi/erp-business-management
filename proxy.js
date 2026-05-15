@@ -17,7 +17,7 @@ const protectedRoutes = [
 
 const authRoutes = ["/login", "/register"];
 
-export function middleware(req) {
+export function proxy(req) {
   const { pathname } = req.nextUrl;
 
   const token = req.cookies.get("erp_token")?.value;
@@ -32,7 +32,9 @@ export function middleware(req) {
 
   if (isProtected && !token) {
     const loginUrl = req.nextUrl.clone();
+
     loginUrl.pathname = "/login";
+
     loginUrl.searchParams.set("redirect", pathname);
 
     return NextResponse.redirect(loginUrl);
@@ -40,6 +42,7 @@ export function middleware(req) {
 
   if (isAuthRoute && token) {
     const dashboardUrl = req.nextUrl.clone();
+
     dashboardUrl.pathname = "/dashboard";
 
     return NextResponse.redirect(dashboardUrl);
