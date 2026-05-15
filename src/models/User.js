@@ -111,15 +111,16 @@ const UserSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-UserSchema.pre("save", async function (next) {
+/* AUTO USER ID */
+UserSchema.pre("save", function () {
   if (!this.userId) {
     this.userId =
       "USR-" +
       Math.random().toString(36).substring(2, 8).toUpperCase();
   }
-
-  next();
 });
 
-export default mongoose.models.User ||
-  mongoose.model("User", UserSchema);
+const User =
+  mongoose.models.User || mongoose.model("User", UserSchema);
+
+export default User;

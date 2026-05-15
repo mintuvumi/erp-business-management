@@ -112,15 +112,14 @@ const CompanySchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-CompanySchema.pre("save", async function (next) {
+CompanySchema.pre("save", function () {
   if (!this.companyCode) {
     this.companyCode =
-      "CMP-" +
-      Math.random().toString(36).substring(2, 8).toUpperCase();
+      "CMP-" + Math.random().toString(36).substring(2, 8).toUpperCase();
   }
-
-  next();
 });
 
-export default mongoose.models.Company ||
-  mongoose.model("Company", CompanySchema);
+const Company =
+  mongoose.models.Company || mongoose.model("Company", CompanySchema);
+
+export default Company;
