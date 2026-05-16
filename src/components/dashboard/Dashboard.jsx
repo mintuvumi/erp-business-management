@@ -48,63 +48,67 @@ export default function Dashboard() {
     value: "৳ 0.00",
   });
 
-  useEffect(() => {
-    const fetchAll = async () => {
+  const fetchAll = async () => {
+  try {
+    const safeFetch = async (url) => {
       try {
-        const safeFetch = async (url) => {
-          try {
-            const res = await fetch(url);
-            return await res.json();
-          } catch (error) {
-            console.error("DASHBOARD_API_ERROR:", url, error);
-            return { success: false };
-          }
-        };
-
-        const bank = await safeFetch("/api/bank");
-        const cash = await safeFetch("/api/cash");
-        const purchase = await safeFetch("/api/dashboard/purchase");
-        const stock = await safeFetch("/api/dashboard/stock");
-        const profit = await safeFetch("/api/dashboard/profit");
-        const expense = await safeFetch("/api/dashboard/expense");
-        const employee = await safeFetch("/api/employees");
-        const salesReport = await safeFetch("/api/sales/report");
-
-        if (bank.success) setBankBalance(bank.data?.totalBankBalance || 0);
-        if (cash.success) setCashInHand(cash.data?.cashInHand || 0);
-        if (purchase.success) {
-          setPurchaseDue(purchase.data?.totalDuePurchase || 0);
-        }
-        if (stock.success) setStockValue(stock.data?.totalValue || 0);
-
-        if (profit.success) {
-          setProfitCard({
-            title: profit.data?.profitCardTitle || "Profit",
-            value: profit.data?.profitCardValue || "৳ 0.00",
-          });
-        }
-
-        if (expense.success) {
-          setExpenseCard({
-            title: "Expense",
-            value: expense.data?.cardValue || "৳ 0.00",
-          });
-        }
-
-        if (employee.success) {
-          setEmployeeCount(employee.data?.totalEmployee || 0);
-        }
-
-        if (salesReport.success) {
-          setTotalSales(salesReport.data?.totalSales || 0);
-        }
-      } catch (err) {
-        console.error("DASHBOARD_LOAD_ERROR:", err);
+        const res = await fetch(url);
+        return await res.json();
+      } catch (error) {
+        console.error("DASHBOARD_API_ERROR:", url, error);
+        return { success: false };
       }
     };
 
+    const bank = await safeFetch("/api/bank");
+    const cash = await safeFetch("/api/cash");
+    const purchase = await safeFetch("/api/dashboard/purchase");
+    const stock = await safeFetch("/api/dashboard/stock");
+    const profit = await safeFetch("/api/dashboard/profit");
+    const expense = await safeFetch("/api/dashboard/expense");
+    const employee = await safeFetch("/api/employees");
+    const salesReport = await safeFetch("/api/sales/report");
+
+    if (bank.success) setBankBalance(bank.data?.totalBankBalance || 0);
+    if (cash.success) setCashInHand(cash.data?.cashInHand || 0);
+    if (purchase.success) setPurchaseDue(purchase.data?.totalDuePurchase || 0);
+    if (stock.success) setStockValue(stock.data?.totalValue || 0);
+
+    if (profit.success) {
+      setProfitCard({
+        title: profit.data?.profitCardTitle || "Profit",
+        value: profit.data?.profitCardValue || "৳ 0.00",
+      });
+    }
+
+    if (expense.success) {
+      setExpenseCard({
+        title: "Expense",
+        value: expense.data?.cardValue || "৳ 0.00",
+      });
+    }
+
+    if (employee.success) {
+      setEmployeeCount(employee.data?.totalEmployee || 0);
+    }
+
+    if (salesReport.success) {
+      setTotalSales(salesReport.data?.totalSales || 0);
+    }
+  } catch (err) {
+    console.error("DASHBOARD_LOAD_ERROR:", err);
+  }
+};
+
+useEffect(() => {
+  fetchAll();
+
+  const interval = setInterval(() => {
     fetchAll();
-  }, []);
+  }, 3000);
+
+  return () => clearInterval(interval);
+}, []);
 
   const cards = [
     {
