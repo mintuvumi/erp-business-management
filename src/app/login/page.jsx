@@ -1,13 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { toast } from "react-toastify";
 import axios from "axios";
 
 export default function LoginPage() {
-  const router = useRouter();
-
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -20,10 +17,16 @@ export default function LoginPage() {
     try {
       setLoading(true);
 
-      const res = await axios.post("/api/auth/login", {
-        identifier,
-        password,
-      });
+      const res = await axios.post(
+        "/api/auth/login",
+        {
+          identifier,
+          password,
+        },
+        {
+          withCredentials: true,
+        }
+      );
 
       const data = res.data;
 
@@ -31,9 +34,8 @@ export default function LoginPage() {
         toast.success("Login Successful!");
 
         localStorage.setItem("user", JSON.stringify(data.data || data.user));
-        localStorage.setItem("token", data.token || "");
 
-        router.push("/dashboard");
+        window.location.href = "/dashboard";
       } else {
         toast.error(data.message || "Login failed");
       }
@@ -81,7 +83,9 @@ export default function LoginPage() {
         <p className="text-sm text-center mt-4">
           No account?{" "}
           <span
-            onClick={() => router.push("/register")}
+            onClick={() => {
+              window.location.href = "/register";
+            }}
             className="text-blue-600 cursor-pointer"
           >
             Register
