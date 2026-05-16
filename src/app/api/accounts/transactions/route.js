@@ -1,4 +1,4 @@
-import Cash from "@/models/Cash";
+import CashTransaction from "@/models/CashTransaction";
 import { NextResponse } from "next/server";
 import connectDB from "@/lib/db";
 import AccountTransaction from "@/models/AccountTransaction";
@@ -12,54 +12,35 @@ function isValidAmount(amount) {
 
 
 
-async function updateBankBalance({ bankId, type, amount, companyId }) {
-  if (!bankId) return;
 
-  const bank = await BankAccount.findOne({
-    _id: bankId,
+
+async function createCashTransaction({
+  type,
+  amount,
+  companyId,
+  title,
+  category,
+  note,
+  tenant,
+  refId,
+}) {
+  await CashTransaction.create({
     companyId,
+    type,
+    category,
+    title,
+    amount: Number(amount) || 0,
+    note: note || "",
+    head: category || "",
+    paymentType: "Cash",
+    date: new Date().toISOString().slice(0, 10),
+    refType: "account_transaction",
+    refId: refId ? String(refId) : "",
+    createdByUserId: tenant.user.id,
+    createdBy: tenant.user.name || "",
   });
-
-  if (!bank) return;
-
-  const current = Number(bank.currentBalance || 0);
-  const value = Number(amount || 0);
-
-  if (type === "add") {
-    bank.currentBalance = current + value;
-  }
-
-  if (type === "subtract") {
-    bank.currentBalance = current - value;
-  }
-
-  await bank.save();
 }
 
-
-async function updateBankBalance({ bankId, type, amount, companyId }) {
-  if (!bankId) return;
-
-  const bank = await BankAccount.findOne({
-    _id: bankId,
-    companyId,
-  });
-
-  if (!bank) return;
-
-  const current = Number(bank.currentBalance || 0);
-  const value = Number(amount || 0);
-
-  if (type === "add") {
-    bank.currentBalance = current + value;
-  }
-
-  if (type === "subtract") {
-    bank.currentBalance = current - value;
-  }
-
-  await bank.save();
-}
 
 async function updateCashBalance({ type, amount, companyId }) {
   let cash = await Cash.findOne({ companyId });
@@ -428,6 +409,62 @@ export async function POST(req) {
       createdByUserId: tenant.user.id,
       createdBy: tenant.user.name || "",
     });
+
+
+    if (direction === "in" && receiveTo === "cash") {
+  await createCashTransaction({
+    type: "in",
+    amount,
+    companyId: tenant.companyId,
+    title,
+    category: category.name,
+    note,
+    tenant,
+    refId: transaction._id,
+  });
+}
+
+if (direction === "out" && paymentFrom === "cash") {
+  await createCashTransaction({
+    type: "out",
+    amount,
+    companyId: tenant.companyId,
+    title,
+    category: category.name,
+    note,
+    tenant,
+    refId: transaction._id,
+  });
+}
+
+if (direction === "transfer") {
+  if (paymentFrom === "cash") {
+    await createCashTransaction({
+      type: "out",
+      amount,
+      companyId: tenant.companyId,
+      title,
+      category: "Cash Transfer",
+      note,
+      tenant,
+      refId: transaction._id,
+    });
+  }
+
+  if (receiveTo === "cash") {
+    await createCashTransaction({
+      type: "in",
+      amount,
+      companyId: tenant.companyId,
+      title,
+      category: "Cash Transfer",
+      note,
+      tenant,
+      refId: transaction._id,
+    });
+  }
+}
+
 
      if (direction === "in" && receiveTo === "cash") {
   await updateCashBalance({
