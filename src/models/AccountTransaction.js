@@ -215,26 +215,33 @@ AccountTransactionSchema.index({ companyId: 1, transactionType: 1 });
 AccountTransactionSchema.index({ companyId: 1, direction: 1 });
 AccountTransactionSchema.index({ companyId: 1, status: 1 });
 
-AccountTransactionSchema.pre("save", async function (next) {
+AccountTransactionSchema.pre("save", async function () {
   if (!this.transactionNo) {
     const date = new Date();
+
     const y = date.getFullYear();
+
     const m = String(date.getMonth() + 1).padStart(2, "0");
+
     const d = String(date.getDate()).padStart(2, "0");
 
-    const count = await mongoose.models.AccountTransaction.countDocuments({
-      companyId: this.companyId,
-      createdAt: {
-        $gte: new Date(`${y}-${m}-${d}T00:00:00.000Z`),
-        $lte: new Date(`${y}-${m}-${d}T23:59:59.999Z`),
-      },
-    });
+    const count =
+      await mongoose.models.AccountTransaction.countDocuments({
+        companyId: this.companyId,
 
-    this.transactionNo = `AT-${y}${m}${d}-${String(count + 1).padStart(5, "0")}`;
+        createdAt: {
+          $gte: new Date(`${y}-${m}-${d}T00:00:00.000Z`),
+
+          $lte: new Date(`${y}-${m}-${d}T23:59:59.999Z`),
+        },
+      });
+
+    this.transactionNo = `AT-${y}${m}${d}-${String(
+      count + 1
+    ).padStart(5, "0")}`;
   }
-
-  next();
 });
+
 
 export default mongoose.models.AccountTransaction ||
   mongoose.model("AccountTransaction", AccountTransactionSchema);
