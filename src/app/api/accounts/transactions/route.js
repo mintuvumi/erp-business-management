@@ -1,3 +1,4 @@
+import Cash from "@/models/Cash";
 import { NextResponse } from "next/server";
 import connectDB from "@/lib/db";
 import AccountTransaction from "@/models/AccountTransaction";
@@ -8,6 +9,8 @@ import { getTenant } from "@/lib/tenant";
 function isValidAmount(amount) {
   return Number(amount) > 0;
 }
+
+
 
 async function updateBankBalance({ bankId, type, amount, companyId }) {
   if (!bankId) return;
@@ -32,6 +35,62 @@ async function updateBankBalance({ bankId, type, amount, companyId }) {
 
   await bank.save();
 }
+
+
+async function updateBankBalance({ bankId, type, amount, companyId }) {
+  if (!bankId) return;
+
+  const bank = await BankAccount.findOne({
+    _id: bankId,
+    companyId,
+  });
+
+  if (!bank) return;
+
+  const current = Number(bank.currentBalance || 0);
+  const value = Number(amount || 0);
+
+  if (type === "add") {
+    bank.currentBalance = current + value;
+  }
+
+  if (type === "subtract") {
+    bank.currentBalance = current - value;
+  }
+
+  await bank.save();
+}
+
+async function updateCashBalance({ type, amount, companyId }) {
+  let cash = await Cash.findOne({ companyId });
+
+  if (!cash) {
+    cash = await Cash.create({
+      companyId,
+      currentBalance: 0,
+      balance: 0,
+    });
+  }
+
+  const current = Number(cash.currentBalance || cash.balance || 0);
+
+  const value = Number(amount || 0);
+
+  if (type === "add") {
+    cash.currentBalance = current + value;
+
+    cash.balance = current + value;
+  }
+
+  if (type === "subtract") {
+    cash.currentBalance = current - value;
+
+    cash.balance = current - value;
+  }
+
+  await cash.save();
+}
+
 
 export async function GET(req) {
   try {
@@ -99,6 +158,8 @@ export async function GET(req) {
       .sort({ transactionDate: -1, createdAt: -1 })
       .limit(limit)
       .lean();
+
+
 
     return NextResponse.json({
       success: true,
@@ -320,6 +381,7 @@ export async function POST(req) {
       });
     }
 
+
     const transaction = await AccountTransaction.create({
       companyId: tenant.companyId,
 
@@ -366,6 +428,41 @@ export async function POST(req) {
       createdByUserId: tenant.user.id,
       createdBy: tenant.user.name || "",
     });
+
+     if (direction === "in" && receiveTo === "cash") {
+  await updateCashBalance({
+    type: "add",
+    amount,
+    companyId: tenant.companyId,
+  });
+}
+
+if (direction === "out" && paymentFrom === "cash") {
+  await updateCashBalance({
+    type: "subtract",
+    amount,
+    companyId: tenant.companyId,
+  });
+}
+
+if (direction === "transfer") {
+  if (paymentFrom === "cash") {
+    await updateCashBalance({
+      type: "subtract",
+      amount,
+      companyId: tenant.companyId,
+    });
+  }
+
+  if (receiveTo === "cash") {
+    await updateCashBalance({
+      type: "add",
+      amount,
+      companyId: tenant.companyId,
+    });
+  }
+}
+
 
     if (direction === "in" && receiveTo === "bank" && toBankId) {
       await updateBankBalance({
