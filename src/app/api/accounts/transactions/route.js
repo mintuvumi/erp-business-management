@@ -27,7 +27,7 @@ async function createCashTransaction({
   await CashTransaction.create({
     companyId,
     type,
-    category,
+    category: type === "in" ? "other_income" : "expense",
     title,
     amount: Number(amount) || 0,
     note: note || "",
