@@ -211,7 +211,7 @@ StockSchema.index({
   category: 1,
 });
 
-StockSchema.pre("save", function (next) {
+StockSchema.pre("save", function () {
   if (!this.productCode) {
     this.productCode =
       "PRD-" +
@@ -223,9 +223,9 @@ StockSchema.pre("save", function (next) {
 
   this.totalValue =
     Number(this.qty || 0) * Number(this.avgCost || 0);
-
-  next();
 });
 
-export default mongoose.models.Stock ||
-  mongoose.model("Stock", StockSchema);
+const Stock =
+  mongoose.models.Stock || mongoose.model("Stock", StockSchema);
+
+export default Stock;

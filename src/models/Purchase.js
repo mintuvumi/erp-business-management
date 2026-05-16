@@ -3,13 +3,17 @@ import mongoose from "mongoose";
 const PurchaseItemSchema = new mongoose.Schema(
   {
     itemName: { type: String, required: true, trim: true },
+
     productId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Stock",
       default: null,
     },
+
     qty: { type: Number, default: 1, min: 0 },
+
     price: { type: Number, default: 0, min: 0 },
+
     total: { type: Number, default: 0, min: 0 },
   },
   { _id: false }
@@ -219,7 +223,7 @@ PurchaseSchema.index({ companyId: 1, purchaseNo: 1 });
 PurchaseSchema.index({ companyId: 1, supplierBillNo: 1 });
 PurchaseSchema.index({ companyId: 1, status: 1 });
 
-PurchaseSchema.pre("save", function (next) {
+PurchaseSchema.pre("save", function () {
   if (!this.purchaseNo) {
     this.purchaseNo = `PUR-${Date.now()}`;
   }
@@ -236,11 +240,18 @@ PurchaseSchema.pre("save", function (next) {
     );
 
     this.itemName = this.items[0]?.itemName || "";
-    this.qty = this.items.reduce((sum, item) => sum + Number(item.qty || 0), 0);
+
+    this.qty = this.items.reduce(
+      (sum, item) => sum + Number(item.qty || 0),
+      0
+    );
+
     this.price = this.items[0]?.price || 0;
+
     this.total = this.subTotal;
   } else {
     this.total = Number(this.qty || 0) * Number(this.price || 0);
+
     this.subTotal = this.total;
   }
 
@@ -262,9 +273,10 @@ PurchaseSchema.pre("save", function (next) {
   } else {
     this.paymentType = "credit";
   }
-
-  next();
 });
 
-export default mongoose.models.Purchase ||
+const Purchase =
+  mongoose.models.Purchase ||
   mongoose.model("Purchase", PurchaseSchema);
+
+export default Purchase;

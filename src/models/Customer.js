@@ -49,12 +49,7 @@ const CustomerSchema = new mongoose.Schema(
 
     customerType: {
       type: String,
-      enum: [
-        "retail",
-        "wholesale",
-        "dealer",
-        "corporate",
-      ],
+      enum: ["retail", "wholesale", "dealer", "corporate"],
       default: "retail",
       index: true,
     },
@@ -148,15 +143,16 @@ CustomerSchema.index({
   customerCode: 1,
 });
 
-CustomerSchema.pre("save", function (next) {
+CustomerSchema.pre("save", function () {
   if (!this.customerCode) {
     this.customerCode =
       "CUS-" +
       Math.random().toString(36).substring(2, 8).toUpperCase();
   }
-
-  next();
 });
 
-export default mongoose.models.Customer ||
+const Customer =
+  mongoose.models.Customer ||
   mongoose.model("Customer", CustomerSchema);
+
+export default Customer;

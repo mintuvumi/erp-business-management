@@ -118,7 +118,7 @@ const AccountCategorySchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-AccountCategorySchema.pre("validate", function (next) {
+AccountCategorySchema.pre("validate", function () {
   if (!this.slug && this.name) {
     this.slug = this.name
       .toString()
@@ -130,8 +130,6 @@ AccountCategorySchema.pre("validate", function (next) {
       .replace(/^-+/, "")
       .replace(/-+$/, "");
   }
-
-  next();
 });
 
 AccountCategorySchema.index(
@@ -142,5 +140,8 @@ AccountCategorySchema.index(
 AccountCategorySchema.index({ companyId: 1, transactionType: 1 });
 AccountCategorySchema.index({ companyId: 1, direction: 1 });
 
-export default mongoose.models.AccountCategory ||
+const AccountCategory =
+  mongoose.models.AccountCategory ||
   mongoose.model("AccountCategory", AccountCategorySchema);
+
+export default AccountCategory;

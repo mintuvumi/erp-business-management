@@ -137,15 +137,16 @@ SupplierSchema.index({
   supplierCode: 1,
 });
 
-SupplierSchema.pre("save", function (next) {
+SupplierSchema.pre("save", function () {
   if (!this.supplierCode) {
     this.supplierCode =
       "SUP-" +
       Math.random().toString(36).substring(2, 8).toUpperCase();
   }
-
-  next();
 });
 
-export default mongoose.models.Supplier ||
+const Supplier =
+  mongoose.models.Supplier ||
   mongoose.model("Supplier", SupplierSchema);
+
+export default Supplier;

@@ -17,12 +17,7 @@ const LoanSchema = new mongoose.Schema(
 
     loanType: {
       type: String,
-      enum: [
-        "bank",
-        "personal",
-        "investor",
-        "microfinance",
-      ],
+      enum: ["bank", "personal", "investor", "microfinance"],
       default: "personal",
       index: true,
     },
@@ -137,7 +132,7 @@ LoanSchema.index({
   loanCode: 1,
 });
 
-LoanSchema.pre("save", function (next) {
+LoanSchema.pre("save", function () {
   if (!this.loanCode) {
     this.loanCode =
       "LOAN-" +
@@ -148,9 +143,9 @@ LoanSchema.pre("save", function (next) {
     Number(this.amount || 0) - Number(this.paidAmount || 0),
     0
   );
-
-  next();
 });
 
-export default mongoose.models.Loan ||
-  mongoose.model("Loan", LoanSchema);
+const Loan =
+  mongoose.models.Loan || mongoose.model("Loan", LoanSchema);
+
+export default Loan;

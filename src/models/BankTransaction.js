@@ -71,13 +71,7 @@ const BankTransactionSchema = new mongoose.Schema(
 
     paymentMethod: {
       type: String,
-      enum: [
-        "cash",
-        "bank",
-        "mobile_banking",
-        "cheque",
-        "online",
-      ],
+      enum: ["cash", "bank", "mobile_banking", "cheque", "online"],
       default: "bank",
     },
 
@@ -101,14 +95,7 @@ const BankTransactionSchema = new mongoose.Schema(
 
     personType: {
       type: String,
-      enum: [
-        "customer",
-        "supplier",
-        "employee",
-        "owner",
-        "other",
-        "none",
-      ],
+      enum: ["customer", "supplier", "employee", "owner", "other", "none"],
       default: "none",
     },
 
@@ -182,7 +169,7 @@ BankTransactionSchema.index({
   category: 1,
 });
 
-BankTransactionSchema.pre("save", async function (next) {
+BankTransactionSchema.pre("save", async function () {
   if (!this.transactionNo) {
     const date = new Date();
 
@@ -190,23 +177,22 @@ BankTransactionSchema.pre("save", async function (next) {
     const m = String(date.getMonth() + 1).padStart(2, "0");
     const d = String(date.getDate()).padStart(2, "0");
 
-    const count =
-      await mongoose.models.BankTransaction.countDocuments({
-        companyId: this.companyId,
+    const count = await mongoose.models.BankTransaction.countDocuments({
+      companyId: this.companyId,
 
-        createdAt: {
-          $gte: new Date(`${y}-${m}-${d}T00:00:00.000Z`),
-          $lte: new Date(`${y}-${m}-${d}T23:59:59.999Z`),
-        },
-      });
+      createdAt: {
+        $gte: new Date(`${y}-${m}-${d}T00:00:00.000Z`),
+        $lte: new Date(`${y}-${m}-${d}T23:59:59.999Z`),
+      },
+    });
 
     this.transactionNo =
-      `BT-${y}${m}${d}-` +
-      String(count + 1).padStart(5, "0");
+      `BT-${y}${m}${d}-` + String(count + 1).padStart(5, "0");
   }
-
-  next();
 });
 
-export default mongoose.models.BankTransaction ||
+const BankTransaction =
+  mongoose.models.BankTransaction ||
   mongoose.model("BankTransaction", BankTransactionSchema);
+
+export default BankTransaction;

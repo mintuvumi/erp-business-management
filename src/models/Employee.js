@@ -150,13 +150,7 @@ const EmployeeSchema = new mongoose.Schema(
 
     role: {
       type: String,
-      enum: [
-        "manager",
-        "accountant",
-        "cashier",
-        "salesman",
-        "staff",
-      ],
+      enum: ["manager", "accountant", "cashier", "salesman", "staff"],
       default: "staff",
     },
 
@@ -208,15 +202,14 @@ EmployeeSchema.index({
   employeeCode: 1,
 });
 
-EmployeeSchema.pre("save", function (next) {
+EmployeeSchema.pre("save", function () {
   if (!this.employeeCode) {
     this.employeeCode =
-      "EMP-" +
-      Math.random().toString(36).substring(2, 8).toUpperCase();
+      "EMP-" + Math.random().toString(36).substring(2, 8).toUpperCase();
   }
-
-  next();
 });
 
-export default mongoose.models.Employee ||
-  mongoose.model("Employee", EmployeeSchema);
+const Employee =
+  mongoose.models.Employee || mongoose.model("Employee", EmployeeSchema);
+
+export default Employee;
