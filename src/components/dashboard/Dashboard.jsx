@@ -48,6 +48,8 @@ export default function Dashboard() {
     value: "৳ 0.00",
   });
 
+
+
   const fetchAll = async () => {
   try {
     const safeFetch = async (url) => {
@@ -69,10 +71,21 @@ export default function Dashboard() {
     const employee = await safeFetch("/api/employees");
     const salesReport = await safeFetch("/api/sales/report");
 
-    if (bank.success) setBankBalance(bank.data?.totalBankBalance || 0);
-    if (cash.success) setCashInHand(cash.data?.cashInHand || 0);
-    if (purchase.success) setPurchaseDue(purchase.data?.totalDuePurchase || 0);
-    if (stock.success) setStockValue(stock.data?.totalValue || 0);
+    if (bank.success) {
+      setBankBalance(bank.data?.totalBankBalance || 0);
+    }
+
+    if (cash.success) {
+      setCashInHand(cash.data?.cashInHand || 0);
+    }
+
+    if (purchase.success) {
+      setPurchaseDue(purchase.data?.totalDuePurchase || 0);
+    }
+
+    if (stock.success) {
+      setStockValue(stock.data?.totalValue || 0);
+    }
 
     if (profit.success) {
       setProfitCard({
@@ -106,6 +119,10 @@ useEffect(() => {
   const interval = setInterval(() => {
     fetchAll();
   }, 3000);
+
+  return () => clearInterval(interval);
+}, []);
+
 
   return () => clearInterval(interval);
 }, []);
