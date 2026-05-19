@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import {
   RefreshCcw,
@@ -24,7 +25,7 @@ export default function AccountsPage() {
   const [search, setSearch] = useState("");
   const [aiText, setAiText] = useState("");
 
-  const [transactionForm, setTransactionForm] = useState({
+  const emptyForm = {
     transactionType: "income",
     categoryName: "",
     title: "",
@@ -37,8 +38,12 @@ export default function AccountsPage() {
     personType: "none",
     personName: "",
     paymentMethod: "cash",
+    chequeNo: "",
+    printCheque: false,
     note: "",
-  });
+  };
+
+  const [transactionForm, setTransactionForm] = useState(emptyForm);
 
   const transactionTypes = [
     { value: "income", label: "Receive Money", direction: "in" },
@@ -64,6 +69,7 @@ export default function AccountsPage() {
         title: "Salary Payment",
         personType: "employee",
         paymentFrom: "cash",
+        paymentMethod: "cash",
       },
     },
     {
@@ -76,6 +82,7 @@ export default function AccountsPage() {
         title: "Conveyance Expense",
         personType: "none",
         paymentFrom: "cash",
+        paymentMethod: "cash",
       },
     },
     {
@@ -88,6 +95,7 @@ export default function AccountsPage() {
         title: "Office Rent Payment",
         personType: "other",
         paymentFrom: "cash",
+        paymentMethod: "cash",
       },
     },
     {
@@ -100,6 +108,7 @@ export default function AccountsPage() {
         title: "Electric Bill Payment",
         personType: "none",
         paymentFrom: "cash",
+        paymentMethod: "cash",
       },
     },
     {
@@ -112,6 +121,7 @@ export default function AccountsPage() {
         title: "Customer Due Collection",
         personType: "customer",
         receiveTo: "cash",
+        paymentMethod: "cash",
       },
     },
     {
@@ -124,6 +134,7 @@ export default function AccountsPage() {
         title: "Supplier Payment",
         personType: "supplier",
         paymentFrom: "cash",
+        paymentMethod: "cash",
       },
     },
     {
@@ -136,6 +147,7 @@ export default function AccountsPage() {
         title: "Loan Receive",
         personType: "lender",
         receiveTo: "cash",
+        paymentMethod: "cash",
       },
     },
     {
@@ -148,6 +160,7 @@ export default function AccountsPage() {
         title: "Loan Payment",
         personType: "lender",
         paymentFrom: "cash",
+        paymentMethod: "cash",
       },
     },
     {
@@ -160,6 +173,7 @@ export default function AccountsPage() {
         title: "Cash Sale",
         personType: "customer",
         receiveTo: "cash",
+        paymentMethod: "cash",
       },
     },
     {
@@ -172,6 +186,7 @@ export default function AccountsPage() {
         title: "Owner Capital",
         personType: "owner",
         receiveTo: "cash",
+        paymentMethod: "cash",
       },
     },
   ];
@@ -190,6 +205,8 @@ export default function AccountsPage() {
         t.bankName,
         t.note,
         t.transactionType,
+        t.paymentMethod,
+        t.chequeNo,
       ]
         .join(" ")
         .toLowerCase()
@@ -284,6 +301,8 @@ export default function AccountsPage() {
       note: aiText,
       fromBankId: "",
       toBankId: "",
+      chequeNo: "",
+      printCheque: false,
     }));
   };
 
@@ -351,6 +370,13 @@ export default function AccountsPage() {
         }
       }
 
+      if (
+        transactionForm.paymentMethod === "cheque" &&
+        transactionForm.paymentFrom !== "bank"
+      ) {
+        return alert("Cheque payment must be from bank");
+      }
+
       setSaving(true);
 
       const payload = {
@@ -378,22 +404,14 @@ export default function AccountsPage() {
 
       alert("Transaction saved ✅");
 
-      setTransactionForm({
-        transactionType: "income",
-        categoryName: "",
-        title: "",
-        amount: "",
-        direction: "in",
-        paymentFrom: "cash",
-        receiveTo: "cash",
-        fromBankId: "",
-        toBankId: "",
-        personType: "none",
-        personName: "",
-        paymentMethod: "cash",
-        note: "",
-      });
+      if (
+        transactionForm.paymentMethod === "cheque" &&
+        transactionForm.printCheque === true
+      ) {
+        window.open(`/cheque-print?transactionId=${data.data._id}`, "_blank");
+      }
 
+      setTransactionForm(emptyForm);
       setAiText("");
       refreshAll();
     } catch (error) {
@@ -568,6 +586,10 @@ export default function AccountsPage() {
                     ...transactionForm,
                     paymentFrom: e.target.value,
                     fromBankId: "",
+                    paymentMethod:
+                      e.target.value === "bank"
+                        ? transactionForm.paymentMethod
+                        : "cash",
                   })
                 }
                 className="border rounded-xl p-3"
@@ -667,6 +689,57 @@ export default function AccountsPage() {
             className="border rounded-xl p-3"
           />
 
+          <select
+            value={transactionForm.paymentMethod}
+            onChange={(e) =>
+              setTransactionForm({
+                ...transactionForm,
+                paymentMethod: e.target.value,
+                printCheque:
+                  e.target.value === "cheque"
+                    ? transactionForm.printCheque
+                    : false,
+                chequeNo:
+                  e.target.value === "cheque" ? transactionForm.chequeNo : "",
+              })
+            }
+            className="border rounded-xl p-3"
+          >
+            <option value="cash">Cash</option>
+            <option value="bank">Bank</option>
+            <option value="cheque">Cheque</option>
+          </select>
+
+          {transactionForm.paymentMethod === "cheque" && (
+            <>
+              <input
+                value={transactionForm.chequeNo}
+                onChange={(e) =>
+                  setTransactionForm({
+                    ...transactionForm,
+                    chequeNo: e.target.value,
+                  })
+                }
+                placeholder="Cheque Number"
+                className="border rounded-xl p-3"
+              />
+
+              <label className="flex items-center gap-2 border rounded-xl p-3">
+                <input
+                  type="checkbox"
+                  checked={transactionForm.printCheque}
+                  onChange={(e) =>
+                    setTransactionForm({
+                      ...transactionForm,
+                      printCheque: e.target.checked,
+                    })
+                  }
+                />
+                <span>Print Cheque After Save</span>
+              </label>
+            </>
+          )}
+
           <textarea
             value={transactionForm.note}
             onChange={(e) =>
@@ -740,7 +813,7 @@ export default function AccountsPage() {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1000px] text-sm">
+          <table className="w-full min-w-[1120px] text-sm">
             <thead className="bg-gray-50">
               <tr>
                 <th className="p-4 text-left">Date</th>
@@ -752,14 +825,15 @@ export default function AccountsPage() {
                 <th className="p-4 text-left">Person</th>
                 <th className="p-4 text-right">In</th>
                 <th className="p-4 text-right">Out</th>
-                <th className="p-4 text-left">Note</th>
+                <th className="p-4 text-left">Payment</th>
+                <th className="p-4 text-left">Note / Action</th>
               </tr>
             </thead>
 
             <tbody>
               {filteredTransactions.length === 0 ? (
                 <tr>
-                  <td colSpan="10" className="p-5 text-center text-gray-500">
+                  <td colSpan="11" className="p-5 text-center text-gray-500">
                     No transaction found
                   </td>
                 </tr>
@@ -781,7 +855,30 @@ export default function AccountsPage() {
                     <td className="p-4 text-right text-red-500 font-semibold">
                       {item.direction === "out" ? `৳ ${money(item.amount)}` : "-"}
                     </td>
-                    <td className="p-4">{item.note || "-"}</td>
+                    <td className="p-4">
+                      <div className="capitalize font-medium">
+                        {item.paymentMethod || "-"}
+                      </div>
+                      {item.chequeNo && (
+                        <div className="text-xs text-gray-500">
+                          Cheque: {item.chequeNo}
+                        </div>
+                      )}
+                    </td>
+                    <td className="p-4">
+                      <div className="flex flex-col gap-2">
+                        <span>{item.note || "-"}</span>
+
+                        {item.paymentMethod === "cheque" && (
+                          <Link
+                            href={`/cheque-print?transactionId=${item._id}`}
+                            className="inline-flex items-center justify-center px-3 py-1 rounded-lg bg-blue-600 text-white text-xs hover:bg-blue-700 w-fit"
+                          >
+                            Print Cheque
+                          </Link>
+                        )}
+                      </div>
+                    </td>
                   </tr>
                 ))
               )}

@@ -17,6 +17,7 @@ import {
   Hammer,
   ListChecks,
   Landmark,
+  FileSignature,
 } from "lucide-react";
 
 import { usePathname, useRouter } from "next/navigation";
@@ -27,6 +28,7 @@ export default function Sidebar({ open, setOpen }) {
   const router = useRouter();
 
   const [businessType, setBusinessType] = useState("shop");
+  const [role, setRole] = useState("admin");
 
   useEffect(() => {
     const fetchCompany = async () => {
@@ -36,6 +38,7 @@ export default function Sidebar({ open, setOpen }) {
 
         if (data.success) {
           setBusinessType(data.data.businessType || "shop");
+          setRole(data.data.user?.role || "admin");
         }
       } catch (error) {
         console.error("COMPANY_LOAD_ERROR:", error);
@@ -46,8 +49,8 @@ export default function Sidebar({ open, setOpen }) {
   }, []);
 
   const features = useMemo(
-    () => getFeatures(businessType),
-    [businessType]
+    () => getFeatures(businessType, role),
+    [businessType, role]
   );
 
   const menuItems = [
@@ -55,6 +58,12 @@ export default function Sidebar({ open, setOpen }) {
       name: "Dashboard",
       icon: LayoutDashboard,
       path: "/dashboard",
+    },
+
+    features.engineeringOffers && {
+      name: "Engineering Offers",
+      icon: FileSignature,
+      path: "/engineering-offers",
     },
 
     features.accounts && {
@@ -228,8 +237,7 @@ export default function Sidebar({ open, setOpen }) {
             const Icon = item.icon;
 
             const isActive =
-              pathname === item.path ||
-              pathname.startsWith(`${item.path}/`);
+              pathname === item.path || pathname.startsWith(`${item.path}/`);
 
             return (
               <button

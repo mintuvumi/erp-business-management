@@ -56,12 +56,22 @@ export async function GET(req) {
     const setting = await getOrCreateSetting(company, tenant);
 
     return NextResponse.json({
-      success: true,
-      data: {
-        company,
-        setting,
-      },
-    });
+  success: true,
+  data: {
+    company,
+    setting,
+
+    businessType: company.businessType || "shop",
+
+    user: {
+      id: tenant.user?.id || null,
+      name: tenant.user?.name || "",
+      role: tenant.user?.role || "admin",
+      permissions: tenant.user?.permissions || {},
+    },
+  },
+});
+
   } catch (error) {
     console.error("COMPANY_GET_ERROR:", error);
 
@@ -74,6 +84,8 @@ export async function GET(req) {
     );
   }
 }
+
+
 
 export async function POST(req) {
   try {

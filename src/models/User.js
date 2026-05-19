@@ -52,18 +52,21 @@ const UserSchema = new mongoose.Schema(
     },
 
     role: {
-      type: String,
-      enum: [
-        "owner",
-        "admin",
-        "manager",
-        "accountant",
-        "cashier",
-        "salesman",
-        "staff",
-      ],
-      default: "staff",
-    },
+  type: String,
+  enum: [
+    "owner",
+    "admin",
+    "manager",
+    "accountant",
+    "cashier",
+    "salesman",
+    "staff",
+    "offer_user",
+    "sales_engineer",
+  ],
+  default: "staff",
+},
+
 
     permissions: {
       dashboard: { type: Boolean, default: true },
@@ -85,6 +88,11 @@ const UserSchema = new mongoose.Schema(
       employees: { type: Boolean, default: false },
 
       settings: { type: Boolean, default: false },
+
+      engineeringOffers: {
+        type: Boolean,
+        default: false,
+      },
     },
 
     branch: {

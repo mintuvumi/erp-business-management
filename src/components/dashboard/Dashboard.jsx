@@ -124,8 +124,7 @@ useEffect(() => {
 }, []);
 
 
-  return () => clearInterval(interval);
-}, []);
+
 
   const cards = [
     {

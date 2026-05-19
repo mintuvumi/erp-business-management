@@ -1,4 +1,5 @@
 import CashTransaction from "@/models/CashTransaction";
+import Cash from "@/models/Cash";
 import { NextResponse } from "next/server";
 import connectDB from "@/lib/db";
 import AccountTransaction from "@/models/AccountTransaction";
@@ -72,6 +73,34 @@ async function updateCashBalance({ type, amount, companyId }) {
   await cash.save();
 }
 
+async function updateBankBalance({ bankId, type, amount, companyId }) {
+  const bank = await BankAccount.findOne({
+    _id: bankId,
+    companyId,
+  });
+
+  if (!bank) {
+    throw new Error("Bank account not found");
+  }
+
+  const current = Number(bank.currentBalance || bank.balance || 0);
+  const value = Number(amount || 0);
+
+  if (type === "add") {
+    bank.currentBalance = current + value;
+    bank.balance = current + value;
+  }
+
+  if (type === "subtract") {
+    bank.currentBalance = current - value;
+    bank.balance = current - value;
+  }
+
+  await bank.save();
+}
+
+
+
 
 export async function GET(req) {
   try {
@@ -130,15 +159,11 @@ export async function GET(req) {
       ];
     }
 
-    const transactions = await AccountTransaction.find(query)
-      .populate("fromBankId", "bankName currentBalance accountNo accountNumber")
-      .populate("toBankId", "bankName currentBalance accountNo accountNumber")
-      .populate("customerId", "name phone")
-      .populate("supplierId", "name phone")
-      .populate("employeeId", "name phone")
-      .sort({ transactionDate: -1, createdAt: -1 })
-      .limit(limit)
-      .lean();
+
+   const transactions = await AccountTransaction.find(query)
+  .sort({ transactionDate: -1, createdAt: -1 })
+  .limit(limit)
+  .lean();
 
 
 
@@ -362,53 +387,58 @@ export async function POST(req) {
       });
     }
 
+const transactionNo = `AT-${Date.now()}`;
 
-    const transaction = await AccountTransaction.create({
-      companyId: tenant.companyId,
+const transaction = await AccountTransaction.create({
+  companyId: tenant.companyId,
 
-      transactionType,
-      categoryName: category.name,
-      categoryType: category.type || categoryType || "others",
-      title: title.trim(),
-      amount: Number(amount),
-      direction,
+  transactionNo,
 
-      paymentFrom: paymentFrom || "none",
-      fromBankId: paymentFrom === "bank" ? fromBankId : null,
+  transactionType,
+  categoryName: category.name,
+  categoryType: category.type || categoryType || "others",
+  title: title.trim(),
+  amount: Number(amount),
+  direction,
 
-      receiveTo: receiveTo || "none",
-      toBankId: receiveTo === "bank" ? toBankId : null,
+  paymentFrom: paymentFrom || "none",
+  fromBankId: paymentFrom === "bank" ? fromBankId : null,
 
-      bankName:
-        direction === "out"
-          ? fromBankName
-          : direction === "in"
-          ? toBankName
-          : `${fromBankName || "Cash"} to ${toBankName || "Cash"}`,
+  receiveTo: receiveTo || "none",
+  toBankId: receiveTo === "bank" ? toBankId : null,
 
-      personType: personType || "none",
-      personName: personName || "",
+  bankName:
+    direction === "out"
+      ? fromBankName
+      : direction === "in"
+      ? toBankName
+      : `${fromBankName || "Cash"} to ${toBankName || "Cash"}`,
 
-      customerId: customerId || null,
-      supplierId: supplierId || null,
-      employeeId: employeeId || null,
+  personType: personType || "none",
+  personName: personName || "",
 
-      loanType: loanType || "none",
+  customerId: customerId || null,
+  supplierId: supplierId || null,
+  employeeId: employeeId || null,
 
-      referenceType: referenceType || "manual",
-      referenceId: referenceId || null,
+  loanType: loanType || "none",
 
-      paymentMethod: paymentMethod || paymentFrom || receiveTo || "cash",
-      chequeNo: chequeNo || "",
+  referenceType: referenceType || "manual",
+  referenceId: referenceId || null,
 
-      transactionDate: transactionDate ? new Date(transactionDate) : new Date(),
+  paymentMethod: paymentMethod || paymentFrom || receiveTo || "cash",
+  chequeNo: chequeNo || "",
 
-      note: note || "",
-      attachments: attachments || [],
+  transactionDate: transactionDate ? new Date(transactionDate) : new Date(),
 
-      createdByUserId: tenant.user.id,
-      createdBy: tenant.user.name || "",
-    });
+  note: note || "",
+  attachments: attachments || [],
+
+  createdByUserId: tenant.user.id,
+  createdBy: tenant.user.name || "",
+});
+
+
 
 
     if (direction === "in" && receiveTo === "cash") {

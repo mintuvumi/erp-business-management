@@ -13,6 +13,7 @@ const protectedRoutes = [
   "/employee",
   "/reports",
   "/settings",
+  "/engineering-offers",
 ];
 
 const authRoutes = ["/login", "/register"];
@@ -65,6 +66,7 @@ export const config = {
     "/employee/:path*",
     "/reports/:path*",
     "/settings/:path*",
+    "/engineering-offers/:path*",
     "/login",
     "/register",
   ],
