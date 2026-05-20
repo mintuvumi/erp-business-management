@@ -12,6 +12,7 @@
     "axios": "^1.15.2",
     "bcryptjs": "^3.0.3",
     "daisyui": "^5.5.19",
+    "dotenv": "^17.4.2",
     "html2canvas": "^1.4.1",
     "html2pdf.js": "^0.14.0",
     "jsonwebtoken": "^9.0.3",
@@ -26,6 +27,7 @@
     "recharts": "^3.8.1",
     "socket.io-client": "^4.8.3",
     "tailwindcss": "^3.4.1",
+    "xlsx": "^0.18.5",
     "zustand": "^5.0.12"
   },
   "devDependencies": {

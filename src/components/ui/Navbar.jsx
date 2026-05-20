@@ -188,11 +188,10 @@ export default function Navbar({ setOpen }) {
       try {
         setSearchLoading(true);
 
-        const [searchRes, aiRes] = await Promise.all([
-          fetch(`/api/global-search?q=${encodeURIComponent(searchText)}`),
-          fetch(`/api/ai-search?q=${encodeURIComponent(searchText)}`),
-        ]);
-
+              const [searchRes, aiRes] = await Promise.all([
+        fetch(`/api/global-search?q=${encodeURIComponent(searchText)}`),
+        fetch(`/api/ai-search?q=${encodeURIComponent(searchText)}`),
+      ]);
         if (searchRes.ok) {
           const searchData = await searchRes.json();
           setSearchResults(searchData?.data || []);
@@ -393,7 +392,7 @@ export default function Navbar({ setOpen }) {
 
               <select className="bg-blue-50 text-blue-700 text-[11px] md:text-xs px-3 md:px-4 py-1.5 md:py-2 rounded-full shadow-sm outline-none border border-blue-100 hover:bg-blue-100 hover:shadow-md focus:ring-4 focus:ring-blue-100">
                 <option>Select Company</option>
-                <option>ABC Ltd</option>
+                <option>Let's Go See</option>
                 <option>XYZ Group</option>
                 <option>NextCore</option>
               </select>
@@ -531,12 +530,12 @@ export default function Navbar({ setOpen }) {
                       {searchResults.length > 0 ? (
                         searchResults.map((item, index) => (
                           <button
-                            key={`${item.type || "item"}-${item.title || item.name}-${index}`}
-                            onMouseDown={(e) => e.preventDefault()}
-                            onClick={() => goTo(item.path || item.route || "/dashboard")}
-                            className="w-full text-left p-4 border-b last:border-b-0 hover:bg-blue-50 transition-all"
-                          >
-                            <div className="flex items-start justify-between gap-3">
+                    key={`${item.type || "item"}-${item.title || item.name}-${index}`}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => goTo(item.path || item.route || "/dashboard")}
+                    className="w-full text-left p-4 border-b last:border-b-0 hover:bg-blue-50 transition-all"
+                  >
+                                              <div className="flex items-start justify-between gap-3">
                               <div>
                                 <p className="text-sm font-semibold text-gray-900">
                                   {item.title || item.name}
@@ -728,9 +727,12 @@ export default function Navbar({ setOpen }) {
               <div>
                 <h2 className="text-lg font-bold">Quick Action</h2>
                 <p className="text-sm text-gray-500">
-                  Sales, purchase, stock and reports shortcut
-                </p>
-              </div>
+                AI Smart Searching
+              </p>
+           </div>
+
+
+
 
               <button
                 onClick={() => setOpenQuick(false)}
@@ -1032,6 +1034,7 @@ function NotificationIcon({ type }) {
     </div>
   );
 }
+
 
 function ProfileItem({ icon, title, onClick, danger }) {
   return (
