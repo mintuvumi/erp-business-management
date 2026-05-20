@@ -4,61 +4,20 @@ import { useEffect, useMemo, useState } from "react";
 import { Printer, Save } from "lucide-react";
 
 function numberToWords(num) {
-  const ones = [
-    "",
-    "One",
-    "Two",
-    "Three",
-    "Four",
-    "Five",
-    "Six",
-    "Seven",
-    "Eight",
-    "Nine",
-    "Ten",
-    "Eleven",
-    "Twelve",
-    "Thirteen",
-    "Fourteen",
-    "Fifteen",
-    "Sixteen",
-    "Seventeen",
-    "Eighteen",
-    "Nineteen",
-  ];
-
-  const tens = [
-    "",
-    "",
-    "Twenty",
-    "Thirty",
-    "Forty",
-    "Fifty",
-    "Sixty",
-    "Seventy",
-    "Eighty",
-    "Ninety",
-  ];
+  const ones = ["","One","Two","Three","Four","Five","Six","Seven","Eight","Nine","Ten","Eleven","Twelve","Thirteen","Fourteen","Fifteen","Sixteen","Seventeen","Eighteen","Nineteen"];
+  const tens = ["","","Twenty","Thirty","Forty","Fifty","Sixty","Seventy","Eighty","Ninety"];
 
   const convert = (n) => {
     if (n < 20) return ones[n];
     if (n < 100) return `${tens[Math.floor(n / 10)]} ${ones[n % 10]}`.trim();
-    if (n < 1000) {
-      return `${ones[Math.floor(n / 100)]} Hundred ${convert(n % 100)}`.trim();
-    }
-    if (n < 100000) {
-      return `${convert(Math.floor(n / 1000))} Thousand ${convert(n % 1000)}`.trim();
-    }
-    if (n < 10000000) {
-      return `${convert(Math.floor(n / 100000))} Lac ${convert(n % 100000)}`.trim();
-    }
-
+    if (n < 1000) return `${ones[Math.floor(n / 100)]} Hundred ${convert(n % 100)}`.trim();
+    if (n < 100000) return `${convert(Math.floor(n / 1000))} Thousand ${convert(n % 1000)}`.trim();
+    if (n < 10000000) return `${convert(Math.floor(n / 100000))} Lac ${convert(n % 100000)}`.trim();
     return `${convert(Math.floor(n / 10000000))} Crore ${convert(n % 10000000)}`.trim();
   };
 
   const amount = Number(num || 0);
   if (!amount) return "";
-
   return `The Sum of Taka ${convert(amount)} Only`;
 }
 
@@ -66,10 +25,7 @@ function splitWordsForCheque(words) {
   const clean = String(words || "").replace("The Sum of Taka", "").trim();
 
   if (clean.length <= 52) {
-    return {
-      firstLine: clean,
-      secondLine: "",
-    };
+    return { firstLine: clean, secondLine: "" };
   }
 
   const parts = clean.split(" ");
@@ -101,25 +57,29 @@ function formatChequeDate(dateValue) {
 const defaultTemplate = {
   bankName: "NCC Bank PLC",
 
-  chequeWidthMm: 292,
+  chequeWidthMm: 192,
   chequeHeightMm: 90,
 
+  // সব লেখা একসাথে ডানে/বামে, উপরে/নিচে সরানোর জন্য
+  printOffsetX: 20,
+  printOffsetY: 0,
+
   payTo: {
-    topMm: 36,
+    topMm: 29,
     leftMm: 20,
     fontSize: 12,
     heightMm: 9,
   },
 
   amountNumber: {
-    topMm: 35,
+    topMm: 37,
     leftMm: 135,
     fontSize: 13,
     heightMm: 12.5,
   },
 
   amountWords: {
-    topMm: 45,
+    topMm: 41,
     leftMm: 30,
     fontSize: 11,
     widthMm: 95,
@@ -171,6 +131,10 @@ export default function ChequePrintPage() {
           setTemplate({
             ...defaultTemplate,
             ...templateData.data,
+            printOffsetX:
+              templateData.data.printOffsetX ?? defaultTemplate.printOffsetX,
+            printOffsetY:
+              templateData.data.printOffsetY ?? defaultTemplate.printOffsetY,
             payTo: {
               ...defaultTemplate.payTo,
               ...(templateData.data.payTo || {}),
@@ -405,6 +369,20 @@ export default function ChequePrintPage() {
             />
 
             <Input
+              label="Global Right/Left"
+              type="number"
+              value={template.printOffsetX || 0}
+              onChange={(v) => updateTemplate("printOffsetX", Number(v))}
+            />
+
+            <Input
+              label="Global Up/Down"
+              type="number"
+              value={template.printOffsetY || 0}
+              onChange={(v) => updateTemplate("printOffsetY", Number(v))}
+            />
+
+            <Input
               label="Pay Top"
               type="number"
               value={template.payTo.topMm}
@@ -514,7 +492,6 @@ export default function ChequePrintPage() {
         <ChequeCanvas
           template={template}
           form={form}
-          amountWords={amountWords}
           wordsLine={wordsLine}
           chequeDateDigits={chequeDateDigits}
           showBorder
@@ -525,7 +502,6 @@ export default function ChequePrintPage() {
         <ChequeCanvas
           template={template}
           form={form}
-          amountWords={amountWords}
           wordsLine={wordsLine}
           chequeDateDigits={chequeDateDigits}
         />
@@ -549,6 +525,9 @@ function ChequeCanvas({
       style={{
         width: `${template.chequeWidthMm}mm`,
         height: `${template.chequeHeightMm}mm`,
+        transform: `translate(${template.printOffsetX || 0}mm, ${
+          template.printOffsetY || 0
+        }mm)`,
       }}
     >
       <DateBoxes
