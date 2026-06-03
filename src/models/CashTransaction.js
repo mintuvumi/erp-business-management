@@ -31,6 +31,11 @@ const CashTransactionSchema = new mongoose.Schema(
         "salary_payment",
         "bank_deposit",
         "refund_paid",
+
+        "marketing_officer_expense",
+        "marketing_officer_salary",
+        "marketing_officer_commission",
+
       ],
       required: true,
       index: true,

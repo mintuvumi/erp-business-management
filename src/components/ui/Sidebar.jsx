@@ -18,6 +18,9 @@ import {
   ListChecks,
   Landmark,
   FileSignature,
+  BriefcaseBusiness,
+  UserRound,
+  Truck,
 } from "lucide-react";
 
 import { usePathname, useRouter } from "next/navigation";
@@ -29,11 +32,15 @@ export default function Sidebar({ open, setOpen }) {
 
   const [businessType, setBusinessType] = useState("shop");
   const [role, setRole] = useState("admin");
+  const [lang, setLang] = useState("en");
 
   useEffect(() => {
     const fetchCompany = async () => {
       try {
-        const res = await fetch("/api/company");
+        const res = await fetch("/api/company", {
+          credentials: "include",
+        });
+
         const data = await res.json();
 
         if (data.success) {
@@ -56,138 +63,182 @@ export default function Sidebar({ open, setOpen }) {
   const menuItems = [
     features.dashboard && {
       name: "Dashboard",
+      bn: "ড্যাশবোর্ড",
       icon: LayoutDashboard,
       path: "/dashboard",
     },
 
-    features.engineeringOffers && {
-      name: "Engineering Offers",
-      icon: FileSignature,
-      path: "/engineering-offers",
+    {
+      name: "Marketing Officer",
+      bn: "মার্কেটিং অফিসার",
+      icon: BriefcaseBusiness,
+      path: "/marketing-officers",
     },
 
-    features.accounts && {
-      name: "Accounts",
-      icon: DollarSign,
-      path: "/accounts",
+    {
+      name: "Customers",
+      bn: "কাস্টমার",
+      icon: UserRound,
+      path: "/customers",
     },
 
-    features.accounts && {
-      name: "Accounts Statement",
-      icon: Landmark,
-      path: "/accounts/statements",
+    {
+      name: "Suppliers",
+      bn: "সাপ্লায়ার",
+      icon: Truck,
+      path: "/suppliers",
     },
 
-    features.accounts && {
-      name: "Profit & Loss",
-      icon: FileText,
-      path: "/accounts/profit-loss",
-    },
-
-    features.accounts && {
-      name: "Balance Sheet",
-      icon: FileText,
-      path: "/accounts/balance-sheet",
-    },
-
-    features.accounts && {
-      name: "Cash & Bank Flow",
-      icon: Banknote,
-      path: "/accounts/cash-flow",
-    },
-
-    features.accounts && {
-      name: "Transaction History",
-      icon: ClipboardList,
-      path: "/accounts/history",
+    features.employee && {
+      name: "Employee",
+      bn: "কর্মচারী",
+      icon: Users,
+      path: "/employee",
     },
 
     features.sales && {
       name: "Sales",
+      bn: "বিক্রয়",
       icon: ShoppingCart,
       path: "/sales",
     },
 
     features.purchase && {
       name: "Purchase",
+      bn: "ক্রয়",
       icon: Package,
       path: "/purchase",
     },
 
     features.stock && {
       name: "Stock",
+      bn: "স্টক",
       icon: Boxes,
       path: "/stock",
     },
 
+    features.accounts && {
+      name: "Accounts",
+      bn: "হিসাব",
+      icon: DollarSign,
+      path: "/accounts",
+    },
+
     features.bank && {
       name: "Bank",
+      bn: "ব্যাংক",
       icon: Banknote,
       path: "/bank",
     },
 
-    features.employee && {
-      name: "Employee",
-      icon: Users,
-      path: "/employee",
+    features.accounts && {
+      name: "Accounts Statement",
+      bn: "হিসাব বিবরণী",
+      icon: Landmark,
+      path: "/accounts/statements",
+    },
+
+    features.accounts && {
+      name: "Profit & Loss",
+      bn: "লাভ ও লস",
+      icon: FileText,
+      path: "/accounts/profit-loss",
+    },
+
+    features.accounts && {
+      name: "Balance Sheet",
+      bn: "ব্যালেন্স শিট",
+      icon: FileText,
+      path: "/accounts/balance-sheet",
+    },
+
+    features.accounts && {
+      name: "Cash & Bank Flow",
+      bn: "ক্যাশ ও ব্যাংক ফ্লো",
+      icon: Banknote,
+      path: "/accounts/cash-flow",
+    },
+
+    features.accounts && {
+      name: "Transaction History",
+      bn: "লেনদেন হিস্টোরি",
+      icon: ClipboardList,
+      path: "/accounts/history",
     },
 
     features.salarySheet && {
       name: "Salary Sheet",
+      bn: "বেতন শিট",
       icon: FileText,
       path: "/salary/sheet",
     },
 
     features.customerStatement && {
       name: "Customer Statement",
+      bn: "কাস্টমার স্টেটমেন্ট",
       icon: ClipboardList,
       path: "/customers/statement",
     },
 
     features.supplierLedger && {
       name: "Supplier Ledger",
+      bn: "সাপ্লায়ার লেজার",
       icon: FileText,
       path: "/suppliers/ledger",
     },
 
+    features.engineeringOffers && {
+      name: "Engineering Offers",
+      bn: "ইঞ্জিনিয়ারিং অফার",
+      icon: FileSignature,
+      path: "/engineering-offers",
+    },
+
     features.production && {
       name: "Production",
+      bn: "প্রোডাকশন",
       icon: Factory,
       path: "/production",
     },
 
     features.rawMaterial && {
       name: "Raw Material",
+      bn: "কাঁচামাল",
       icon: Layers,
       path: "/production/raw-material",
     },
 
     features.workOrder && {
       name: "Work Order",
+      bn: "ওয়ার্ক অর্ডার",
       icon: Hammer,
       path: "/production/work-order",
     },
 
     features.bom && {
       name: "BOM",
+      bn: "BOM",
       icon: ListChecks,
       path: "/production/bom",
     },
 
     features.reports && {
       name: "Reports",
+      bn: "রিপোর্ট",
       icon: FileText,
       path: "/reports",
     },
 
     features.financialPosition && {
       name: "Financial Position",
+      bn: "আর্থিক অবস্থা",
       icon: FileText,
       path: "/financial-position",
     },
 
     features.settings && {
       name: "Settings",
+      bn: "সেটিংস",
       icon: Settings,
       path: "/settings",
     },
@@ -216,13 +267,18 @@ export default function Sidebar({ open, setOpen }) {
       >
         <div className="h-[68px] flex items-center px-4 border-b border-gray-100">
           <div className="w-full flex items-center gap-3 px-3 py-2 rounded-2xl bg-white border border-gray-100 shadow-[0_8px_22px_rgba(15,23,42,0.05)]">
-            <div className="w-9 h-9 rounded-xl bg-gray-100 flex items-center justify-center text-gray-700 font-bold text-sm shadow-inner">
-              N
-            </div>
+
+        <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-50 to-blue-100 flex items-center justify-center overflow-hidden border border-blue-200 shadow-[0_6px_20px_rgba(37,99,235,0.20)]">
+          <img
+            src="/logo/icon-1.png"
+            alt="SeeERP"
+            className="w-11 h-11 object-contain"
+          />
+        </div>
 
             <div>
               <p className="font-bold text-sm text-gray-800 leading-none">
-                NextCore
+                SeeERP
               </p>
 
               <p className="text-[11px] text-gray-400 mt-1">
@@ -232,12 +288,37 @@ export default function Sidebar({ open, setOpen }) {
           </div>
         </div>
 
-        <nav className="px-3 py-3 space-y-1.5 overflow-y-auto max-h-[calc(100vh-130px)]">
+
+ <div className="px-3 py-3">
+  <div className="bg-white border border-gray-100 rounded-2xl p-2 shadow-[0_8px_22px_rgba(15,23,42,0.04)]">
+    <select
+      value={lang}
+      onChange={(e) => setLang(e.target.value)}
+      className="
+        w-full
+        bg-transparent
+        text-xs
+        font-semibold
+        text-gray-700
+        outline-none
+        border-none
+        cursor-pointer
+      "
+    >
+      <option value="en">🇺🇸 English</option>
+      <option value="bn">🇧🇩 বাংলা</option>
+    </select>
+  </div>
+</div>
+
+        <nav className="px-3 pb-3 space-y-1.5 overflow-y-auto max-h-[calc(100vh-178px)]">
           {menuItems.map((item, i) => {
             const Icon = item.icon;
 
             const isActive =
-              pathname === item.path || pathname.startsWith(`${item.path}/`);
+              pathname === item.path ||
+              pathname.startsWith(`${item.path}/`) ||
+              (item.path === "/dashboard" && pathname === "/");
 
             return (
               <button
@@ -255,22 +336,22 @@ export default function Sidebar({ open, setOpen }) {
                   ${
                     isActive
                       ? `
-                        bg-white
-                        text-gray-900
-                        border border-gray-100
-                        shadow-[0_10px_30px_rgba(15,23,42,0.08)]
+                        bg-blue-600
+                        text-white
+                        border border-blue-600
+                        shadow-[0_10px_30px_rgba(37,99,235,0.25)]
                       `
                       : `
                         text-gray-600
                         hover:bg-white
-                        hover:text-gray-900
+                        hover:text-blue-700
                         hover:shadow-[0_8px_24px_rgba(15,23,42,0.06)]
                       `
                   }
                 `}
               >
                 {isActive && (
-                  <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-7 bg-gray-800 rounded-r-full" />
+                  <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-7 bg-white rounded-r-full" />
                 )}
 
                 <div
@@ -281,15 +362,15 @@ export default function Sidebar({ open, setOpen }) {
                     ${
                       isActive
                         ? `
-                          bg-gray-100
-                          text-gray-900
+                          bg-white/20
+                          text-white
                           shadow-inner
                         `
                         : `
                           bg-gray-50
                           text-gray-500
-                          group-hover:bg-gray-100
-                          group-hover:text-gray-800
+                          group-hover:bg-blue-50
+                          group-hover:text-blue-700
                         `
                     }
                   `}
@@ -298,7 +379,7 @@ export default function Sidebar({ open, setOpen }) {
                 </div>
 
                 <span className="text-[13px] font-semibold truncate">
-                  {item.name}
+                  {lang === "bn" ? item.bn : item.name}
                 </span>
               </button>
             );
@@ -308,7 +389,7 @@ export default function Sidebar({ open, setOpen }) {
         <div className="p-3 border-t border-gray-100">
           <div className="bg-white rounded-2xl p-3 border border-gray-100 shadow-[0_8px_22px_rgba(15,23,42,0.05)]">
             <p className="font-semibold text-gray-700 text-xs">
-              v1.0 ERP System
+              v1.0 SeeERP
             </p>
 
             <p className="mt-1 text-[11px] text-gray-400">

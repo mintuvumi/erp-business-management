@@ -165,6 +165,9 @@ export default function SalesForm() {
   const [customer, setCustomer] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [customerAddress, setCustomerAddress] = useState("");
+  const [marketingOfficers, setMarketingOfficers] = useState([]);
+  const [marketingOfficerId, setMarketingOfficerId] = useState("");
+
   const [customerSuggestions, setCustomerSuggestions] = useState([]);
 
   const [stockProducts, setStockProducts] = useState([]);
@@ -197,28 +200,44 @@ export default function SalesForm() {
 
   const [showInvoice, setShowInvoice] = useState(false);
 
-  useEffect(() => {
-    fetch("/api/company-settings")
-      .then((res) => res.json())
-      .then((data) => {
-        if (data?.success) {
-          setCompanyInfo(data.data);
-          setVatPercent(String(data.data?.vatPercent || ""));
-          setAitPercent(String(data.data?.aitPercent || ""));
-          setDueMode(data.data?.defaultDueMode || "add");
-        }
-      })
-      .catch(console.error);
 
-    fetch("/api/dashboard/stock")
-      .then((res) => res.json())
-      .then((data) => {
-        if (data?.success) {
-          setStockProducts(data.data.stocks || []);
-        }
-      })
-      .catch(console.error);
-  }, []);
+
+  useEffect(() => {
+  fetch("/api/company-settings")
+    .then((res) => res.json())
+    .then((data) => {
+      if (data?.success) {
+        setCompanyInfo(data.data);
+        setVatPercent(String(data.data?.vatPercent || ""));
+        setAitPercent(String(data.data?.aitPercent || ""));
+        setDueMode(data.data?.defaultDueMode || "add");
+      }
+    })
+    .catch(console.error);
+
+  fetch("/api/dashboard/stock")
+    .then((res) => res.json())
+    .then((data) => {
+      if (data?.success) {
+        setStockProducts(data.data.stocks || []);
+      }
+    })
+    .catch(console.error);
+    
+
+  fetch("/api/marketing-officers", {
+  credentials: "include",
+})
+  .then((res) => res.json())
+  .then((data) => {
+    if (data?.success) {
+      setMarketingOfficers(data.data || []);
+    }
+  })
+  .catch(console.error);
+
+}, []);
+
 
   const fetchCustomers = async (value) => {
     setCustomer(value);
@@ -369,31 +388,50 @@ export default function SalesForm() {
   };
 
   const buildPayload = (pin = "") => ({
-    billNo,
-    manualBillNo: billType === "manual" ? manualBillNo.trim() : "",
-    date,
-    customerName: customer,
-    customerPhone,
-    customerAddress,
-    poWoNo,
-    items: getValidItems(),
-    discount: discountAmount,
-    amountType,
-    salesAmount: afterDiscount,
-    vatPercent: Number(vatPercent || 0),
-    aitPercent: Number(aitPercent || 0),
-    paidAmount,
-    vatDocumentReceived,
-    aitDocumentReceived,
-    vatDocumentNote,
-    aitDocumentNote,
-    ownerPin: pin,
-    note,
-    status: "completed",
-  });
+  billNo,
+  manualBillNo: billType === "manual" ? manualBillNo.trim() : "",
+  date,
+
+  customerName: customer,
+  customerPhone,
+  customerAddress,
+
+  marketingOfficerId,
+
+  poWoNo,
+
+  items: getValidItems(),
+
+  discount: discountAmount,
+
+  amountType,
+  salesAmount: afterDiscount,
+
+  vatPercent: Number(vatPercent || 0),
+  aitPercent: Number(aitPercent || 0),
+
+  paidAmount,
+
+  vatDocumentReceived,
+  aitDocumentReceived,
+
+  vatDocumentNote,
+  aitDocumentNote,
+
+  ownerPin: pin,
+
+  note,
+
+  status: "completed",
+});
 
   const handleSubmit = async (pin = "") => {
     if (!customer.trim()) return alert("Customer name required");
+
+     if (!marketingOfficerId) {
+    return alert("Please Select Marketing Officer");
+  }
+
     if (billType === "manual" && !manualBillNo.trim()) {
       return alert("Manual invoice number required");
     }
@@ -473,94 +511,117 @@ export default function SalesForm() {
           </p>
         </div>
 
-        <div className="border rounded-2xl p-4 bg-gray-50/70 space-y-3">
-          <p className="text-sm font-bold">Invoice Number Type</p>
+       <div className="border rounded-2xl p-4 bg-gray-50/70 space-y-3">
+  <p className="text-sm font-bold">Invoice Number Type</p>
 
-          <div className="flex flex-wrap gap-3">
-            <label className="flex items-center gap-2 px-4 py-2 rounded-xl border bg-white cursor-pointer">
-              <input
-                type="radio"
-                checked={billType === "auto"}
-                onChange={() => setBillType("auto")}
-              />
-              Auto Invoice
-            </label>
+  <div className="flex flex-wrap gap-3">
+    <label className="flex items-center gap-2 px-4 py-2 rounded-xl border bg-white cursor-pointer">
+      <input
+        type="radio"
+        checked={billType === "auto"}
+        onChange={() => setBillType("auto")}
+      />
+      Auto Invoice
+    </label>
 
-            <label className="flex items-center gap-2 px-4 py-2 rounded-xl border bg-white cursor-pointer">
-              <input
-                type="radio"
-                checked={billType === "manual"}
-                onChange={() => setBillType("manual")}
-              />
-              Manual Invoice
-            </label>
-          </div>
+    <label className="flex items-center gap-2 px-4 py-2 rounded-xl border bg-white cursor-pointer">
+      <input
+        type="radio"
+        checked={billType === "manual"}
+        onChange={() => setBillType("manual")}
+      />
+      Manual Invoice
+    </label>
+  </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <Input label="Auto Bill No" value={billNo} readOnly />
-            <Input
-              label="Manual Invoice No"
-              value={manualBillNo}
-              onChange={setManualBillNo}
-              placeholder="Example: BD01526"
-              readOnly={billType === "auto"}
-            />
-          </div>
-        </div>
+  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+    <Input label="Auto Bill No" value={billNo} readOnly />
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <Input type="date" label="Date" value={date} onChange={setDate} />
+    <Input
+      label="Manual Invoice No"
+      value={manualBillNo}
+      onChange={setManualBillNo}
+      placeholder="Example: BD01526"
+      readOnly={billType === "auto"}
+    />
+  </div>
+</div>
+{/* Start */}
 
-          <div className="relative">
-            <Input
-              label="Customer Name"
-              value={customer}
-              onChange={fetchCustomers}
-              placeholder="Type customer name..."
-            />
+<div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+  <Input type="date" label="Date" value={date} onChange={setDate} />
 
-            {customerSuggestions.length > 0 && (
-              <div className="absolute left-0 right-0 top-full mt-1 bg-white border rounded-2xl shadow-lg z-[9999] max-h-56 overflow-auto">
-                {customerSuggestions.map((c) => (
-                  <button
-                    key={c._id}
-                    type="button"
-                    onClick={() => selectCustomer(c)}
-                    className="w-full text-left p-3 hover:bg-blue-50 border-b last:border-b-0"
-                  >
-                    <p className="font-semibold text-sm">{c.name}</p>
-                    <p className="text-xs text-gray-500">
-                      {c.phone || "No phone"} {c.address ? `• ${c.address}` : ""}
-                    </p>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
+  <div className="relative">
+    <Input
+      label="Customer Name"
+      value={customer}
+      onChange={fetchCustomers}
+      placeholder="Type customer name..."
+    />
 
-          <Input
-            label="Phone Number"
-            value={customerPhone}
-            onChange={setCustomerPhone}
-            placeholder="Auto fill / enter phone number"
-          />
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <Input
-            label="Customer Address"
-            value={customerAddress}
-            onChange={setCustomerAddress}
-            placeholder="Auto fill / enter customer address"
-          />
-          <Input
-            label="PO / Work Order No"
-            value={poWoNo}
-            onChange={setPoWoNo}
-            placeholder="Example: BD01526"
-          />
-        </div>
+    {customerSuggestions.length > 0 && (
+      <div className="absolute left-0 right-0 top-full mt-1 bg-white border rounded-2xl shadow-lg z-[9999] max-h-56 overflow-auto">
+        {customerSuggestions.map((c) => (
+          <button
+            key={c._id}
+            type="button"
+            onClick={() => selectCustomer(c)}
+            className="w-full text-left p-3 hover:bg-blue-50 border-b last:border-b-0"
+          >
+            <p className="font-semibold text-sm">{c.name}</p>
+            <p className="text-xs text-gray-500">
+              {c.phone || "No phone"} {c.address ? `• ${c.address}` : ""}
+            </p>
+          </button>
+        ))}
       </div>
+    )}
+  </div>
+
+  <Input
+    label="Phone Number"
+    value={customerPhone}
+    onChange={setCustomerPhone}
+    placeholder="Auto fill / enter phone number"
+  />
+
+  <div>
+    <label className="text-xs font-semibold text-gray-500 mb-1 block">
+      Marketing Officer *
+    </label>
+
+    <select
+      value={marketingOfficerId}
+      onChange={(e) => setMarketingOfficerId(e.target.value)}
+      className="border p-3 rounded-xl w-full outline-none focus:ring-4 focus:ring-blue-100 bg-white"
+    >
+      <option value="">Select Marketing Officer</option>
+
+      {(marketingOfficers || []).map((officer) => (
+        <option key={officer._id} value={officer._id}>
+          {officer.name}
+        </option>
+      ))}
+    </select>
+  </div>
+</div>
+
+<div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+  <Input
+    label="Customer Address"
+    value={customerAddress}
+    onChange={setCustomerAddress}
+    placeholder="Auto fill / enter customer address"
+  />
+
+  <Input
+    label="PO / Work Order No"
+    value={poWoNo}
+    onChange={setPoWoNo}
+    placeholder="Example: BD01526"
+  />
+</div>
+</div>
 
       <div className="bg-white border rounded-[28px] p-5 md:p-7 shadow-sm space-y-4">
         <div className="flex items-center justify-between gap-3">

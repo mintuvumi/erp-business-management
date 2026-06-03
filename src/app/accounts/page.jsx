@@ -833,7 +833,7 @@ export default function AccountsPage() {
             <tbody>
               {filteredTransactions.length === 0 ? (
                 <tr>
-                  <td colSpan="11" className="p-5 text-center text-gray-500">
+                  <td colSpan="12" className="p-5 text-center text-gray-500">
                     No transaction found
                   </td>
                 </tr>

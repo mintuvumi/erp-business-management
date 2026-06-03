@@ -51,6 +51,10 @@ const BankTransactionSchema = new mongoose.Schema(
         "loan_payment",
         "transfer_in",
         "transfer_out",
+        "marketing_officer_expense",
+        "marketing_officer_salary",
+        "marketing_officer_commission",
+
       ],
       required: true,
       index: true,

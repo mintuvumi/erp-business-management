@@ -80,25 +80,25 @@ const SalaryPaymentSchema = new mongoose.Schema(
       default: 0,
     },
 
-    paymentMethod: {
-      type: String,
-      enum: ["cash", "bank", "mobile_banking"],
-      default: "cash",
-      index: true,
-    },
-
     paymentStatus: {
-      type: String,
-      enum: ["paid", "partial", "due"],
-      default: "due",
-      index: true,
-    },
+  type: String,
+  enum: ["paid", "partial", "due"],
+  default: "due",
+  index: true,
+},
+
+    approvalStatus: {
+    type: String,
+    enum: ["draft", "approved", "paid"],
+    default: "draft",
+    index: true,
+  },
 
     bankId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "BankAccount",
-      default: null,
-    },
+  type: mongoose.Schema.Types.ObjectId,
+  ref: "BankAccount",
+  default: null,
+},
 
     mobileBankingType: {
       type: String,

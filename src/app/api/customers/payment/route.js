@@ -3,6 +3,9 @@ import mongoose from "mongoose";
 import connectDB from "@/lib/db";
 import Sale from "@/models/Sale";
 import CashTransaction from "@/models/CashTransaction";
+import MarketingOfficer from "@/models/MarketingOfficer";
+import MarketingOfficerLedger from "@/models/MarketingOfficerLedger";
+import { getTenant } from "@/lib/tenant";
 
 function getPaymentType({ paidAmount, targetAmount }) {
   const paid = Number(paidAmount || 0);
@@ -16,6 +19,15 @@ function getPaymentType({ paidAmount, targetAmount }) {
 export async function POST(req) {
   try {
     await connectDB();
+
+    const tenant = getTenant(req);
+
+    if (!tenant.companyId) {
+      return NextResponse.json(
+        { success: false, message: "Unauthorized" },
+        { status: 401 }
+      );
+    }
 
     const body = await req.json();
 
@@ -45,7 +57,10 @@ export async function POST(req) {
       );
     }
 
-    const sale = await Sale.findById(saleId);
+    const sale = await Sale.findOne({
+      _id: saleId,
+      companyId: tenant.companyId,
+    });
 
     if (!sale) {
       return NextResponse.json(
@@ -60,6 +75,38 @@ export async function POST(req) {
         { status: 400 }
       );
     }
+
+    let marketingOfficerId = body.marketingOfficerId || sale.marketingOfficerId;
+    let marketingOfficerName = sale.marketingOfficerName || "";
+
+    if (!marketingOfficerId) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Marketing Officer is required for due collection",
+        },
+        { status: 400 }
+      );
+    }
+
+    const officer = await MarketingOfficer.findOne({
+      _id: marketingOfficerId,
+      companyId: tenant.companyId,
+      status: "active",
+    });
+
+    if (!officer) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Valid Marketing Officer required",
+        },
+        { status: 400 }
+      );
+    }
+
+    marketingOfficerId = officer._id;
+    marketingOfficerName = officer.name;
 
     const previousPaidAmount = Number(sale.paidAmount || 0);
 
@@ -101,8 +148,6 @@ export async function POST(req) {
     sale.paidAmount = newPaidAmount;
     sale.invoiceDueAmount = invoiceDueAmount;
     sale.statementDueAmount = statementDueAmount;
-
-    // old compatible field
     sale.dueAmount = statementDueAmount;
 
     sale.paymentType = getPaymentType({
@@ -110,9 +155,15 @@ export async function POST(req) {
       targetAmount: invoiceTotal,
     });
 
+    if (!sale.marketingOfficerId) {
+      sale.marketingOfficerId = marketingOfficerId;
+      sale.marketingOfficerName = marketingOfficerName;
+    }
+
     await sale.save();
 
     await CashTransaction.create({
+      companyId: tenant.companyId,
       type: "in",
       category: "due_collection",
       title: `Due collection from ${sale.customerName}`,
@@ -121,6 +172,36 @@ export async function POST(req) {
       note,
       refType: "sale",
       refId: sale._id.toString(),
+      createdByUserId: tenant.user?.id || null,
+      createdBy: tenant.user?.name || "",
+    });
+
+    await MarketingOfficerLedger.create({
+      companyId: tenant.companyId,
+
+      marketingOfficerId,
+      marketingOfficerName,
+
+      date: paymentDate,
+      type: "collection",
+
+      referenceType: "sale_due_collection",
+      referenceId: sale._id,
+
+      invoiceNo: sale.billNo || "",
+      customerId: sale.customerId || null,
+      customerName: sale.customerName || "",
+
+      totalSales: 0,
+      cashSales: 0,
+      dueSales: 0,
+      collectionAmount: amount,
+      dueAmount: statementDueAmount,
+      profitAmount: 0,
+
+      note: note || `Due collection for invoice ${sale.billNo || ""}`,
+      createdByUserId: tenant.user?.id || null,
+      createdBy: tenant.user?.name || "",
     });
 
     return NextResponse.json(
@@ -131,6 +212,9 @@ export async function POST(req) {
           saleId: sale._id,
           customerName: sale.customerName,
           billNo: sale.billNo,
+
+          marketingOfficerId,
+          marketingOfficerName,
 
           receivedAmount: amount,
           paidAmount: newPaidAmount,

@@ -4,6 +4,8 @@ import Stock from "@/models/Stock";
 import Customer from "@/models/Customer";
 import CompanySetting from "@/models/CompanySetting";
 import CashTransaction from "@/models/CashTransaction";
+import MarketingOfficer from "@/models/MarketingOfficer";
+import MarketingOfficerLedger from "@/models/MarketingOfficerLedger";
 import connectDB from "@/lib/db";
 import generateBillNo from "@/utils/generateBillNo";
 import { getTenant } from "@/lib/tenant";
@@ -101,6 +103,7 @@ async function getOrCreateCustomer(body, tenant) {
   return customer;
 }
 
+
 export async function POST(req) {
   try {
     await connectDB();
@@ -119,6 +122,26 @@ export async function POST(req) {
     if (!body.customerName || !String(body.customerName).trim()) {
       return NextResponse.json(
         { success: false, message: "Customer name required" },
+        { status: 400 }
+      );
+    }
+
+    if (!body.marketingOfficerId) {
+      return NextResponse.json(
+        { success: false, message: "Marketing Officer is required" },
+        { status: 400 }
+      );
+    }
+
+    const marketingOfficer = await MarketingOfficer.findOne({
+      _id: body.marketingOfficerId,
+      companyId: tenant.companyId,
+      status: "active",
+    });
+
+    if (!marketingOfficer) {
+      return NextResponse.json(
+        { success: false, message: "Valid Marketing Officer required" },
         { status: 400 }
       );
     }
@@ -356,6 +379,9 @@ export async function POST(req) {
       customerPhone: body.customerPhone || customer?.phone || "",
       customerAddress: body.customerAddress || customer?.address || "",
 
+      marketingOfficerId: marketingOfficer._id,
+      marketingOfficerName: marketingOfficer.name,
+
       items,
 
       subTotal,
@@ -402,6 +428,34 @@ export async function POST(req) {
 
       note: body.note || "",
       status: body.status || "completed",
+    });
+
+    await MarketingOfficerLedger.create({
+      companyId: tenant.companyId,
+
+      marketingOfficerId: marketingOfficer._id,
+      marketingOfficerName: marketingOfficer.name,
+
+      date: body.date || new Date().toISOString().slice(0, 10),
+      type: "sale",
+
+      referenceType: "sale",
+      referenceId: sale._id,
+      invoiceNo: billNo,
+
+      customerId: customer?._id || null,
+      customerName,
+
+      totalSales: tax.invoiceTotal,
+      cashSales: paidAmount,
+      dueSales: statementDueAmount,
+      collectionAmount: paidAmount,
+      dueAmount: statementDueAmount,
+      profitAmount: totalProfit,
+
+      note: body.note || "",
+      createdByUserId: tenant.user.id,
+      createdBy: tenant.user.name || "",
     });
 
     if (paidAmount > 0) {

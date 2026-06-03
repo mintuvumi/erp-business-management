@@ -76,23 +76,27 @@ export async function POST(req) {
     user.loginCount = Number(user.loginCount || 0) + 1;
     await user.save();
 
-    const token = generateToken(user);
+    const token = generateToken({
+      ...user.toObject(),
+      _id: user._id,
+      companyId: String(user.companyId),
+    });
 
     const response = NextResponse.json({
       success: true,
       message: "Login success",
       data: {
-        id: user._id,
+        id: String(user._id),
         userId: user.userId,
         name: user.name,
         email: user.email,
         phone: user.phone,
         role: user.role,
         permissions: user.permissions,
-        companyId: user.companyId,
+        companyId: String(user.companyId),
         companyCode: user.companyCode,
         company: {
-          id: company._id,
+          id: String(company._id),
           name: company.name,
           logo: company.logo,
           businessType: company.businessType,
@@ -100,13 +104,13 @@ export async function POST(req) {
       },
     });
 
-        response.cookies.set("erp_token", token, {
-        httpOnly: true,
-        secure: true,
-        sameSite: "none",
-        path: "/",
-        maxAge: 60 * 60 * 24 * 7,
-      });
+    response.cookies.set("erp_token", token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+      path: "/",
+      maxAge: 60 * 60 * 24 * 7,
+    });
 
     return response;
   } catch (error) {

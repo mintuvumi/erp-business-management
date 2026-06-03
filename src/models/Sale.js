@@ -95,6 +95,21 @@ const SaleSchema = new mongoose.Schema(
       trim: true,
     },
 
+    marketingOfficerId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "MarketingOfficer",
+      required: true,
+      index: true,
+    },
+
+    marketingOfficerName: {
+      type: String,
+      required: true,
+      trim: true,
+      index: true,
+    },
+
+
     items: {
       type: [SaleItemSchema],
       required: true,
@@ -213,10 +228,13 @@ const SaleSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+
 SaleSchema.index({ companyId: 1, customerName: 1 });
 SaleSchema.index({ companyId: 1, date: -1 });
 SaleSchema.index({ companyId: 1, billNo: 1 }, { unique: true });
 SaleSchema.index({ companyId: 1, status: 1 });
 SaleSchema.index({ companyId: 1, paymentType: 1 });
+SaleSchema.index({ companyId: 1, marketingOfficerId: 1 });
+SaleSchema.index({ companyId: 1, marketingOfficerName: 1 });
 
 export default mongoose.models.Sale || mongoose.model("Sale", SaleSchema);

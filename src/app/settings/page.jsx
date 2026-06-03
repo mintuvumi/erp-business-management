@@ -117,8 +117,10 @@ export default function SettingsPage() {
     try {
       setLoading(true);
 
-      const res = await fetch("/api/settings");
-      const data = await res.json();
+     const res = await fetch("/api/settings", {
+      credentials: "include",
+    });
+          const data = await res.json();
 
       if (data.success) {
         setForm((prev) => ({
@@ -184,19 +186,26 @@ export default function SettingsPage() {
 
   const fetchCompany = async () => {
     try {
-      const res = await fetch("/api/company");
+
+      const res = await fetch("/api/company", {
+      credentials: "include",
+    });
+
       const data = await res.json();
 
       if (data.success) {
-        setForm((prev) => ({
-          ...prev,
-          companyName: data.data.name || prev.companyName,
-          companyAddress: data.data.address || prev.companyAddress,
-          companyPhone: data.data.phone || prev.companyPhone,
-          companyEmail: data.data.email || prev.companyEmail,
-          businessType: data.data.businessType || "shop",
-        }));
-      }
+      const company = data.data.company;
+
+      setForm((prev) => ({
+        ...prev,
+        companyName: company?.name || prev.companyName,
+        companyAddress: company?.address || prev.companyAddress,
+        companyPhone: company?.phone || prev.companyPhone,
+        companyEmail: company?.email || prev.companyEmail,
+        businessType: company?.businessType || "shop",
+      }));
+    }
+
     } catch (error) {
       console.error("COMPANY_LOAD_ERROR:", error);
     }
@@ -213,11 +222,12 @@ export default function SettingsPage() {
 
       const settingsRes = await fetch("/api/settings", {
         method: "POST",
+        credentials: "include",
         headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(form),
-      });
+      "Content-Type": "application/json",
+      },
+      body: JSON.stringify(form),
+    });
 
       const settingsData = await settingsRes.json();
 
@@ -226,11 +236,13 @@ export default function SettingsPage() {
       }
 
       const companyRes = await fetch("/api/company", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
+      method: "POST",
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+
           name: form.companyName,
           address: form.companyAddress,
           phone: form.companyPhone,
@@ -266,6 +278,7 @@ export default function SettingsPage() {
 
       const res = await fetch("/api/upload", {
         method: "POST",
+        credentials: "include",
         body: formData,
       });
 

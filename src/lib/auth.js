@@ -12,7 +12,7 @@ export function generateToken(user) {
       email: user.email || "",
       phone: user.phone || "",
 
-      companyId: user.companyId,
+      companyId: String(user.companyId),
       companyCode: user.companyCode || "",
 
       role: user.role,

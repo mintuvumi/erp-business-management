@@ -33,7 +33,59 @@ const fallbackImages = [
   "https://i.pravatar.cc/100?img=4",
 ];
 
+const softwareOptions = [
+  {
+    title: "Dashboard",
+    type: "option",
+    path: "/dashboard",
+    subtitle: "Open dashboard",
+  },
+
+  {
+    title: "Sales",
+    type: "option",
+    path: "/sales",
+    subtitle: "Create sales bill",
+  },
+
+  {
+    title: "Purchase",
+    type: "option",
+    path: "/purchase",
+    subtitle: "Purchase entry",
+  },
+
+  {
+    title: "Stock",
+    type: "option",
+    path: "/stock",
+    subtitle: "Stock management",
+  },
+
+  {
+    title: "Employee",
+    type: "option",
+    path: "/employee",
+    subtitle: "Employee management",
+  },
+
+  {
+    title: "Reports",
+    type: "option",
+    path: "/reports",
+    subtitle: "Reports center",
+  },
+
+  {
+    title: "Settings",
+    type: "option",
+    path: "/settings",
+    subtitle: "Software settings",
+  },
+];
+
 export default function Navbar({ setOpen }) {
+
   const router = useRouter();
   const fileInputRef = useRef(null);
 
@@ -157,6 +209,10 @@ export default function Navbar({ setOpen }) {
     return () => clearInterval(notificationInterval);
   }, []);
 
+
+
+
+
   useEffect(() => {
     if (!ownerImages.length) return;
 
@@ -177,47 +233,130 @@ export default function Navbar({ setOpen }) {
     return () => clearInterval(interval);
   }, [ownerImages]);
 
-  useEffect(() => {
-    const timer = setTimeout(async () => {
-      if (!searchText.trim()) {
-        setSearchResults([]);
-        setAiAnswer(null);
-        return;
+// ** search useEffect
+
+useEffect(() => {
+  const timer = setTimeout(async () => {
+    if (!searchText.trim()) {
+      setSearchResults([]);
+      setAiAnswer(null);
+      return;
+    }
+
+    try {
+      setSearchLoading(true);
+
+      const [searchRes, aiRes, geminiRes] =
+        await Promise.all([
+          fetch(
+            `/api/global-search?q=${encodeURIComponent(
+              searchText
+            )}`
+          ),
+
+          fetch(
+            `/api/ai-search?q=${encodeURIComponent(
+              searchText
+            )}`
+          ),
+
+          fetch(
+            `/api/gemini-search?q=${encodeURIComponent(
+              searchText
+            )}`
+          ),
+        ]);
+
+      let apiResults = [];
+
+      if (searchRes.ok) {
+        const searchData = await searchRes.json();
+
+        apiResults = searchData?.data || [];
       }
 
-      try {
-        setSearchLoading(true);
+      const optionResults =
+        softwareOptions.filter((item) => {
+          const text =
+            `${item.title} ${item.subtitle} ${item.type}`.toLowerCase();
 
-              const [searchRes, aiRes] = await Promise.all([
-        fetch(`/api/global-search?q=${encodeURIComponent(searchText)}`),
-        fetch(`/api/ai-search?q=${encodeURIComponent(searchText)}`),
+          return text.includes(
+            searchText.toLowerCase()
+          );
+        });
+
+      setSearchResults([
+        ...optionResults,
+        ...apiResults,
       ]);
-        if (searchRes.ok) {
-          const searchData = await searchRes.json();
-          setSearchResults(searchData?.data || []);
-        } else {
-          setSearchResults([]);
-        }
 
-        if (aiRes.ok) {
-          const aiData = await aiRes.json();
-          setAiAnswer(aiData?.data || null);
-        } else {
-          setAiAnswer(null);
-        }
+      let finalAiAnswer = null;
 
-        localStorage.setItem("searchHistory", searchText);
-      } catch (error) {
-        console.error("SEARCH_ERROR:", error);
-        setSearchResults([]);
-        setAiAnswer(null);
-      } finally {
-        setSearchLoading(false);
+      if (aiRes.ok) {
+        const aiData = await aiRes.json();
+
+        finalAiAnswer =
+          aiData?.data || null;
       }
-    }, 250);
 
-    return () => clearTimeout(timer);
-  }, [searchText]);
+      if (geminiRes.ok) {
+        const geminiData =
+          await geminiRes.json();
+
+        if (geminiData?.data) {
+          finalAiAnswer = {
+            ...(finalAiAnswer || {}),
+
+            title:
+              finalAiAnswer?.title ||
+              geminiData.data.title ||
+              "AI Business Assistant",
+
+            answer:
+              finalAiAnswer?.answer ||
+              geminiData.data.answer,
+
+            suggestions: [
+              ...(finalAiAnswer?.suggestions ||
+                []),
+
+              ...(geminiData.data
+                .suggestions || []),
+            ],
+
+            path:
+              finalAiAnswer?.path ||
+              geminiData.data.path ||
+              "/dashboard",
+          };
+        }
+      }
+
+      setAiAnswer(finalAiAnswer);
+
+      localStorage.setItem(
+        "searchHistory",
+        searchText
+      );
+    } catch (error) {
+      console.error(
+        "SEARCH_ERROR:",
+        error
+      );
+
+      setSearchResults([]);
+      setAiAnswer(null);
+    } finally {
+      setSearchLoading(false);
+    }
+  }, 250);
+
+  return () => clearTimeout(timer);
+}, [searchText]);
+  
+// search useEffect end
+
+
 
   useEffect(() => {
     const keyHandler = (e) => {
@@ -230,6 +369,31 @@ export default function Navbar({ setOpen }) {
     window.addEventListener("keydown", keyHandler);
     return () => window.removeEventListener("keydown", keyHandler);
   }, []);
+
+
+const handleSearchEnter = (e) => {
+  if (e.key !== "Enter") return;
+
+  e.preventDefault();
+
+  if (searchResults.length > 0) {
+    const first = searchResults[0];
+
+    goTo(first.path || first.route || "/dashboard");
+
+    return;
+  }
+
+  if (aiAnswer?.path) {
+    goTo(aiAnswer.path);
+    return;
+  }
+
+  router.push(
+    `/search?q=${encodeURIComponent(searchText)}`
+  );
+};
+
 
   const goTo = (path) => {
     if (!path) return;
@@ -390,13 +554,26 @@ export default function Navbar({ setOpen }) {
                 <Menu size={21} />
               </button>
 
-              <select className="bg-blue-50 text-blue-700 text-[11px] md:text-xs px-3 md:px-4 py-1.5 md:py-2 rounded-full shadow-sm outline-none border border-blue-100 hover:bg-blue-100 hover:shadow-md focus:ring-4 focus:ring-blue-100">
-                <option>Select Company</option>
-                <option>Let's Go See</option>
-                <option>XYZ Group</option>
-                <option>NextCore</option>
-              </select>
-            </div>
+
+{/* company select */}
+             <select
+                  value={
+                    typeof window !== "undefined"
+                      ? localStorage.getItem("activeCompany") || "Select Company"
+                      : "Select Company"
+                  }
+                  onChange={(e) => {
+                    localStorage.setItem("activeCompany", e.target.value);
+                    fetchNotifications();
+                  }}
+                  className="bg-blue-50 text-blue-700 text-[11px] md:text-xs px-3 md:px-4 py-1.5 md:py-2 rounded-full shadow-sm outline-none border border-blue-100 hover:bg-blue-100 hover:shadow-md focus:ring-4 focus:ring-blue-100"
+                >
+                  <option>Select Company</option>
+                  <option>Let's Go See</option>
+                  <option>XYZ Group</option>
+                  <option>NextCore</option>
+                </select>
+                </div>
 
             <div className="flex items-center gap-2 md:gap-3">
               <IconBtn
@@ -470,16 +647,17 @@ export default function Navbar({ setOpen }) {
                   <Search size={17} className="text-gray-400 mr-2" />
 
                   <input
-                    id="premium-navbar-search"
-                    value={searchText}
-                    onChange={(e) => {
-                      setSearchText(e.target.value);
-                      setOpenSearch(true);
-                    }}
-                    onFocus={() => setOpenSearch(true)}
-                    className="bg-transparent outline-none w-full text-xs md:text-sm placeholder:text-gray-400"
-                    placeholder="Search sales, purchase, stock, bank, employee..."
-                  />
+                        id="premium-navbar-search"
+                        value={searchText}
+                        onKeyDown={handleSearchEnter}
+                        onChange={(e) => {
+                          setSearchText(e.target.value);
+                          setOpenSearch(true);
+                        }}
+                        onFocus={() => setOpenSearch(true)}
+                        className="bg-transparent outline-none w-full text-xs md:text-sm placeholder:text-gray-400"
+                        placeholder="Search sales, purchase, stock, bank, employee..."
+                      />
 
                   <button
                     type="button"
