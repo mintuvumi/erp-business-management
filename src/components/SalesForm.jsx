@@ -154,6 +154,7 @@ const emptyItem = {
   price: "",
   purchasePrice: "",
   sourceType: "stock",
+  productId: null,
 };
 
 export default function SalesForm() {
@@ -169,7 +170,6 @@ export default function SalesForm() {
   const [marketingOfficerId, setMarketingOfficerId] = useState("");
 
   const [customerSuggestions, setCustomerSuggestions] = useState([]);
-
   const [stockProducts, setStockProducts] = useState([]);
   const [activeProductIndex, setActiveProductIndex] = useState(null);
 
@@ -186,7 +186,23 @@ export default function SalesForm() {
   const [aitPercent, setAitPercent] = useState("");
   const [paid, setPaid] = useState("");
 
+  const [paymentTo, setPaymentTo] = useState("cash");
+  const [bankId, setBankId] = useState("");
+  const [banks, setBanks] = useState([]);
+  const [paymentMethod, setPaymentMethod] = useState("cash");
+  const [transactionId, setTransactionId] = useState("");
+  const [chequeNo, setChequeNo] = useState("");
+
   const [dueMode, setDueMode] = useState("add");
+
+  const [dueReminderEnabled, setDueReminderEnabled] = useState(false);
+  const [reminderType, setReminderType] = useState("none");
+  const [promiseDate, setPromiseDate] = useState("");
+  const [nextCollectionDate, setNextCollectionDate] = useState("");
+  const [installmentEnabled, setInstallmentEnabled] = useState(false);
+  const [installmentMonths, setInstallmentMonths] = useState("");
+  const [dueInterestPercent, setDueInterestPercent] = useState("");
+  const [reminderNote, setReminderNote] = useState("");
 
   const [vatDocumentReceived, setVatDocumentReceived] = useState(false);
   const [aitDocumentReceived, setAitDocumentReceived] = useState(false);
@@ -200,44 +216,46 @@ export default function SalesForm() {
 
   const [showInvoice, setShowInvoice] = useState(false);
 
-
-
   useEffect(() => {
-  fetch("/api/company-settings")
-    .then((res) => res.json())
-    .then((data) => {
-      if (data?.success) {
-        setCompanyInfo(data.data);
-        setVatPercent(String(data.data?.vatPercent || ""));
-        setAitPercent(String(data.data?.aitPercent || ""));
-        setDueMode(data.data?.defaultDueMode || "add");
-      }
-    })
-    .catch(console.error);
+    fetch("/api/company-settings", { credentials: "include" })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data?.success) {
+          setCompanyInfo(data.data);
+          setVatPercent(String(data.data?.vatPercent || ""));
+          setAitPercent(String(data.data?.aitPercent || ""));
+          setDueMode(data.data?.defaultDueMode || "add");
+          setDueInterestPercent(String(data.data?.dueInterestPercent || ""));
+        }
+      })
+      .catch(console.error);
 
-  fetch("/api/dashboard/stock")
-    .then((res) => res.json())
-    .then((data) => {
-      if (data?.success) {
-        setStockProducts(data.data.stocks || []);
-      }
-    })
-    .catch(console.error);
-    
+    fetch("/api/dashboard/stock", { credentials: "include" })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data?.success) setStockProducts(data.data.stocks || []);
+      })
+      .catch(console.error);
 
-  fetch("/api/marketing-officers", {
-  credentials: "include",
-})
-  .then((res) => res.json())
-  .then((data) => {
-    if (data?.success) {
-      setMarketingOfficers(data.data || []);
-    }
-  })
-  .catch(console.error);
+    fetch("/api/marketing-officers", { credentials: "include" })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data?.success) setMarketingOfficers(data.data || []);
+      })
+      .catch(console.error);
 
-}, []);
-
+    fetch("/api/bank", { credentials: "include" })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data?.success) {
+          const list = Array.isArray(data?.data)
+            ? data.data
+            : data?.data?.banks || data?.banks || [];
+          setBanks(list);
+        }
+      })
+      .catch(console.error);
+  }, []);
 
   const fetchCustomers = async (value) => {
     setCustomer(value);
@@ -248,7 +266,9 @@ export default function SalesForm() {
     }
 
     try {
-      const res = await fetch(`/api/customers?q=${encodeURIComponent(value)}`);
+      const res = await fetch(`/api/customers?q=${encodeURIComponent(value)}`, {
+        credentials: "include",
+      });
       const data = await res.json();
       if (data.success) setCustomerSuggestions(data.data || []);
     } catch (error) {
@@ -278,10 +298,15 @@ export default function SalesForm() {
 
       next[index] = {
         ...(next[index] || emptyItem),
+        productId: stock?._id || null,
         name: stock?.itemName || "",
         sourceType: "stock",
-        unit: next[index]?.unit || "pcs",
-        purchasePrice: stock?.avgCost || "",
+        unit: stock?.unit || next[index]?.unit || "pcs",
+        purchasePrice:
+          stock?.avgCost ||
+          stock?.lastPurchasePrice ||
+          stock?.avgProductionCost ||
+          "",
       };
 
       return next;
@@ -295,9 +320,7 @@ export default function SalesForm() {
     if (!q) return [];
 
     return (stockProducts || [])
-      .filter((stock) =>
-        String(stock?.itemName || "").toLowerCase().includes(q)
-      )
+      .filter((stock) => String(stock?.itemName || "").toLowerCase().includes(q))
       .slice(0, 8);
   };
 
@@ -349,7 +372,16 @@ export default function SalesForm() {
   const statementDueAmount = Math.max(tax.netReceivable - paidAmount, 0);
 
   const paymentType =
-    paidAmount <= 0 ? "credit" : paidAmount >= tax.invoiceTotal ? "cash" : "partial";
+    paidAmount <= 0
+      ? "credit"
+      : paidAmount >= tax.invoiceTotal
+      ? "cash"
+      : "partial";
+
+  const installmentAmount =
+    installmentEnabled && Number(installmentMonths || 0) > 0
+      ? statementDueAmount / Number(installmentMonths || 1)
+      : 0;
 
   const getValidItems = () =>
     itemRows
@@ -357,7 +389,9 @@ export default function SalesForm() {
       .map((item) => ({
         ...item,
         qty: Number(item.qty || 0),
+        quantity: Number(item.qty || 0),
         price: Number(item.price || 0),
+        rate: Number(item.price || 0),
         purchasePrice: Number(item.purchasePrice || 0),
       }));
 
@@ -376,7 +410,23 @@ export default function SalesForm() {
     setVatPercent(String(companyInfo?.vatPercent || ""));
     setAitPercent(String(companyInfo?.aitPercent || ""));
     setPaid("");
+
+    setPaymentTo("cash");
+    setBankId("");
+    setPaymentMethod("cash");
+    setTransactionId("");
+    setChequeNo("");
+
     setDueMode(companyInfo?.defaultDueMode || "add");
+    setDueReminderEnabled(false);
+    setReminderType("none");
+    setPromiseDate("");
+    setNextCollectionDate("");
+    setInstallmentEnabled(false);
+    setInstallmentMonths("");
+    setDueInterestPercent(String(companyInfo?.dueInterestPercent || ""));
+    setReminderNote("");
+
     setVatDocumentReceived(false);
     setAitDocumentReceived(false);
     setVatDocumentNote("");
@@ -388,52 +438,77 @@ export default function SalesForm() {
   };
 
   const buildPayload = (pin = "") => ({
-  billNo,
-  manualBillNo: billType === "manual" ? manualBillNo.trim() : "",
-  date,
+    billNo,
+    manualBillNo: billType === "manual" ? manualBillNo.trim() : "",
+    date,
 
-  customerName: customer,
-  customerPhone,
-  customerAddress,
+    customerName: customer,
+    customerPhone,
+    customerAddress,
 
-  marketingOfficerId,
+    marketingOfficerId,
+    poWoNo,
 
-  poWoNo,
+    items: getValidItems(),
 
-  items: getValidItems(),
+    discount: discountAmount,
+    amountType,
+    salesAmount: afterDiscount,
 
-  discount: discountAmount,
+    vatPercent: Number(vatPercent || 0),
+    aitPercent: Number(aitPercent || 0),
 
-  amountType,
-  salesAmount: afterDiscount,
+    paidAmount,
 
-  vatPercent: Number(vatPercent || 0),
-  aitPercent: Number(aitPercent || 0),
+    paymentTo,
+    bankId: paymentTo === "bank" ? bankId : null,
+    paymentMethod: paymentTo === "bank" ? paymentMethod : "cash",
+    transactionId,
+    chequeNo,
 
-  paidAmount,
+    dueSchedule: {
+      enabled: dueReminderEnabled || statementDueAmount > 0,
+      reminderType,
+      promiseDate,
+      nextDueDate: nextCollectionDate || promiseDate,
+      installmentAmount,
+      totalInstallments: Number(installmentMonths || 0),
+      reminderNote,
+    },
 
-  vatDocumentReceived,
-  aitDocumentReceived,
+    reminderType,
+    promiseDate,
+    nextCollectionDate: nextCollectionDate || promiseDate,
+    installmentEnabled,
+    installmentMonths: Number(installmentMonths || 0),
+    installmentAmount,
+    dueInterestPercent: Number(dueInterestPercent || 0),
+    collectionComment: reminderNote,
+    reminderNote,
 
-  vatDocumentNote,
-  aitDocumentNote,
+    vatDocumentReceived,
+    aitDocumentReceived,
+    vatDocumentNote,
+    aitDocumentNote,
 
-  ownerPin: pin,
-
-  note,
-
-  status: "completed",
-});
+    ownerPin: pin,
+    note,
+    status: "completed",
+  });
 
   const handleSubmit = async (pin = "") => {
     if (!customer.trim()) return alert("Customer name required");
 
-     if (!marketingOfficerId) {
-    return alert("Please Select Marketing Officer");
-  }
+    if (!marketingOfficerId) {
+      return alert("Please Select Marketing Officer");
+    }
 
     if (billType === "manual" && !manualBillNo.trim()) {
       return alert("Manual invoice number required");
+    }
+
+    if (paidAmount > 0 && paymentTo === "bank" && !bankId) {
+      return alert("Please select bank account");
     }
 
     const validItems = getValidItems();
@@ -446,6 +521,7 @@ export default function SalesForm() {
 
       const res = await fetch("/api/sales", {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
@@ -458,8 +534,13 @@ export default function SalesForm() {
           setShowPinModal(true);
           return;
         }
+
         throw new Error(data.message || "Sale save failed");
       }
+
+      const selectedBank = banks.find(
+        (b) => String(b._id || b.id) === String(bankId)
+      );
 
       setInvoiceData({
         ...payload,
@@ -477,6 +558,8 @@ export default function SalesForm() {
         currentDueAmount: data?.data?.currentDueAmount || 0,
         totalDueAfterSale: data?.data?.totalDueAfterSale || 0,
         paymentType,
+        paymentTo,
+        bankName: selectedBank?.bankName || "",
       });
 
       setShowInvoice(true);
@@ -511,121 +594,122 @@ export default function SalesForm() {
           </p>
         </div>
 
-       <div className="border rounded-2xl p-4 bg-gray-50/70 space-y-3">
-  <p className="text-sm font-bold">Invoice Number Type</p>
+        <div className="border rounded-2xl p-4 bg-gray-50/70 space-y-3">
+          <p className="text-sm font-bold">Invoice Number Type</p>
 
-  <div className="flex flex-wrap gap-3">
-    <label className="flex items-center gap-2 px-4 py-2 rounded-xl border bg-white cursor-pointer">
-      <input
-        type="radio"
-        checked={billType === "auto"}
-        onChange={() => setBillType("auto")}
-      />
-      Auto Invoice
-    </label>
+          <div className="flex flex-wrap gap-3">
+            <label className="flex items-center gap-2 px-4 py-2 rounded-xl border bg-white cursor-pointer">
+              <input
+                type="radio"
+                checked={billType === "auto"}
+                onChange={() => setBillType("auto")}
+              />
+              Auto Invoice
+            </label>
 
-    <label className="flex items-center gap-2 px-4 py-2 rounded-xl border bg-white cursor-pointer">
-      <input
-        type="radio"
-        checked={billType === "manual"}
-        onChange={() => setBillType("manual")}
-      />
-      Manual Invoice
-    </label>
-  </div>
+            <label className="flex items-center gap-2 px-4 py-2 rounded-xl border bg-white cursor-pointer">
+              <input
+                type="radio"
+                checked={billType === "manual"}
+                onChange={() => setBillType("manual")}
+              />
+              Manual Invoice
+            </label>
+          </div>
 
-  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-    <Input label="Auto Bill No" value={billNo} readOnly />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <Input label="Auto Bill No" value={billNo} readOnly />
 
-    <Input
-      label="Manual Invoice No"
-      value={manualBillNo}
-      onChange={setManualBillNo}
-      placeholder="Example: BD01526"
-      readOnly={billType === "auto"}
-    />
-  </div>
-</div>
-{/* Start */}
+            <Input
+              label="Manual Invoice No"
+              value={manualBillNo}
+              onChange={setManualBillNo}
+              placeholder="Example: BD01526"
+              readOnly={billType === "auto"}
+            />
+          </div>
+        </div>
 
-<div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-  <Input type="date" label="Date" value={date} onChange={setDate} />
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+          <Input type="date" label="Date" value={date} onChange={setDate} />
 
-  <div className="relative">
-    <Input
-      label="Customer Name"
-      value={customer}
-      onChange={fetchCustomers}
-      placeholder="Type customer name..."
-    />
+          <div className="relative">
+            <Input
+              label="Customer Name"
+              value={customer}
+              onChange={fetchCustomers}
+              placeholder="Type customer name..."
+            />
 
-    {customerSuggestions.length > 0 && (
-      <div className="absolute left-0 right-0 top-full mt-1 bg-white border rounded-2xl shadow-lg z-[9999] max-h-56 overflow-auto">
-        {customerSuggestions.map((c) => (
-          <button
-            key={c._id}
-            type="button"
-            onClick={() => selectCustomer(c)}
-            className="w-full text-left p-3 hover:bg-blue-50 border-b last:border-b-0"
-          >
-            <p className="font-semibold text-sm">{c.name}</p>
-            <p className="text-xs text-gray-500">
-              {c.phone || "No phone"} {c.address ? `• ${c.address}` : ""}
-            </p>
-          </button>
-        ))}
+            {customerSuggestions.length > 0 && (
+              <div className="absolute left-0 right-0 top-full mt-1 bg-white border rounded-2xl shadow-lg z-[9999] max-h-56 overflow-auto">
+                {customerSuggestions.map((c) => (
+                  <button
+                    key={c._id}
+                    type="button"
+                    onClick={() => selectCustomer(c)}
+                    className="w-full text-left p-3 hover:bg-blue-50 border-b last:border-b-0"
+                  >
+                    <p className="font-semibold text-sm">{c.name}</p>
+                    <p className="text-xs text-gray-500">
+                      {c.phone || "No phone"}{" "}
+                      {c.address ? `• ${c.address}` : ""}
+                    </p>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <Input
+            label="Phone Number"
+            value={customerPhone}
+            onChange={setCustomerPhone}
+            placeholder="Auto fill / enter phone number"
+          />
+
+          <div>
+            <label className="text-xs font-semibold text-gray-500 mb-1 block">
+              Marketing Officer *
+            </label>
+
+            <select
+              value={marketingOfficerId}
+              onChange={(e) => setMarketingOfficerId(e.target.value)}
+              className="border p-3 rounded-xl w-full outline-none focus:ring-4 focus:ring-blue-100 bg-white"
+            >
+              <option value="">Select Marketing Officer</option>
+
+              {(marketingOfficers || []).map((officer) => (
+                <option key={officer._id} value={officer._id}>
+                  {officer.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <Input
+            label="Customer Address"
+            value={customerAddress}
+            onChange={setCustomerAddress}
+            placeholder="Auto fill / enter customer address"
+          />
+
+          <Input
+            label="PO / Work Order No"
+            value={poWoNo}
+            onChange={setPoWoNo}
+            placeholder="Example: BD01526"
+          />
+        </div>
       </div>
-    )}
-  </div>
-
-  <Input
-    label="Phone Number"
-    value={customerPhone}
-    onChange={setCustomerPhone}
-    placeholder="Auto fill / enter phone number"
-  />
-
-  <div>
-    <label className="text-xs font-semibold text-gray-500 mb-1 block">
-      Marketing Officer *
-    </label>
-
-    <select
-      value={marketingOfficerId}
-      onChange={(e) => setMarketingOfficerId(e.target.value)}
-      className="border p-3 rounded-xl w-full outline-none focus:ring-4 focus:ring-blue-100 bg-white"
-    >
-      <option value="">Select Marketing Officer</option>
-
-      {(marketingOfficers || []).map((officer) => (
-        <option key={officer._id} value={officer._id}>
-          {officer.name}
-        </option>
-      ))}
-    </select>
-  </div>
-</div>
-
-<div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-  <Input
-    label="Customer Address"
-    value={customerAddress}
-    onChange={setCustomerAddress}
-    placeholder="Auto fill / enter customer address"
-  />
-
-  <Input
-    label="PO / Work Order No"
-    value={poWoNo}
-    onChange={setPoWoNo}
-    placeholder="Example: BD01526"
-  />
-</div>
-</div>
 
       <div className="bg-white border rounded-[28px] p-5 md:p-7 shadow-sm space-y-4">
         <div className="flex items-center justify-between gap-3">
           <h3 className="font-bold">Product Details</h3>
+
           <button
             onClick={addItem}
             className="px-4 py-2 rounded-xl border flex items-center gap-2 hover:bg-blue-50 hover:text-blue-600"
@@ -795,7 +879,189 @@ export default function SalesForm() {
               onChange={setPaid}
               placeholder="Enter received amount"
             />
+
+            <div>
+              <label className="text-xs font-semibold text-gray-500 mb-1 block">
+                Payment To
+              </label>
+              <select
+                value={paymentTo}
+                onChange={(e) => {
+                  setPaymentTo(e.target.value);
+                  setBankId("");
+                  setPaymentMethod(e.target.value === "bank" ? "bank" : "cash");
+                }}
+                className="border p-3 rounded-xl w-full outline-none focus:ring-4 focus:ring-blue-100 bg-white"
+              >
+                <option value="cash">Cash</option>
+                <option value="bank">Bank</option>
+              </select>
+            </div>
+
+            {paymentTo === "bank" && (
+              <>
+                <div>
+                  <label className="text-xs font-semibold text-gray-500 mb-1 block">
+                    Bank Account
+                  </label>
+                  <select
+                    value={bankId}
+                    onChange={(e) => setBankId(e.target.value)}
+                    className="border p-3 rounded-xl w-full outline-none focus:ring-4 focus:ring-blue-100 bg-white"
+                  >
+                    <option value="">Select Bank</option>
+                    {banks.map((bank) => (
+                      <option key={bank._id || bank.id} value={bank._id || bank.id}>
+                        {bank.bankName} -{" "}
+                        {bank.accountNo || bank.accountNumber || "No Account"}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold text-gray-500 mb-1 block">
+                    Payment Method
+                  </label>
+                  <select
+                    value={paymentMethod}
+                    onChange={(e) => setPaymentMethod(e.target.value)}
+                    className="border p-3 rounded-xl w-full outline-none focus:ring-4 focus:ring-blue-100 bg-white"
+                  >
+                    <option value="bank">Bank Transfer</option>
+                    <option value="cheque">Cheque</option>
+                    <option value="online">Online</option>
+                    <option value="mobile_banking">Mobile Banking</option>
+                  </select>
+                </div>
+
+                <Input
+                  label="Transaction ID"
+                  value={transactionId}
+                  onChange={setTransactionId}
+                  placeholder="Transaction ID / Ref No"
+                />
+
+                {paymentMethod === "cheque" && (
+                  <Input
+                    label="Cheque No"
+                    value={chequeNo}
+                    onChange={setChequeNo}
+                    placeholder="Enter cheque no"
+                  />
+                )}
+              </>
+            )}
           </div>
+
+          {statementDueAmount > 0 && (
+            <div className="border rounded-2xl p-4 bg-blue-50/50 space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="font-bold text-sm">Customer Due Schedule</p>
+                  <p className="text-xs text-gray-500">
+                    Promise date, weekly/monthly reminder, installment and late interest setup.
+                  </p>
+                </div>
+
+                <label className="flex items-center gap-2 text-sm font-semibold">
+                  <input
+                    type="checkbox"
+                    checked={dueReminderEnabled}
+                    onChange={(e) => setDueReminderEnabled(e.target.checked)}
+                  />
+                  Enable Reminder
+                </label>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-semibold text-gray-500 mb-1 block">
+                    Reminder Type
+                  </label>
+                  <select
+                    value={reminderType}
+                    onChange={(e) => setReminderType(e.target.value)}
+                    className="border p-3 rounded-xl w-full outline-none focus:ring-4 focus:ring-blue-100 bg-white"
+                  >
+                    <option value="none">None</option>
+                    <option value="one_time">One Time</option>
+                    <option value="weekly">Weekly</option>
+                    <option value="monthly">Monthly</option>
+                  </select>
+                </div>
+
+                <Input
+                  type="date"
+                  label="Promise Date"
+                  value={promiseDate}
+                  onChange={(value) => {
+                    setPromiseDate(value);
+                    if (!nextCollectionDate) setNextCollectionDate(value);
+                  }}
+                />
+
+                <Input
+                  type="date"
+                  label="Next Collection Date"
+                  value={nextCollectionDate}
+                  onChange={setNextCollectionDate}
+                />
+
+                <Input
+                  type="number"
+                  label="Late Interest %"
+                  value={dueInterestPercent}
+                  onChange={setDueInterestPercent}
+                  placeholder="Example: 5 or 10"
+                />
+
+                <label className="flex items-center gap-2 text-sm font-semibold md:col-span-2">
+                  <input
+                    type="checkbox"
+                    checked={installmentEnabled}
+                    onChange={(e) => {
+                      setInstallmentEnabled(e.target.checked);
+                      if (e.target.checked && reminderType === "none") {
+                        setReminderType("monthly");
+                      }
+                    }}
+                  />
+                  Enable Installment / EMI
+                </label>
+
+                {installmentEnabled && (
+                  <>
+                    <Input
+                      type="number"
+                      label="Installment Months"
+                      value={installmentMonths}
+                      onChange={setInstallmentMonths}
+                      placeholder="Example: 3 or 6"
+                    />
+
+                    <Input
+                      label="Installment Amount"
+                      value={money(installmentAmount)}
+                      readOnly
+                    />
+                  </>
+                )}
+
+                <div className="md:col-span-2">
+                  <label className="text-xs font-semibold text-gray-500 mb-1 block">
+                    Reminder / Collection Note
+                  </label>
+                  <textarea
+                    value={reminderNote}
+                    onChange={(e) => setReminderNote(e.target.value)}
+                    placeholder="Example: Customer promised to pay next Friday."
+                    className="border p-3 w-full rounded-xl min-h-[80px] outline-none focus:ring-4 focus:ring-blue-100 bg-white"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
 
           <textarea
             value={note}
@@ -815,9 +1081,20 @@ export default function SalesForm() {
 
           <div className="border-t pt-3 mt-3 space-y-2">
             <Row title="Payment Amount" value={paidAmount} success />
+            <Row
+              title={`Payment To ${paymentTo === "bank" ? "(Bank)" : "(Cash)"}`}
+              value={paidAmount}
+              success
+            />
 
             {dueMode !== "hide" && (
               <Row title="Previous Due Amount" value={livePreviousDue} danger />
+            )}
+
+            <Row title="Current Statement Due" value={statementDueAmount} danger />
+
+            {installmentEnabled && (
+              <Row title="Installment Amount" value={installmentAmount} />
             )}
 
             <Row title="Net Price in Taka" value={liveNetPrice} danger bold />
@@ -1343,6 +1620,17 @@ function SalesInvoice({ invoice, onClose }) {
                             value={paidAmount}
                           />
 
+                          {invoice?.paymentTo && (
+                            <div className="flex justify-between px-4">
+                              <span>Payment To</span>
+                              <span>
+                                {invoice.paymentTo === "bank"
+                                  ? `Bank ${invoice.bankName ? `(${invoice.bankName})` : ""}`
+                                  : "Cash"}
+                              </span>
+                            </div>
+                          )}
+
                           {invoice?.dueMode !== "hide" ? (
                             <InvoiceTotalRow
                               title="Previous Due Amount"
@@ -1412,7 +1700,9 @@ function InvoiceTotalRow({ title, value }) {
 function Input({ label, value, onChange, placeholder, type = "text", readOnly }) {
   return (
     <div>
-      <label className="text-xs font-semibold text-gray-500 mb-1 block">{label}</label>
+      <label className="text-xs font-semibold text-gray-500 mb-1 block">
+        {label}
+      </label>
       <input
         type={type}
         value={value}

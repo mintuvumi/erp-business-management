@@ -42,95 +42,43 @@ const MarketingOfficerLedgerSchema = new mongoose.Schema(
       required: true,
     },
 
-    referenceType: {
+    referenceType: { type: String, default: "" },
+    referenceId: { type: mongoose.Schema.Types.ObjectId, default: null },
+    invoiceNo: { type: String, default: "" },
+    customerId: { type: mongoose.Schema.Types.ObjectId, default: null },
+    customerName: { type: String, default: "" },
+
+    nextCollectionDate: {
       type: String,
       default: "",
+      index: true,
     },
 
-    referenceId: {
-      type: mongoose.Schema.Types.ObjectId,
-      default: null,
-    },
-
-    invoiceNo: {
+    collectionComment: {
       type: String,
       default: "",
+      trim: true,
     },
 
-    customerId: {
-      type: mongoose.Schema.Types.ObjectId,
-      default: null,
-    },
+    totalSales: { type: Number, default: 0 },
+    cashSales: { type: Number, default: 0 },
+    dueSales: { type: Number, default: 0 },
+    collectionAmount: { type: Number, default: 0 },
+    dueAmount: { type: Number, default: 0 },
+    profitAmount: { type: Number, default: 0 },
+    expenseAmount: { type: Number, default: 0 },
+    salaryAmount: { type: Number, default: 0 },
+    conveyanceAmount: { type: Number, default: 0 },
+    commissionAmount: { type: Number, default: 0 },
 
-    customerName: {
-      type: String,
-      default: "",
-    },
-
-    totalSales: {
-      type: Number,
-      default: 0,
-    },
-
-    cashSales: {
-      type: Number,
-      default: 0,
-    },
-
-    dueSales: {
-      type: Number,
-      default: 0,
-    },
-
-    collectionAmount: {
-      type: Number,
-      default: 0,
-    },
-
-    dueAmount: {
-      type: Number,
-      default: 0,
-    },
-
-    profitAmount: {
-      type: Number,
-      default: 0,
-    },
-
-    expenseAmount: {
-      type: Number,
-      default: 0,
-    },
-
-    salaryAmount: {
-      type: Number,
-      default: 0,
-    },
-
-    conveyanceAmount: {
-      type: Number,
-      default: 0,
-    },
-
-    commissionAmount: {
-      type: Number,
-      default: 0,
-    },
-
-    note: {
-      type: String,
-      default: "",
-    },
+    note: { type: String, default: "" },
 
     createdByUserId: {
       type: mongoose.Schema.Types.ObjectId,
       default: null,
     },
 
-    createdBy: {
-      type: String,
-      default: "",
-    },
+    createdBy: { type: String, default: "" },
   },
   { timestamps: true }
 );

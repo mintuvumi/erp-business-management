@@ -7,7 +7,7 @@ const AuthContext = createContext({
   user: null,
   login: async () => ({ success: false, message: "AuthProvider missing" }),
   register: async () => ({ success: false, message: "AuthProvider missing" }),
-  logout: () => {},
+  logout: async () => {},
   setUser: () => {},
   isAuthReady: false,
 });
@@ -17,45 +17,70 @@ export const AuthProvider = ({ children }) => {
   const [isAuthReady, setIsAuthReady] = useState(false);
 
   useEffect(() => {
-    try {
-      const storedUser = localStorage.getItem("user");
-      setUser(storedUser ? JSON.parse(storedUser) : null);
-    } catch (error) {
-      console.error("AUTH_LOCAL_STORAGE_ERROR:", error);
-      setUser(null);
-    } finally {
-      setIsAuthReady(true);
-    }
+    const loadMe = async () => {
+      try {
+        const res = await fetch("/api/auth/me", {
+          credentials: "include",
+        });
+
+        const data = await res.json();
+
+        if (data.success && data.data) {
+          setUser(data.data);
+          localStorage.setItem("user", JSON.stringify(data.data));
+        } else {
+          setUser(null);
+          localStorage.removeItem("user");
+        }
+      } catch {
+        const storedUser = localStorage.getItem("user");
+        setUser(storedUser ? JSON.parse(storedUser) : null);
+      } finally {
+        setIsAuthReady(true);
+      }
+    };
+
+    loadMe();
   }, []);
 
   const login = async (identifier, password) => {
     const res = await loginApi(identifier, password);
 
-    if (res?.success) {
-      setUser(res.user);
+    const userData = res?.data || res?.user;
 
-      if (typeof window !== "undefined") {
-        localStorage.setItem("user", JSON.stringify(res.user));
-        localStorage.setItem("token", res.token);
-      }
+    if (res?.success && userData) {
+      setUser(userData);
+
+      localStorage.setItem("user", JSON.stringify(userData));
+      localStorage.setItem("selectedCompanyId", userData.companyId || "");
+      localStorage.setItem("selectedCompany", JSON.stringify(userData.company));
     }
 
     return res;
   };
 
   const register = async (name, email, phone, password) => {
-    const res = await registerApi(name, email, phone, password);
-    return res;
+    return await registerApi(name, email, phone, password);
   };
 
-  const logout = () => {
+  const logout = async () => {
+    try {
+      await fetch("/api/auth/logout", {
+        method: "POST",
+        credentials: "include",
+      });
+    } catch {}
+
     setUser(null);
 
-    if (typeof window !== "undefined") {
-      localStorage.removeItem("user");
-      localStorage.removeItem("token");
-      localStorage.removeItem("profilePhoto");
-    }
+    localStorage.removeItem("user");
+    localStorage.removeItem("token");
+    localStorage.removeItem("profilePhoto");
+    localStorage.removeItem("selectedCompany");
+    localStorage.removeItem("selectedCompanyId");
+    localStorage.removeItem("activeCompany");
+    localStorage.removeItem("dashboard_cache");
+    localStorage.removeItem("erp_search_cache");
 
     window.location.href = "/login";
   };

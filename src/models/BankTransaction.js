@@ -12,6 +12,14 @@ const BankTransactionSchema = new mongoose.Schema(
     transactionNo: {
       type: String,
       default: "",
+      trim: true,
+      index: true,
+    },
+
+    voucherNo: {
+      type: String,
+      default: "",
+      trim: true,
       index: true,
     },
 
@@ -41,6 +49,8 @@ const BankTransactionSchema = new mongoose.Schema(
         "salary_payment",
         "supplier_payment",
         "due_collection",
+        "customer_collection",
+        "installment_collection",
         "cash_sale",
         "expense",
         "other_income",
@@ -54,7 +64,6 @@ const BankTransactionSchema = new mongoose.Schema(
         "marketing_officer_expense",
         "marketing_officer_salary",
         "marketing_officer_commission",
-
       ],
       required: true,
       index: true,
@@ -64,6 +73,7 @@ const BankTransactionSchema = new mongoose.Schema(
       type: String,
       required: true,
       trim: true,
+      index: true,
     },
 
     amount: {
@@ -73,34 +83,140 @@ const BankTransactionSchema = new mongoose.Schema(
       min: 0,
     },
 
+    balanceBefore: {
+      type: Number,
+      default: 0,
+    },
+
+    balanceAfter: {
+      type: Number,
+      default: 0,
+    },
+
     paymentMethod: {
       type: String,
       enum: ["cash", "bank", "mobile_banking", "cheque", "online"],
       default: "bank",
+      index: true,
     },
 
     chequeNo: {
       type: String,
       default: "",
       trim: true,
+      index: true,
     },
 
     transactionId: {
       type: String,
       default: "",
       trim: true,
+      index: true,
     },
 
     personName: {
       type: String,
       default: "",
       trim: true,
+      index: true,
     },
 
     personType: {
       type: String,
       enum: ["customer", "supplier", "employee", "owner", "other", "none"],
       default: "none",
+      index: true,
+    },
+
+    customerId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Customer",
+      default: null,
+      index: true,
+    },
+
+    customerName: {
+      type: String,
+      default: "",
+      trim: true,
+      index: true,
+    },
+
+    customerPhone: {
+      type: String,
+      default: "",
+      trim: true,
+      index: true,
+    },
+
+    supplierId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Supplier",
+      default: null,
+      index: true,
+    },
+
+    supplierName: {
+      type: String,
+      default: "",
+      trim: true,
+      index: true,
+    },
+
+    saleId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Sale",
+      default: null,
+      index: true,
+    },
+
+    purchaseId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Purchase",
+      default: null,
+      index: true,
+    },
+
+    billNo: {
+      type: String,
+      default: "",
+      trim: true,
+      index: true,
+    },
+
+    marketingOfficerId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+      index: true,
+    },
+
+    marketingOfficerName: {
+      type: String,
+      default: "",
+      trim: true,
+      index: true,
+    },
+
+    employeeId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Employee",
+      default: null,
+      index: true,
+    },
+
+    employeeName: {
+      type: String,
+      default: "",
+      trim: true,
+      index: true,
+    },
+
+    head: {
+      type: String,
+      default: "",
+      trim: true,
+      index: true,
     },
 
     date: {
@@ -115,21 +231,42 @@ const BankTransactionSchema = new mongoose.Schema(
       default: "",
     },
 
+    comment: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+
     refType: {
       type: String,
       default: "manual",
+      trim: true,
       index: true,
     },
 
     refId: {
       type: String,
       default: "",
+      trim: true,
+      index: true,
+    },
+
+    cancelledAt: {
+      type: Date,
+      default: null,
+    },
+
+    cancelledByUserId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
     },
 
     createdByUserId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       default: null,
+      index: true,
     },
 
     updatedByUserId: {
@@ -141,11 +278,13 @@ const BankTransactionSchema = new mongoose.Schema(
     createdBy: {
       type: String,
       default: "",
+      trim: true,
     },
 
     updatedBy: {
       type: String,
       default: "",
+      trim: true,
     },
 
     status: {
@@ -158,22 +297,29 @@ const BankTransactionSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-BankTransactionSchema.index({
-  companyId: 1,
-  bankId: 1,
-});
-
-BankTransactionSchema.index({
-  companyId: 1,
-  date: -1,
-});
-
-BankTransactionSchema.index({
-  companyId: 1,
-  category: 1,
-});
+BankTransactionSchema.index({ companyId: 1, bankId: 1 });
+BankTransactionSchema.index({ companyId: 1, date: -1 });
+BankTransactionSchema.index({ companyId: 1, category: 1 });
+BankTransactionSchema.index({ companyId: 1, type: 1 });
+BankTransactionSchema.index({ companyId: 1, status: 1 });
+BankTransactionSchema.index({ companyId: 1, customerId: 1 });
+BankTransactionSchema.index({ companyId: 1, supplierId: 1 });
+BankTransactionSchema.index({ companyId: 1, saleId: 1 });
+BankTransactionSchema.index({ companyId: 1, purchaseId: 1 });
+BankTransactionSchema.index({ companyId: 1, marketingOfficerId: 1 });
+BankTransactionSchema.index({ companyId: 1, transactionNo: 1 });
+BankTransactionSchema.index({ companyId: 1, voucherNo: 1 });
 
 BankTransactionSchema.pre("save", async function () {
+  if (!this.head) {
+    this.head = this.category || "";
+  }
+
+  if (!this.voucherNo) {
+    this.voucherNo =
+      "BV-" + Math.random().toString(36).substring(2, 8).toUpperCase();
+  }
+
   if (!this.transactionNo) {
     const date = new Date();
 
@@ -183,15 +329,16 @@ BankTransactionSchema.pre("save", async function () {
 
     const count = await mongoose.models.BankTransaction.countDocuments({
       companyId: this.companyId,
-
       createdAt: {
         $gte: new Date(`${y}-${m}-${d}T00:00:00.000Z`),
         $lte: new Date(`${y}-${m}-${d}T23:59:59.999Z`),
       },
     });
 
-    this.transactionNo =
-      `BT-${y}${m}${d}-` + String(count + 1).padStart(5, "0");
+    this.transactionNo = `BT-${y}${m}${d}-${String(count + 1).padStart(
+      5,
+      "0"
+    )}`;
   }
 });
 

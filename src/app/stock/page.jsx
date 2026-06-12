@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   Search,
   Printer,
@@ -17,6 +18,9 @@ function money(value) {
 }
 
 export default function StockPage() {
+  const searchParams = useSearchParams();
+  const selectedId = searchParams.get("id");
+
   const [stocks, setStocks] = useState([]);
   const [summary, setSummary] = useState(null);
   const [company, setCompany] = useState(null);
@@ -28,8 +32,8 @@ export default function StockPage() {
     const load = async () => {
       try {
         const [stockRes, companyRes] = await Promise.all([
-          fetch("/api/dashboard/stock"),
-          fetch("/api/company-settings"),
+          fetch("/api/dashboard/stock", { credentials: "include" }),
+          fetch("/api/company-settings", { credentials: "include" }),
         ]);
 
         const stockData = await stockRes.json();
@@ -52,6 +56,26 @@ export default function StockPage() {
 
     load();
   }, []);
+
+  useEffect(() => {
+    if (!selectedId || stocks.length === 0) return;
+
+    const found = stocks.find((s) => String(s._id) === String(selectedId));
+
+    if (found) {
+      setSelectedStock(found);
+
+      setTimeout(() => {
+        const row = document.getElementById(`stock-${selectedId}`);
+        if (row) {
+          row.scrollIntoView({
+            behavior: "smooth",
+            block: "center",
+          });
+        }
+      }, 300);
+    }
+  }, [selectedId, stocks]);
 
   const filteredStocks = useMemo(() => {
     const text = query.toLowerCase().trim();
@@ -112,7 +136,11 @@ export default function StockPage() {
   };
 
   if (loading) {
-    return <div className="bg-white border rounded-2xl p-5">Loading stock...</div>;
+    return (
+      <div className="bg-white border rounded-2xl p-5">
+        Loading stock...
+      </div>
+    );
   }
 
   return (
@@ -183,7 +211,10 @@ export default function StockPage() {
         </div>
       </div>
 
-      <div id="stock-report-print" className="bg-white border rounded-[28px] shadow-sm overflow-hidden">
+      <div
+        id="stock-report-print"
+        className="bg-white border rounded-[28px] shadow-sm overflow-hidden"
+      >
         <div className="p-6 border-b flex items-center justify-between">
           <div className="flex items-center gap-3">
             {company?.logo ? (
@@ -212,7 +243,9 @@ export default function StockPage() {
           </div>
 
           <div className="text-right">
-            <h3 className="text-2xl font-black text-blue-700">STOCK REPORT</h3>
+            <h3 className="text-2xl font-black text-blue-700">
+              STOCK REPORT
+            </h3>
             <p className="text-xs text-gray-500">
               {new Date().toLocaleDateString("en-GB")}
             </p>
@@ -220,10 +253,23 @@ export default function StockPage() {
         </div>
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 p-5 border-b">
-          <SummaryCard icon={<Package />} title="Total Stock Qty" value={summary?.totalPcs || 0} />
-          <SummaryCard title="Total Stock Value" value={`৳ ${money(summary?.totalValue)}`} />
-          <SummaryCard title="Today Stock In" value={summary?.todayStockIn || 0} />
-          <SummaryCard title="Today Stock Out" value={summary?.todayStockOut || 0} />
+          <SummaryCard
+            icon={<Package />}
+            title="Total Stock Qty"
+            value={summary?.totalPcs || 0}
+          />
+          <SummaryCard
+            title="Total Stock Value"
+            value={`৳ ${money(summary?.totalValue)}`}
+          />
+          <SummaryCard
+            title="Today Stock In"
+            value={summary?.todayStockIn || 0}
+          />
+          <SummaryCard
+            title="Today Stock Out"
+            value={summary?.todayStockOut || 0}
+          />
         </div>
 
         <div className="overflow-x-auto">
@@ -254,22 +300,36 @@ export default function StockPage() {
                   const isLow =
                     Number(stock.qty || 0) <= Number(stock.lowStockLimit || 5);
 
+                  const isSelected =
+                    String(stock._id) === String(selectedId);
+
                   return (
                     <tr
+                      id={`stock-${stock._id}`}
                       key={stock._id}
                       onClick={() => setSelectedStock(stock)}
-                      className="border-t hover:bg-blue-50/50 cursor-pointer"
+                      className={`border-t hover:bg-blue-50/50 cursor-pointer ${
+                        isSelected ? "bg-yellow-100 ring-2 ring-yellow-400" : ""
+                      }`}
                     >
                       <td className="p-4">{index + 1}</td>
                       <td className="p-4 font-bold">{stock.itemName}</td>
                       <td className="p-4 text-right">{stock.qty}</td>
-                      <td className="p-4 text-right">৳ {money(stock.avgCost)}</td>
-                      <td className="p-4 text-right">৳ {money(stock.totalValue)}</td>
-                      <td className="p-4 text-right">{stock.totalSoldQty || 0}</td>
+                      <td className="p-4 text-right">
+                        ৳ {money(stock.avgCost)}
+                      </td>
+                      <td className="p-4 text-right">
+                        ৳ {money(stock.totalValue)}
+                      </td>
+                      <td className="p-4 text-right">
+                        {stock.totalSoldQty || 0}
+                      </td>
                       <td className="p-4 text-right">
                         ৳ {money(stock.totalSoldAmount)}
                       </td>
-                      <td className="p-4 text-right">{stock.lowStockLimit || 5}</td>
+                      <td className="p-4 text-right">
+                        {stock.lowStockLimit || 5}
+                      </td>
                       <td
                         className={`p-4 text-right font-bold ${
                           isLow ? "text-red-500" : "text-green-600"
@@ -305,15 +365,21 @@ export default function StockPage() {
             <p className="font-bold">{company?.companyName || "NextCore ERP"}</p>
             <p>{company?.companyAddress || ""}</p>
           </div>
+
           <div className="text-center">
             {company?.logo ? (
-              <img src={company.logo} alt="logo" className="h-10 mx-auto object-contain" />
+              <img
+                src={company.logo}
+                alt="logo"
+                className="h-10 mx-auto object-contain"
+              />
             ) : (
               <div className="w-10 h-10 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold">
                 {String(company?.companyName || "N").charAt(0).toUpperCase()}
               </div>
             )}
           </div>
+
           <div className="text-right">
             <p>{company?.companyPhone || ""}</p>
             <p>{company?.companyEmail || ""}</p>
@@ -411,7 +477,10 @@ function StockDetailsModal({ stock, onClose }) {
           <MiniBox title="Current Qty" value={stock.qty} />
           <MiniBox title="Avg Cost" value={`৳ ${money(stock.avgCost)}`} />
           <MiniBox title="Sold Qty" value={stock.totalSoldQty || 0} />
-          <MiniBox title="Sold Amount" value={`৳ ${money(stock.totalSoldAmount)}`} />
+          <MiniBox
+            title="Sold Amount"
+            value={`৳ ${money(stock.totalSoldAmount)}`}
+          />
         </div>
 
         <div className="p-5 pt-0">
@@ -449,7 +518,9 @@ function StockDetailsModal({ stock, onClose }) {
                       <td className="p-3">{b.customerPhone || "-"}</td>
                       <td className="p-3 text-right">{b.qty}</td>
                       <td className="p-3 text-right">৳ {money(b.price)}</td>
-                      <td className="p-3 text-right font-bold">৳ {money(b.total)}</td>
+                      <td className="p-3 text-right font-bold">
+                        ৳ {money(b.total)}
+                      </td>
                     </tr>
                   ))
                 )}

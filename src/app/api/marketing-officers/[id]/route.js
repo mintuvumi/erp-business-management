@@ -129,6 +129,8 @@ export async function PATCH(req, { params }) {
     }
 
     Object.assign(officer, {
+      userId: body.userId ?? officer.userId,
+
       officerId: body.officerId ?? officer.officerId,
       name: body.name ?? officer.name,
       phone: body.phone ?? officer.phone,

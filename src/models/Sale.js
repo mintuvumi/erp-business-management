@@ -1,8 +1,68 @@
 import mongoose from "mongoose";
 
+const DueScheduleSchema = new mongoose.Schema(
+  {
+    enabled: { type: Boolean, default: false },
+
+    reminderType: {
+      type: String,
+      enum: ["none", "one_time", "weekly", "monthly"],
+      default: "none",
+      index: true,
+    },
+
+    nextDueDate: {
+      type: String,
+      default: "",
+      index: true,
+    },
+
+    promiseDate: {
+      type: String,
+      default: "",
+      index: true,
+    },
+
+    installmentAmount: {
+      type: Number,
+      default: 0,
+    },
+
+    totalInstallments: {
+      type: Number,
+      default: 0,
+    },
+
+    completedInstallments: {
+      type: Number,
+      default: 0,
+    },
+
+    reminderNote: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    lastReminderAt: {
+      type: Date,
+      default: null,
+    },
+
+    isClosed: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+  },
+  { _id: false }
+);
+
 const SaleItemSchema = new mongoose.Schema(
   {
     name: { type: String, required: true, trim: true },
+    itemName: { type: String, default: "", trim: true },
+    productName: { type: String, default: "", trim: true },
     description: { type: String, default: "", trim: true },
 
     productId: {
@@ -12,23 +72,25 @@ const SaleItemSchema = new mongoose.Schema(
     },
 
     qty: { type: Number, required: true, default: 1 },
-    unit: {
-      type: String,
-      default: "pcs",
-      trim: true,
-    },
+    quantity: { type: Number, default: 0 },
+
+    unit: { type: String, default: "pcs", trim: true },
 
     price: { type: Number, required: true, default: 0 },
+    rate: { type: Number, default: 0 },
 
     sourceType: {
       type: String,
-      enum: ["stock", "direct"],
+      enum: ["stock", "direct", "finished_goods"],
       default: "stock",
     },
 
     purchasePrice: { type: Number, default: 0 },
+    avgCostUsed: { type: Number, default: 0 },
 
     total: { type: Number, default: 0 },
+    amount: { type: Number, default: 0 },
+
     costTotal: { type: Number, default: 0 },
     profit: { type: Number, default: 0 },
   },
@@ -44,30 +106,12 @@ const SaleSchema = new mongoose.Schema(
       index: true,
     },
 
-    billNo: {
-      type: String,
-      required: true,
-      trim: true,
-      index: true,
-    },
+    billNo: { type: String, required: true, trim: true, index: true },
+    invoiceNo: { type: String, default: "", trim: true, index: true },
+    manualBillNo: { type: String, default: "", trim: true },
+    poWoNo: { type: String, default: "", trim: true },
 
-    manualBillNo: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-
-    poWoNo: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-
-    date: {
-      type: String,
-      required: true,
-      index: true,
-    },
+    date: { type: String, required: true, index: true },
 
     customerId: {
       type: mongoose.Schema.Types.ObjectId,
@@ -76,39 +120,24 @@ const SaleSchema = new mongoose.Schema(
       index: true,
     },
 
-    customerName: {
-      type: String,
-      required: true,
-      trim: true,
-      index: true,
-    },
-
-    customerPhone: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-
-    customerAddress: {
-      type: String,
-      default: "",
-      trim: true,
-    },
+    customerName: { type: String, required: true, trim: true, index: true },
+    customerPhone: { type: String, default: "", trim: true, index: true },
+    customerEmail: { type: String, default: "", lowercase: true, trim: true },
+    customerAddress: { type: String, default: "", trim: true },
 
     marketingOfficerId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "MarketingOfficer",
-      required: true,
+      default: null,
       index: true,
     },
 
     marketingOfficerName: {
       type: String,
-      required: true,
+      default: "",
       trim: true,
       index: true,
     },
-
 
     items: {
       type: [SaleItemSchema],
@@ -142,12 +171,15 @@ const SaleSchema = new mongoose.Schema(
 
     netReceivable: { type: Number, default: 0 },
     statementDueAmount: { type: Number, default: 0 },
-
     netSalesAmount: { type: Number, default: 0 },
 
     grossAmount: { type: Number, default: 0 },
     netTotal: { type: Number, default: 0 },
+    total: { type: Number, default: 0 },
+
     dueAmount: { type: Number, default: 0 },
+    originalDueAmount: { type: Number, default: 0 },
+    collectedAmount: { type: Number, default: 0 },
 
     paidAmount: { type: Number, default: 0 },
 
@@ -170,29 +202,69 @@ const SaleSchema = new mongoose.Schema(
       default: null,
     },
 
+    dueSchedule: {
+      type: DueScheduleSchema,
+      default: () => ({}),
+    },
+
+    installmentEnabled: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+
+    installmentMonths: { type: Number, default: 0 },
+    installmentAmount: { type: Number, default: 0 },
+
+    dueInterestPercent: { type: Number, default: 0 },
+    dueInterestAmount: { type: Number, default: 0 },
+
+    interestApplied: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+
+    interestAppliedAt: {
+      type: Date,
+      default: null,
+    },
+
+    nextCollectionDate: {
+      type: String,
+      default: "",
+      index: true,
+    },
+
+    collectionComment: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    collectionStatus: {
+      type: String,
+      enum: ["none", "pending", "partial", "completed", "overdue"],
+      default: "none",
+      index: true,
+    },
+
+    lastCollectionComment: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
     vatDocumentReceived: { type: Boolean, default: false },
     aitDocumentReceived: { type: Boolean, default: false },
 
-    vatDocumentNote: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-
-    aitDocumentNote: {
-      type: String,
-      default: "",
-      trim: true,
-    },
+    vatDocumentNote: { type: String, default: "", trim: true },
+    aitDocumentNote: { type: String, default: "", trim: true },
 
     totalCost: { type: Number, default: 0 },
     totalProfit: { type: Number, default: 0 },
 
-    note: {
-      type: String,
-      default: "",
-      trim: true,
-    },
+    note: { type: String, default: "", trim: true },
 
     createdByUserId: {
       type: mongoose.Schema.Types.ObjectId,
@@ -206,17 +278,8 @@ const SaleSchema = new mongoose.Schema(
       default: null,
     },
 
-    createdBy: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-
-    updatedBy: {
-      type: String,
-      default: "",
-      trim: true,
-    },
+    createdBy: { type: String, default: "", trim: true },
+    updatedBy: { type: String, default: "", trim: true },
 
     status: {
       type: String,
@@ -228,13 +291,104 @@ const SaleSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+SaleSchema.pre("save", function () {
+  const today = new Date().toISOString().slice(0, 10);
+  const due = Number(this.dueAmount || 0);
+
+  if (!this.invoiceNo) {
+    this.invoiceNo = this.billNo;
+  }
+
+  if (!this.total) {
+    this.total = this.netTotal || this.netReceivable || this.invoiceTotal || 0;
+  }
+
+  if (!this.originalDueAmount && due > 0) {
+    this.originalDueAmount = due;
+  }
+
+  if (this.collectionComment && !this.lastCollectionComment) {
+    this.lastCollectionComment = this.collectionComment;
+  }
+
+  if (this.dueSchedule?.promiseDate && !this.dueSchedule.nextDueDate) {
+    this.dueSchedule.nextDueDate = this.dueSchedule.promiseDate;
+  }
+
+  if (this.dueSchedule?.nextDueDate && !this.nextCollectionDate) {
+    this.nextCollectionDate = this.dueSchedule.nextDueDate;
+  }
+
+  if (this.nextCollectionDate && !this.dueSchedule?.nextDueDate) {
+    this.dueSchedule.nextDueDate = this.nextCollectionDate;
+  }
+
+  if (due > 0 && this.nextCollectionDate) {
+    this.dueSchedule.enabled = true;
+  }
+
+  if (this.installmentEnabled && Number(this.installmentMonths || 0) > 0) {
+    this.installmentAmount =
+      Number(this.dueAmount || 0) / Number(this.installmentMonths || 1);
+
+    if (!this.dueSchedule.totalInstallments) {
+      this.dueSchedule.totalInstallments = Number(this.installmentMonths || 0);
+    }
+
+    if (!this.dueSchedule.installmentAmount) {
+      this.dueSchedule.installmentAmount = this.installmentAmount;
+    }
+
+    if (!this.dueSchedule.reminderType || this.dueSchedule.reminderType === "none") {
+      this.dueSchedule.reminderType = "monthly";
+    }
+  }
+
+  if (
+    due > 0 &&
+    this.nextCollectionDate &&
+    String(this.nextCollectionDate) < today &&
+    Number(this.dueInterestPercent || 0) > 0 &&
+    !this.interestApplied
+  ) {
+    const interest =
+      (Number(this.dueAmount || 0) * Number(this.dueInterestPercent || 0)) / 100;
+
+    this.dueInterestAmount = Number(this.dueInterestAmount || 0) + interest;
+    this.dueAmount = Number(this.dueAmount || 0) + interest;
+    this.statementDueAmount = Number(this.statementDueAmount || 0) + interest;
+    this.interestApplied = true;
+    this.interestAppliedAt = new Date();
+  }
+
+  if (Number(this.dueAmount || 0) <= 0) {
+    this.collectionStatus = "completed";
+    this.nextCollectionDate = "";
+    if (this.dueSchedule) this.dueSchedule.isClosed = true;
+  } else if (this.nextCollectionDate) {
+    this.collectionStatus =
+      String(this.nextCollectionDate) < today ? "overdue" : "pending";
+  } else if (this.paymentType === "credit" || this.paymentType === "partial") {
+    this.collectionStatus = "pending";
+  } else {
+    this.collectionStatus = "none";
+  }
+});
 
 SaleSchema.index({ companyId: 1, customerName: 1 });
+SaleSchema.index({ companyId: 1, customerPhone: 1 });
 SaleSchema.index({ companyId: 1, date: -1 });
 SaleSchema.index({ companyId: 1, billNo: 1 }, { unique: true });
+SaleSchema.index({ companyId: 1, invoiceNo: 1 });
 SaleSchema.index({ companyId: 1, status: 1 });
 SaleSchema.index({ companyId: 1, paymentType: 1 });
 SaleSchema.index({ companyId: 1, marketingOfficerId: 1 });
 SaleSchema.index({ companyId: 1, marketingOfficerName: 1 });
+SaleSchema.index({ companyId: 1, nextCollectionDate: 1 });
+SaleSchema.index({ companyId: 1, collectionStatus: 1 });
+SaleSchema.index({ companyId: 1, customerId: 1 });
+SaleSchema.index({ companyId: 1, installmentEnabled: 1 });
+SaleSchema.index({ companyId: 1, "dueSchedule.reminderType": 1 });
+SaleSchema.index({ companyId: 1, "dueSchedule.nextDueDate": 1 });
 
 export default mongoose.models.Sale || mongoose.model("Sale", SaleSchema);

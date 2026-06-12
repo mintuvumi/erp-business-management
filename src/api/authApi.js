@@ -1,48 +1,87 @@
-const API = "http://localhost:5000/api/auth";
-
 // ================= LOGIN =================
 export const login = async (identifier, password) => {
   try {
-    const isEmail = identifier.includes("@");
-
-    const body = {
-      password,
-      ...(isEmail ? { email: identifier } : { phone: identifier }),
-    };
-
-    const res = await fetch(`${API}/login`, {
+    const res = await fetch("/api/auth/login", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+      headers: {
+        "Content-Type": "application/json",
+      },
+      credentials: "include",
+      body: JSON.stringify({
+        identifier,
+        password,
+      }),
     });
 
     const data = await res.json();
 
     return {
-      success: res.ok,
+      success: res.ok && data.success,
       ...data,
     };
-  } catch {
-    return { success: false, msg: "Server error" };
+  } catch (error) {
+    console.error("LOGIN_API_ERROR:", error);
+    return {
+      success: false,
+      message: "Server error",
+    };
   }
 };
 
 // ================= REGISTER =================
 export const register = async (name, email, phone, password) => {
   try {
-    const res = await fetch(`${API}/register`, {
+    const identifier = email || phone;
+
+    const res = await fetch("/api/auth/register", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, email, phone, password }),
+      headers: {
+        "Content-Type": "application/json",
+      },
+      credentials: "include",
+      body: JSON.stringify({
+        name,
+        identifier,
+        email,
+        phone,
+        password,
+      }),
     });
 
     const data = await res.json();
 
     return {
-      success: res.ok,
+      success: res.ok && data.success,
       ...data,
     };
-  } catch {
-    return { success: false, msg: "Server error" };
+  } catch (error) {
+    console.error("REGISTER_API_ERROR:", error);
+    return {
+      success: false,
+      message: "Server error",
+    };
+  }
+};
+
+// ================= LOGOUT =================
+export const logoutApi = async () => {
+  try {
+    const res = await fetch("/api/auth/logout", {
+      method: "POST",
+      credentials: "include",
+    });
+
+    const data = await res.json();
+
+    return {
+      success: res.ok && data.success,
+      ...data,
+    };
+  } catch (error) {
+    console.error("LOGOUT_API_ERROR:", error);
+    return {
+      success: false,
+      message: "Logout failed",
+    };
   }
 };

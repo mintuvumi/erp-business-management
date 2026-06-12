@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import {
   FaHome,
   FaShoppingCart,
@@ -13,14 +13,77 @@ import {
   FaBalanceScale,
   FaExchangeAlt,
   FaHistory,
+  FaIndustry,
+  FaTools,
+  FaClipboardList,
+  FaRecycle,
+  FaBoxes,
 } from "react-icons/fa";
 
 import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
+import { useCompany } from "../../context/CompanyContext";
 
 const Sidebar = ({ open, setOpen }) => {
   const location = useLocation();
   const { user } = useAuth();
+  const { activeCompany } = useCompany();
+
+  const [settings, setSettings] = useState(null);
+
+  const loadSettings = async () => {
+    try {
+      const companyId = localStorage.getItem("selectedCompanyId");
+
+      if (!user || !companyId) {
+        setSettings(null);
+        return;
+      }
+
+      const res = await fetch("/api/settings", {
+        credentials: "include",
+        headers: {
+          "x-company-id": companyId,
+        },
+      });
+
+      const data = await res.json();
+
+      if (data.success) {
+        setSettings(data.data);
+      } else {
+        setSettings(null);
+      }
+    } catch (error) {
+      console.error("SIDEBAR_SETTINGS_ERROR:", error);
+      setSettings(null);
+    }
+  };
+
+  useEffect(() => {
+    loadSettings();
+
+    const handleCompanyChange = () => {
+      loadSettings();
+    };
+
+    window.addEventListener("companyChanged", handleCompanyChange);
+
+    return () => {
+      window.removeEventListener("companyChanged", handleCompanyChange);
+    };
+  }, [activeCompany?.id, activeCompany?._id, user?.id]);
+
+  const businessType =
+    settings?.businessType ||
+    activeCompany?.businessType ||
+    activeCompany?.type ||
+    user?.company?.businessType ||
+    "shop";
+
+  const isManufacturing =
+    settings?.manufacturingEnabled === true ||
+    businessType === "manufacturing";
 
   const menuItems = [
     { name: "Dashboard", path: "/", icon: <FaHome /> },
@@ -30,20 +93,122 @@ const Sidebar = ({ open, setOpen }) => {
     { name: "Customers", path: "/customers", icon: <FaUsers /> },
 
     { name: "Suppliers", path: "/suppliers", icon: <FaTruck /> },
-    { name: "Supplier Ledger", path: "/suppliers/ledger", icon: <FaFileInvoiceDollar /> },
+    {
+      name: "Supplier Ledger",
+      path: "/suppliers/ledger",
+      icon: <FaFileInvoiceDollar />,
+    },
+
+    ...(isManufacturing
+      ? [
+          ...(settings?.offerEnabled !== false
+            ? [{ name: "Offer", path: "/offers", icon: <FaClipboardList /> }]
+            : []),
+
+          ...(settings?.manufacturingProductEnabled !== false
+            ? [
+                {
+                  name: "Manufacturing Products",
+                  path: "/manufacturing/products",
+                  icon: <FaIndustry />,
+                },
+              ]
+            : []),
+
+          ...(settings?.rawMaterialEnabled !== false
+            ? [
+                {
+                  name: "Raw Materials",
+                  path: "/manufacturing/raw-materials",
+                  icon: <FaBoxes />,
+                },
+              ]
+            : []),
+
+          ...(settings?.productionEnabled !== false
+            ? [
+                {
+                  name: "Production",
+                  path: "/manufacturing/production",
+                  icon: <FaTools />,
+                },
+              ]
+            : []),
+
+          ...(settings?.bomEnabled !== false
+            ? [
+                {
+                  name: "BOM / Recipe",
+                  path: "/manufacturing/bom",
+                  icon: <FaClipboardList />,
+                },
+              ]
+            : []),
+
+          ...(settings?.wastageEnabled !== false
+            ? [
+                {
+                  name: "Wastage",
+                  path: "/manufacturing/wastage",
+                  icon: <FaRecycle />,
+                },
+              ]
+            : []),
+
+          ...(settings?.factoryCostEnabled !== false
+            ? [
+                {
+                  name: "Machine/Factory Cost",
+                  path: "/manufacturing/factory-cost",
+                  icon: <FaIndustry />,
+                },
+              ]
+            : []),
+
+          ...(settings?.finishedGoodsEnabled !== false
+            ? [
+                {
+                  name: "Finished Goods",
+                  path: "/manufacturing/finished-goods",
+                  icon: <FaBox />,
+                },
+              ]
+            : []),
+        ]
+      : []),
 
     { name: "Financial", path: "/financial", icon: <FaMoneyBill /> },
     { name: "Accounts", path: "/accounts", icon: <FaMoneyBill /> },
-    { name: "Accounts Statement", path: "/accounts/statements", icon: <FaFileInvoiceDollar /> },
-    { name: "Profit & Loss", path: "/accounts/profit-loss", icon: <FaChartBar /> },
-    { name: "Balance Sheet", path: "/accounts/balance-sheet", icon: <FaBalanceScale /> },
-    { name: "Cash & Bank Flow", path: "/accounts/cash-flow", icon: <FaExchangeAlt /> },
-    { name: "Transaction History", path: "/accounts/history", icon: <FaHistory /> },
+    {
+      name: "Accounts Statement",
+      path: "/accounts/statements",
+      icon: <FaFileInvoiceDollar />,
+    },
+    {
+      name: "Profit & Loss",
+      path: "/accounts/profit-loss",
+      icon: <FaChartBar />,
+    },
+    {
+      name: "Balance Sheet",
+      path: "/accounts/balance-sheet",
+      icon: <FaBalanceScale />,
+    },
+    {
+      name: "Cash & Bank Flow",
+      path: "/accounts/cash-flow",
+      icon: <FaExchangeAlt />,
+    },
+    {
+      name: "Transaction History",
+      path: "/accounts/history",
+      icon: <FaHistory />,
+    },
 
     { name: "Reports", path: "/reports", icon: <FaChartBar /> },
   ];
 
-  if (user?.role === "admin") {
+  if (user?.role === "admin" || user?.role === "owner") {
     menuItems.push(
       { name: "Expense", path: "/expense", icon: <FaMoneyBill /> },
       { name: "Bank", path: "/bank", icon: <FaUniversity /> },
@@ -81,7 +246,7 @@ const Sidebar = ({ open, setOpen }) => {
                 NextCore ERP
               </h2>
               <p className="text-[11px] text-gray-400 mt-1">
-                Business Suite
+                {isManufacturing ? "Manufacturing Suite" : "Business Suite"}
               </p>
             </div>
           </div>

@@ -3,17 +3,67 @@ import mongoose from "mongoose";
 import connectDB from "@/lib/db";
 import Sale from "@/models/Sale";
 import CashTransaction from "@/models/CashTransaction";
+import BankTransaction from "@/models/BankTransaction";
+import BankAccount from "@/models/BankAccount";
 import MarketingOfficer from "@/models/MarketingOfficer";
 import MarketingOfficerLedger from "@/models/MarketingOfficerLedger";
 import { getTenant } from "@/lib/tenant";
+import { requirePermission } from "@/lib/checkPermission";
+
+function today() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function money(value) {
+  return Number(value || 0);
+}
 
 function getPaymentType({ paidAmount, targetAmount }) {
-  const paid = Number(paidAmount || 0);
-  const target = Number(targetAmount || 0);
+  const paid = money(paidAmount);
+  const target = money(targetAmount);
 
   if (paid <= 0) return "credit";
   if (paid >= target) return "cash";
   return "partial";
+}
+
+function nextInstallmentDate(currentDate, reminderType) {
+  if (!currentDate) return "";
+
+  const date = new Date(currentDate);
+  if (Number.isNaN(date.getTime())) return "";
+
+  if (reminderType === "weekly") {
+    date.setDate(date.getDate() + 7);
+  } else if (reminderType === "monthly") {
+    date.setMonth(date.getMonth() + 1);
+  } else {
+    return "";
+  }
+
+  return date.toISOString().slice(0, 10);
+}
+
+async function addBankBalance({ bankId, amount, companyId }) {
+  if (!bankId || money(amount) <= 0) return null;
+
+  const bank = await BankAccount.findOne({
+    _id: bankId,
+    companyId,
+    status: { $ne: "inactive" },
+  });
+
+  if (!bank) {
+    throw new Error("Bank account not found");
+  }
+
+  const balanceBefore = money(bank.currentBalance);
+  const balanceAfter = balanceBefore + money(amount);
+
+  bank.currentBalance = balanceAfter;
+  await bank.save();
+
+  return { bank, balanceBefore, balanceAfter };
 }
 
 export async function POST(req) {
@@ -29,12 +79,31 @@ export async function POST(req) {
       );
     }
 
+    let user;
+
+    try {
+      user = await requirePermission(tenant, "dueCollection");
+    } catch (error) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: error.message || "Access denied",
+        },
+        { status: 403 }
+      );
+    }
+
     const body = await req.json();
 
     const saleId = body.saleId;
-    const amount = Number(body.amount || 0);
-    const paymentDate = body.date || new Date().toISOString().slice(0, 10);
+    const amount = money(body.amount);
+    const paymentDate = body.date || today();
     const note = body.note || "";
+    const collectionComment =
+      body.collectionComment || body.comment || note || "";
+
+    const paymentTo = body.paymentTo || body.collectionTo || "cash";
+    const bankId = body.bankId || null;
 
     if (!saleId) {
       return NextResponse.json(
@@ -50,9 +119,16 @@ export async function POST(req) {
       );
     }
 
-    if (!amount || amount <= 0) {
+    if (amount <= 0) {
       return NextResponse.json(
         { success: false, message: "Valid payment amount required" },
+        { status: 400 }
+      );
+    }
+
+    if (paymentTo === "bank" && !bankId) {
+      return NextResponse.json(
+        { success: false, message: "Bank account required" },
         { status: 400 }
       );
     }
@@ -60,6 +136,7 @@ export async function POST(req) {
     const sale = await Sale.findOne({
       _id: saleId,
       companyId: tenant.companyId,
+      status: { $ne: "cancelled" },
     });
 
     if (!sale) {
@@ -69,10 +146,16 @@ export async function POST(req) {
       );
     }
 
-    if (sale.status === "cancelled") {
+    if (
+      user.role === "marketing_officer" &&
+      String(sale.marketingOfficerId || "") !== String(tenant.user?.id || "")
+    ) {
       return NextResponse.json(
-        { success: false, message: "Cancelled sale payment not allowed" },
-        { status: 400 }
+        {
+          success: false,
+          message: "Access denied. This customer is not assigned to you.",
+        },
+        { status: 403 }
       );
     }
 
@@ -97,10 +180,7 @@ export async function POST(req) {
 
     if (!officer) {
       return NextResponse.json(
-        {
-          success: false,
-          message: "Valid Marketing Officer required",
-        },
+        { success: false, message: "Valid Marketing Officer required" },
         { status: 400 }
       );
     }
@@ -108,17 +188,16 @@ export async function POST(req) {
     marketingOfficerId = officer._id;
     marketingOfficerName = officer.name;
 
-    const previousPaidAmount = Number(sale.paidAmount || 0);
-
-    const invoiceTotal = Number(
-      sale.invoiceTotal || sale.grossAmount || sale.netTotal || 0
+    const previousPaidAmount = money(sale.paidAmount);
+    const invoiceTotal = money(
+      sale.invoiceTotal || sale.grossAmount || sale.netTotal
+    );
+    const netReceivable = money(
+      sale.netReceivable || sale.statementDueAmount || sale.dueAmount
     );
 
-    const netReceivable = Number(sale.netReceivable || 0);
-
-    const currentStatementDue = Math.max(
-      netReceivable - previousPaidAmount,
-      0
+    const currentStatementDue = money(
+      sale.statementDueAmount || sale.dueAmount
     );
 
     if (currentStatementDue <= 0) {
@@ -140,41 +219,143 @@ export async function POST(req) {
       );
     }
 
+    let bankInfo = null;
+
+    if (paymentTo === "bank") {
+      bankInfo = await addBankBalance({
+        bankId,
+        amount,
+        companyId: tenant.companyId,
+      });
+    }
+
     const newPaidAmount = previousPaidAmount + amount;
 
     const invoiceDueAmount = Math.max(invoiceTotal - newPaidAmount, 0);
-    const statementDueAmount = Math.max(netReceivable - newPaidAmount, 0);
+    const statementDueAmount = Math.max(currentStatementDue - amount, 0);
 
     sale.paidAmount = newPaidAmount;
     sale.invoiceDueAmount = invoiceDueAmount;
     sale.statementDueAmount = statementDueAmount;
     sale.dueAmount = statementDueAmount;
+    sale.collectedAmount = money(sale.collectedAmount) + amount;
 
     sale.paymentType = getPaymentType({
       paidAmount: newPaidAmount,
       targetAmount: invoiceTotal,
     });
 
-    if (!sale.marketingOfficerId) {
-      sale.marketingOfficerId = marketingOfficerId;
-      sale.marketingOfficerName = marketingOfficerName;
+    sale.marketingOfficerId = marketingOfficerId;
+    sale.marketingOfficerName = marketingOfficerName;
+
+    sale.lastCollectionComment = collectionComment;
+    sale.collectionComment = collectionComment;
+    sale.updatedByUserId = tenant.user?.id || null;
+    sale.updatedBy = tenant.user?.name || "";
+
+    if (sale.dueSchedule) {
+      sale.dueSchedule.completedInstallments =
+        money(sale.dueSchedule.completedInstallments) + 1;
+
+      if (statementDueAmount <= 0) {
+        sale.dueSchedule.isClosed = true;
+        sale.nextCollectionDate = "";
+      } else {
+        const reminderType = sale.dueSchedule.reminderType || "none";
+
+        const nextDate =
+          body.nextCollectionDate ||
+          body.nextDueDate ||
+          body.promiseDate ||
+          nextInstallmentDate(
+            sale.nextCollectionDate || paymentDate,
+            reminderType
+          );
+
+        sale.nextCollectionDate = nextDate || "";
+        sale.dueSchedule.nextDueDate = nextDate || "";
+        sale.dueSchedule.promiseDate =
+          body.promiseDate || sale.dueSchedule.promiseDate || "";
+        sale.dueSchedule.reminderNote =
+          collectionComment || sale.dueSchedule.reminderNote || "";
+      }
+    } else {
+      sale.nextCollectionDate = body.nextCollectionDate || "";
     }
 
     await sale.save();
 
-    await CashTransaction.create({
-      companyId: tenant.companyId,
-      type: "in",
-      category: "due_collection",
-      title: `Due collection from ${sale.customerName}`,
-      amount,
-      date: paymentDate,
-      note,
-      refType: "sale",
-      refId: sale._id.toString(),
-      createdByUserId: tenant.user?.id || null,
-      createdBy: tenant.user?.name || "",
-    });
+    if (paymentTo === "bank") {
+      await BankTransaction.create({
+        companyId: tenant.companyId,
+        createdByUserId: tenant.user?.id || null,
+        createdBy: tenant.user?.name || "",
+
+        bankId,
+        type: "in",
+        category: "due_collection",
+        title: `Bank due collection from ${sale.customerName}`,
+        amount,
+
+        paymentMethod: body.paymentMethod || "bank",
+        chequeNo: body.chequeNo || "",
+        transactionId: body.transactionId || "",
+
+        personName: sale.customerName || "",
+        personType: "customer",
+
+        customerId: sale.customerId || null,
+        customerName: sale.customerName || "",
+        customerPhone: sale.customerPhone || "",
+
+        saleId: sale._id,
+        billNo: sale.billNo || "",
+
+        marketingOfficerId,
+        marketingOfficerName,
+
+        date: paymentDate,
+        note,
+        comment: collectionComment,
+
+        refType: "sale_due_collection",
+        refId: sale._id.toString(),
+
+        balanceBefore: bankInfo?.balanceBefore || 0,
+        balanceAfter: bankInfo?.balanceAfter || 0,
+        status: "active",
+      });
+    } else {
+      await CashTransaction.create({
+        companyId: tenant.companyId,
+        type: "in",
+        category: "due_collection",
+        title: `Due collection from ${sale.customerName}`,
+        amount,
+        date: paymentDate,
+        note,
+        comment: collectionComment,
+
+        refType: "sale_due_collection",
+        refId: sale._id.toString(),
+
+        customerId: sale.customerId || null,
+        customerName: sale.customerName || "",
+        customerPhone: sale.customerPhone || "",
+
+        saleId: sale._id,
+        billNo: sale.billNo || "",
+
+        marketingOfficerId,
+        marketingOfficerName,
+
+        paymentType: "Cash",
+        paymentFrom: "cash",
+
+        createdByUserId: tenant.user?.id || null,
+        createdBy: tenant.user?.name || "",
+      });
+    }
 
     await MarketingOfficerLedger.create({
       companyId: tenant.companyId,
@@ -198,6 +379,9 @@ export async function POST(req) {
       collectionAmount: amount,
       dueAmount: statementDueAmount,
       profitAmount: 0,
+
+      nextCollectionDate: sale.nextCollectionDate || "",
+      collectionComment,
 
       note: note || `Due collection for invoice ${sale.billNo || ""}`,
       createdByUserId: tenant.user?.id || null,
@@ -225,6 +409,11 @@ export async function POST(req) {
           netReceivable,
           statementDueAmount,
 
+          dueAmount: sale.dueAmount,
+          nextCollectionDate: sale.nextCollectionDate,
+          collectionComment,
+
+          paymentTo,
           paymentType: sale.paymentType,
         },
       },

@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation"; // ✅ added
+import { useRouter, useSearchParams } from "next/navigation";
 
 export default function SalesListPage() {
-  const router = useRouter(); // ✅ added
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const selectedId = searchParams.get("id");
 
   const [sales, setSales] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -12,11 +14,11 @@ export default function SalesListPage() {
   useEffect(() => {
     const fetchSales = async () => {
       try {
-        const res = await fetch("/api/sales");
+        const res = await fetch("/api/sales", { credentials: "include" });
         const data = await res.json();
 
         if (data.success) {
-          setSales(data.data);
+          setSales(data.data || []);
         }
       } catch (error) {
         console.error(error);
@@ -27,6 +29,17 @@ export default function SalesListPage() {
 
     fetchSales();
   }, []);
+
+  useEffect(() => {
+    if (!selectedId || sales.length === 0) return;
+
+    setTimeout(() => {
+      const row = document.getElementById(`sale-${selectedId}`);
+      if (row) {
+        row.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    }, 300);
+  }, [selectedId, sales]);
 
   if (loading) {
     return <div className="p-4">Loading sales...</div>;
@@ -49,7 +62,7 @@ export default function SalesListPage() {
               <th className="p-4 text-sm font-semibold">Net Total</th>
               <th className="p-4 text-sm font-semibold">Paid</th>
               <th className="p-4 text-sm font-semibold">Due</th>
-              <th className="p-4 text-sm font-semibold text-center">Action</th> {/* ✅ added */}
+              <th className="p-4 text-sm font-semibold text-center">Action</th>
             </tr>
           </thead>
 
@@ -61,29 +74,35 @@ export default function SalesListPage() {
                 </td>
               </tr>
             ) : (
-              sales.map((sale) => (
-                <tr key={sale._id} className="border-t hover:bg-gray-50">
-                  <td className="p-4">{sale.billNo}</td>
-                  <td className="p-4">{sale.date}</td>
-                  <td className="p-4">{sale.customerName}</td>
-                  <td className="p-4 capitalize">{sale.paymentType}</td>
-                  <td className="p-4">৳ {sale.netTotal?.toFixed(2)}</td>
-                  <td className="p-4">৳ {sale.paidAmount?.toFixed(2)}</td>
-                  <td className="p-4 text-red-500">
-                    ৳ {sale.dueAmount?.toFixed(2)}
-                  </td>
+              sales.map((sale) => {
+                const isSelected = String(sale._id) === String(selectedId);
 
-                  {/* ✅ ACTION BUTTON */}
-                  <td className="p-4 text-center">
-                    <button
-                      onClick={() => router.push(`/sales/invoice/${sale._id}`)}
-                      className="px-3 py-1.5 rounded-xl bg-blue-500 text-white hover:bg-blue-600"
-                    >
-                      Invoice
-                    </button>
-                  </td>
-                </tr>
-              ))
+                return (
+                  <tr
+                    id={`sale-${sale._id}`}
+                    key={sale._id}
+                    className={`border-t hover:bg-gray-50 ${
+                      isSelected ? "bg-yellow-100 ring-2 ring-yellow-400" : ""
+                    }`}
+                  >
+                    <td className="p-4 font-semibold">{sale.billNo}</td>
+                    <td className="p-4">{sale.date}</td>
+                    <td className="p-4">{sale.customerName}</td>
+                    <td className="p-4 capitalize">{sale.paymentType}</td>
+                    <td className="p-4">৳ {Number(sale.netTotal || 0).toFixed(2)}</td>
+                    <td className="p-4">৳ {Number(sale.paidAmount || 0).toFixed(2)}</td>
+                    <td className="p-4 text-red-500">৳ {Number(sale.dueAmount || 0).toFixed(2)}</td>
+                    <td className="p-4 text-center">
+                      <button
+                        onClick={() => router.push(`/sales/invoice/${sale._id}`)}
+                        className="px-3 py-1.5 rounded-xl bg-blue-500 text-white hover:bg-blue-600"
+                      >
+                        Invoice
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>

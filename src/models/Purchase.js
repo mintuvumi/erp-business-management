@@ -11,8 +11,10 @@ const PurchaseItemSchema = new mongoose.Schema(
     },
 
     qty: { type: Number, default: 1, min: 0 },
-
     price: { type: Number, default: 0, min: 0 },
+
+    // purchase price + extra cost ভাগ করার পর final unit cost
+    landedCostPerUnit: { type: Number, default: 0, min: 0 },
 
     total: { type: Number, default: 0, min: 0 },
   },
@@ -34,19 +36,8 @@ const PurchaseSchema = new mongoose.Schema(
       index: true,
     },
 
-    supplierBillNo: {
-      type: String,
-      default: "",
-      trim: true,
-      index: true,
-    },
-
-    supplierInvoiceNo: {
-      type: String,
-      default: "",
-      trim: true,
-      index: true,
-    },
+    supplierBillNo: { type: String, default: "", trim: true, index: true },
+    supplierInvoiceNo: { type: String, default: "", trim: true, index: true },
 
     supplierId: {
       type: mongoose.Schema.Types.ObjectId,
@@ -55,89 +46,32 @@ const PurchaseSchema = new mongoose.Schema(
       index: true,
     },
 
-    supplierName: {
-      type: String,
-      default: "",
-      trim: true,
-      index: true,
-    },
-
-    supplierPhone: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-
-    supplierAddress: {
-      type: String,
-      default: "",
-      trim: true,
-    },
+    supplierName: { type: String, default: "", trim: true, index: true },
+    supplierPhone: { type: String, default: "", trim: true },
+    supplierAddress: { type: String, default: "", trim: true },
 
     items: {
       type: [PurchaseItemSchema],
       default: [],
     },
 
-    itemName: {
-      type: String,
-      default: "",
-      trim: true,
-    },
+    itemName: { type: String, default: "", trim: true },
+    qty: { type: Number, default: 1 },
+    price: { type: Number, default: 0 },
+    total: { type: Number, default: 0 },
 
-    qty: {
-      type: Number,
-      default: 1,
-    },
+    subTotal: { type: Number, default: 0 },
+    discount: { type: Number, default: 0 },
+    transportCost: { type: Number, default: 0 },
+    otherCost: { type: Number, default: 0 },
+    grandTotal: { type: Number, default: 0 },
 
-    price: {
-      type: Number,
-      default: 0,
-    },
-
-    total: {
-      type: Number,
-      default: 0,
-    },
-
-    subTotal: {
-      type: Number,
-      default: 0,
-    },
-
-    discount: {
-      type: Number,
-      default: 0,
-    },
-
-    transportCost: {
-      type: Number,
-      default: 0,
-    },
-
-    otherCost: {
-      type: Number,
-      default: 0,
-    },
-
-    grandTotal: {
-      type: Number,
-      default: 0,
-    },
-
-    paidAmount: {
-      type: Number,
-      default: 0,
-    },
-
-    dueAmount: {
-      type: Number,
-      default: 0,
-    },
+    paidAmount: { type: Number, default: 0 },
+    dueAmount: { type: Number, default: 0 },
 
     purchaseType: {
       type: String,
-      enum: ["stock", "direct"],
+      enum: ["stock", "direct", "raw_material", "factory_cost"],
       default: "stock",
       index: true,
     },
@@ -161,17 +95,8 @@ const PurchaseSchema = new mongoose.Schema(
       default: null,
     },
 
-    paymentMethod: {
-      type: String,
-      default: "cash",
-      trim: true,
-    },
-
-    chequeNo: {
-      type: String,
-      default: "",
-      trim: true,
-    },
+    paymentMethod: { type: String, default: "cash", trim: true },
+    chequeNo: { type: String, default: "", trim: true },
 
     date: {
       type: String,
@@ -179,11 +104,7 @@ const PurchaseSchema = new mongoose.Schema(
       index: true,
     },
 
-    note: {
-      type: String,
-      default: "",
-      trim: true,
-    },
+    note: { type: String, default: "", trim: true },
 
     status: {
       type: String,
@@ -204,15 +125,8 @@ const PurchaseSchema = new mongoose.Schema(
       default: null,
     },
 
-    createdBy: {
-      type: String,
-      default: "",
-    },
-
-    updatedBy: {
-      type: String,
-      default: "",
-    },
+    createdBy: { type: String, default: "" },
+    updatedBy: { type: String, default: "" },
   },
   { timestamps: true }
 );
@@ -229,29 +143,51 @@ PurchaseSchema.pre("save", function () {
   }
 
   if (this.items && this.items.length > 0) {
-    this.items = this.items.map((item) => ({
-      ...item,
-      total: Number(item.qty || 0) * Number(item.price || 0),
-    }));
+    this.items = this.items.map((item) => {
+      const qty = Number(item.qty || 0);
+      const price = Number(item.price || 0);
+
+      return {
+        ...item,
+        qty,
+        price,
+        total: qty * price,
+      };
+    });
 
     this.subTotal = this.items.reduce(
       (sum, item) => sum + Number(item.total || 0),
       0
     );
 
-    this.itemName = this.items[0]?.itemName || "";
-
-    this.qty = this.items.reduce(
+    const totalQty = this.items.reduce(
       (sum, item) => sum + Number(item.qty || 0),
       0
     );
 
-    this.price = this.items[0]?.price || 0;
+    const extraCost =
+      Number(this.transportCost || 0) +
+      Number(this.otherCost || 0) -
+      Number(this.discount || 0);
 
+    const extraCostPerUnit = totalQty > 0 ? extraCost / totalQty : 0;
+
+    this.items = this.items.map((item) => ({
+      ...item,
+      landedCostPerUnit: Math.max(
+        Number(item.price || 0) + extraCostPerUnit,
+        0
+      ),
+    }));
+
+    this.itemName = this.items[0]?.itemName || "";
+    this.qty = totalQty;
+    this.price = Number(this.items[0]?.price || 0);
     this.total = this.subTotal;
   } else {
-    this.total = Number(this.qty || 0) * Number(this.price || 0);
-
+    this.qty = Number(this.qty || 0);
+    this.price = Number(this.price || 0);
+    this.total = this.qty * this.price;
     this.subTotal = this.total;
   }
 
@@ -276,7 +212,6 @@ PurchaseSchema.pre("save", function () {
 });
 
 const Purchase =
-  mongoose.models.Purchase ||
-  mongoose.model("Purchase", PurchaseSchema);
+  mongoose.models.Purchase || mongoose.model("Purchase", PurchaseSchema);
 
 export default Purchase;

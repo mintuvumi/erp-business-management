@@ -22,24 +22,23 @@ function money(value) {
 function monthText(month) {
   if (!month) return "";
   const [y, m] = month.split("-");
-  const date = new Date(Number(y), Number(m) - 1, 1);
-  return date.toLocaleString("en-US", { month: "long", year: "numeric" });
+  return new Date(Number(y), Number(m) - 1, 1).toLocaleString("en-US", {
+    month: "long",
+    year: "numeric",
+  });
 }
 
-function makeSubject(month, overtime, bonus) {
+function makeSubject(month, salaries) {
+  const hasOvertime = salaries.some((s) => Number(s.overtimeAmount || 0) > 0);
+  const hasBonus = salaries.some((s) => Number(s.bonusAmount || 0) > 0);
   const m = monthText(month);
 
-  if (Number(overtime || 0) > 0 && Number(bonus || 0) > 0) {
+  if (hasOvertime && hasBonus)
     return `Request for Salary, Overtime and Festival Bonus Disbursement for the Month of ${m}`;
-  }
-
-  if (Number(overtime || 0) > 0) {
+  if (hasOvertime)
     return `Request for Salary and Overtime Disbursement for the Month of ${m}`;
-  }
-
-  if (Number(bonus || 0) > 0) {
+  if (hasBonus)
     return `Request for Salary and Festival Bonus Disbursement for the Month of ${m}`;
-  }
 
   return `Request for Salary Disbursement for the Month of ${m}`;
 }
@@ -47,125 +46,136 @@ function makeSubject(month, overtime, bonus) {
 export default function SalarySheetPage() {
   const router = useRouter();
 
-  const [employees, setEmployees] = useState([]);
+  const [salaries, setSalaries] = useState([]);
   const [banks, setBanks] = useState([]);
   const [selectedIds, setSelectedIds] = useState([]);
 
   const [sheetType, setSheetType] = useState("bank");
   const [bankId, setBankId] = useState("");
   const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
-
-  const [overtimeAmount, setOvertimeAmount] = useState(0);
-  const [bonusAmount, setBonusAmount] = useState(0);
-  const [absentDeduction, setAbsentDeduction] = useState(0);
-  const [advanceDeduction, setAdvanceDeduction] = useState(0);
-  const [loanDeduction, setLoanDeduction] = useState(0);
   const [note, setNote] = useState("");
 
   const [loading, setLoading] = useState(false);
+  const [paying, setPaying] = useState(false);
 
   const fetchData = async () => {
-    const empRes = await fetch("/api/employees", { credentials: "include" });
-    const empData = await empRes.json();
+    try {
+      setLoading(true);
 
-    if (empData.success) {
-      setEmployees(empData.data.employees || []);
-    }
+      const salaryRes = await fetch(`/api/salary/history?month=${month}`, {
+        credentials: "include",
+      });
+      const salaryData = await salaryRes.json();
 
-    const bankRes = await fetch("/api/bank", { credentials: "include" });
-    const bankData = await bankRes.json();
+      if (salaryData.success) {
+        setSalaries(salaryData.data || []);
+      }
 
-    if (bankData.success) {
-      setBanks(bankData.data.banks || []);
+      const bankRes = await fetch("/api/bank", { credentials: "include" });
+      const bankData = await bankRes.json();
+
+      if (bankData.success) {
+        setBanks(bankData.data.banks || []);
+      }
+    } catch (error) {
+      alert(error.message || "Failed to load salary sheet");
+    } finally {
+      setLoading(false);
     }
   };
 
   useEffect(() => {
     fetchData();
-  }, []);
+    setSelectedIds([]);
+  }, [month]);
 
   const selectedBank = banks.find((b) => b._id === bankId);
 
-  const filteredEmployees = useMemo(() => {
-    return employees.filter((e) => e.paymentMethod === sheetType);
-  }, [employees, sheetType]);
-
-  const selectedEmployees = useMemo(() => {
-    return filteredEmployees.filter((e) => selectedIds.includes(e._id));
-  }, [filteredEmployees, selectedIds]);
-
-  const deductionTotal =
-    Number(absentDeduction || 0) +
-    Number(advanceDeduction || 0) +
-    Number(loanDeduction || 0);
-
-  const finalSalary = (employee) => {
-    return (
-      Number(employee.basicSalary || 0) +
-      Number(overtimeAmount || 0) +
-      Number(bonusAmount || 0) -
-      deductionTotal
+  const approvedSalaries = useMemo(() => {
+    return salaries.filter(
+      (s) =>
+        s.approvalStatus === "approved" &&
+        s.paymentStatus === "due" &&
+        s.paymentMethod === sheetType
     );
-  };
+  }, [salaries, sheetType]);
 
-  const totalBasic = selectedEmployees.reduce(
-    (sum, e) => sum + Number(e.basicSalary || 0),
+  const selectedSalaries = useMemo(() => {
+    return approvedSalaries.filter((s) => selectedIds.includes(s._id));
+  }, [approvedSalaries, selectedIds]);
+
+  const totalBasic = selectedSalaries.reduce(
+    (sum, s) => sum + Number(s.basicSalary || 0),
     0
   );
 
-  const totalOvertime = selectedEmployees.length * Number(overtimeAmount || 0);
-  const totalBonus = selectedEmployees.length * Number(bonusAmount || 0);
-  const totalDeduction = selectedEmployees.length * deductionTotal;
-
-  const totalPayable = selectedEmployees.reduce(
-    (sum, e) => sum + Math.max(finalSalary(e), 0),
+  const totalOvertime = selectedSalaries.reduce(
+    (sum, s) => sum + Number(s.overtimeAmount || 0),
     0
   );
 
-  const subject = makeSubject(month, overtimeAmount, bonusAmount);
+  const totalBonus = selectedSalaries.reduce(
+    (sum, s) => sum + Number(s.bonusAmount || 0),
+    0
+  );
+
+  const totalDeduction = selectedSalaries.reduce(
+    (sum, s) =>
+      sum +
+      Number(s.absentDeduction || 0) +
+      Number(s.advanceDeduction || 0) +
+      Number(s.loanDeduction || 0),
+    0
+  );
+
+  const totalPayable = selectedSalaries.reduce(
+    (sum, s) => sum + Number(s.dueAmount || s.finalSalary || 0),
+    0
+  );
+
+  const subject = makeSubject(month, selectedSalaries);
 
   const toggleAll = () => {
-    if (selectedIds.length === filteredEmployees.length) {
+    if (selectedIds.length === approvedSalaries.length) {
       setSelectedIds([]);
     } else {
-      setSelectedIds(filteredEmployees.map((e) => e._id));
+      setSelectedIds(approvedSalaries.map((s) => s._id));
     }
   };
 
-  const toggleEmployee = (id) => {
+  const toggleSalary = (id) => {
     setSelectedIds((prev) =>
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
     );
   };
 
-  const downloadPDF = () => {
-    window.print();
-  };
+  const downloadPDF = () => window.print();
 
   const downloadExcel = async () => {
-    if (selectedEmployees.length === 0) {
-      return alert("Select employee first");
-    }
+    if (!selectedSalaries.length) return alert("Select salary first");
 
     const XLSX = await import("xlsx");
 
-    const rows = selectedEmployees.map((e, index) => ({
+    const rows = selectedSalaries.map((s, index) => ({
       SL: index + 1,
-      "Employee Name": e.name,
-      "Account Number": e.bankAccountNo || "",
-      "Bank Name": e.bankName || "",
-      "Basic Salary": Number(e.basicSalary || 0),
-      Overtime: Number(overtimeAmount || 0),
-      "Festival Bonus": Number(bonusAmount || 0),
-      Deduction: Number(deductionTotal || 0),
-      "Net Payable": Math.max(finalSalary(e), 0),
+      "Employee Name": s.employeeName,
+      "Employee Code": s.employeeCode || "",
+      "Account Number": "",
+      "Basic Salary": Number(s.basicSalary || 0),
+      Overtime: Number(s.overtimeAmount || 0),
+      "Festival Bonus": Number(s.bonusAmount || 0),
+      Deduction:
+        Number(s.absentDeduction || 0) +
+        Number(s.advanceDeduction || 0) +
+        Number(s.loanDeduction || 0),
+      "Net Payable": Number(s.dueAmount || s.finalSalary || 0),
     }));
 
     rows.push({
       SL: "",
       "Employee Name": "TOTAL",
+      "Employee Code": "",
       "Account Number": "",
-      "Bank Name": "",
       "Basic Salary": totalBasic,
       Overtime: totalOvertime,
       "Festival Bonus": totalBonus,
@@ -182,62 +192,53 @@ export default function SalarySheetPage() {
       sheetType === "bank" ? "Bank Salary" : "Cash Salary"
     );
 
-    XLSX.writeFile(
-      workbook,
-      `${sheetType}-salary-${month || "sheet"}.xlsx`
-    );
+    XLSX.writeFile(workbook, `${sheetType}-approved-salary-${month}.xlsx`);
   };
 
-  const paySalarySheet = async () => {
-    if (!selectedIds.length) return alert("Select employee first");
+  const payApprovedSalary = async () => {
+    if (!selectedIds.length) return alert("Select approved salary first");
 
     if (sheetType === "bank" && !bankId) {
       return alert("Select company bank account");
     }
 
-    const confirmPay = confirm(
-      `Are you sure? ${selectedIds.length} salary will be paid. Total ৳ ${money(
+    const ok = confirm(
+      `Are you sure? ${selectedIds.length} approved salary will be paid. Total ৳ ${money(
         totalPayable
       )}`
     );
 
-    if (!confirmPay) return;
+    if (!ok) return;
 
     try {
-      setLoading(true);
+      setPaying(true);
 
-      const res = await fetch("/api/salary/bulk-pay", {
+      const res = await fetch("/api/salary/pay-approved", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
-          employeeIds: selectedIds,
-          month,
+          salaryIds: selectedIds,
           paymentMethod: sheetType,
           bankId,
-          overtimeAmount,
-          bonusAmount,
-          absentDeduction,
-          advanceDeduction,
-          loanDeduction,
           note,
         }),
       });
 
       const data = await res.json();
 
-      if (!res.ok || !data.success) {
+      if (!data.success) {
         throw new Error(data.message || "Salary payment failed");
       }
 
       alert(`Salary paid successfully. Total ৳ ${money(data.data.totalPaid)}`);
 
       setSelectedIds([]);
-      fetchData();
+      await fetchData();
     } catch (error) {
       alert(error.message || "Salary payment failed");
     } finally {
-      setLoading(false);
+      setPaying(false);
     }
   };
 
@@ -248,7 +249,7 @@ export default function SalarySheetPage() {
           <div>
             <h1 className="text-2xl font-bold">Salary Sheet</h1>
             <p className="text-sm text-gray-500 mt-1">
-              Bank salary advice, cash salary register and salary payment.
+              Approved salary advice, cash register and salary payment.
             </p>
           </div>
 
@@ -332,8 +333,8 @@ export default function SalarySheetPage() {
             </select>
 
             <button
-              onClick={paySalarySheet}
-              disabled={loading}
+              onClick={payApprovedSalary}
+              disabled={paying || selectedIds.length === 0}
               className={`rounded-xl px-4 py-3 text-white flex items-center justify-center gap-2 disabled:opacity-60 ${
                 sheetType === "bank"
                   ? "bg-blue-600 hover:bg-blue-700"
@@ -341,62 +342,24 @@ export default function SalarySheetPage() {
               }`}
             >
               {sheetType === "bank" ? <Landmark size={16} /> : <Wallet size={16} />}
-              {loading ? "Paying..." : sheetType === "bank" ? "Pay Bank Salary" : "Pay Cash Salary"}
+              {paying
+                ? "Paying..."
+                : sheetType === "bank"
+                ? "Pay Approved Bank Salary"
+                : "Pay Approved Cash Salary"}
             </button>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-3 print:hidden">
-            <input
-              type="number"
-              value={overtimeAmount}
-              onChange={(e) => setOvertimeAmount(Number(e.target.value) || 0)}
-              placeholder="Overtime"
-              className="border rounded-xl p-3"
-            />
-
-            <input
-              type="number"
-              value={bonusAmount}
-              onChange={(e) => setBonusAmount(Number(e.target.value) || 0)}
-              placeholder="Festival Bonus"
-              className="border rounded-xl p-3"
-            />
-
-            <input
-              type="number"
-              value={absentDeduction}
-              onChange={(e) => setAbsentDeduction(Number(e.target.value) || 0)}
-              placeholder="Absent Deduction"
-              className="border rounded-xl p-3"
-            />
-
-            <input
-              type="number"
-              value={advanceDeduction}
-              onChange={(e) => setAdvanceDeduction(Number(e.target.value) || 0)}
-              placeholder="Advance Deduction"
-              className="border rounded-xl p-3"
-            />
-
-            <input
-              type="number"
-              value={loanDeduction}
-              onChange={(e) => setLoanDeduction(Number(e.target.value) || 0)}
-              placeholder="Loan Deduction"
-              className="border rounded-xl p-3"
-            />
           </div>
 
           <textarea
             value={note}
             onChange={(e) => setNote(e.target.value)}
-            placeholder="Note"
+            placeholder="Payment note"
             className="w-full border rounded-xl p-3 print:hidden"
           />
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 print:hidden">
-            <Summary title="Selected Employee" value={selectedIds.length} />
-            <Summary title="Basic Salary" value={`৳ ${money(totalBasic)}`} />
+            <Summary title="Approved Salary" value={approvedSalaries.length} />
+            <Summary title="Selected" value={selectedIds.length} />
             <Summary title="Total Deduction" value={`৳ ${money(totalDeduction)}`} />
             <Summary title="Total Payable" value={`৳ ${money(totalPayable)}`} highlight />
           </div>
@@ -404,11 +367,15 @@ export default function SalarySheetPage() {
           <div className="border rounded-3xl overflow-hidden print:hidden">
             <div className="p-4 border-b flex justify-between">
               <h2 className="font-semibold">
-                {sheetType === "bank" ? "Bank Salary Employee List" : "Cash Salary Employee List"}
+                {sheetType === "bank"
+                  ? "Approved Bank Salary List"
+                  : "Approved Cash Salary List"}
               </h2>
 
               <button onClick={toggleAll} className="text-blue-600 text-sm">
-                {selectedIds.length === filteredEmployees.length ? "Unselect All" : "Select All"}
+                {selectedIds.length === approvedSalaries.length
+                  ? "Unselect All"
+                  : "Select All"}
               </button>
             </div>
 
@@ -419,8 +386,7 @@ export default function SalarySheetPage() {
                     <th className="p-3 text-center">Select</th>
                     <th className="p-3 text-left">SL</th>
                     <th className="p-3 text-left">Employee Name</th>
-                    <th className="p-3 text-left">Bank Name</th>
-                    <th className="p-3 text-left">A/C No</th>
+                    <th className="p-3 text-left">Code</th>
                     <th className="p-3 text-right">Basic</th>
                     <th className="p-3 text-right">Overtime</th>
                     <th className="p-3 text-right">Bonus</th>
@@ -430,49 +396,51 @@ export default function SalarySheetPage() {
                 </thead>
 
                 <tbody>
-                  {filteredEmployees.length === 0 ? (
+                  {approvedSalaries.length === 0 ? (
                     <tr>
-                      <td colSpan="10" className="p-6 text-center text-gray-500">
-                        No {sheetType} salary employee found
+                      <td colSpan="9" className="p-6 text-center text-gray-500">
+                        No approved unpaid {sheetType} salary found.
                       </td>
                     </tr>
                   ) : (
-                    filteredEmployees.map((e, i) => (
-                      <tr key={e._id} className="border-t hover:bg-blue-50/40">
-                        <td className="p-3 text-center">
-                          <input
-                            type="checkbox"
-                            checked={selectedIds.includes(e._id)}
-                            onChange={() => toggleEmployee(e._id)}
-                          />
-                        </td>
-                        <td className="p-3">{i + 1}</td>
-                        <td className="p-3 font-medium">{e.name}</td>
-                        <td className="p-3">{e.bankName || "-"}</td>
-                        <td className="p-3">{e.bankAccountNo || "-"}</td>
-                        <td className="p-3 text-right">৳ {money(e.basicSalary)}</td>
-                        <td className="p-3 text-right">৳ {money(overtimeAmount)}</td>
-                        <td className="p-3 text-right">৳ {money(bonusAmount)}</td>
-                        <td className="p-3 text-right text-red-500">৳ {money(deductionTotal)}</td>
-                        <td className="p-3 text-right font-bold text-blue-600">
-                          ৳ {money(Math.max(finalSalary(e), 0))}
-                        </td>
-                      </tr>
-                    ))
+                    approvedSalaries.map((s, i) => {
+                      const deduction =
+                        Number(s.absentDeduction || 0) +
+                        Number(s.advanceDeduction || 0) +
+                        Number(s.loanDeduction || 0);
+
+                      return (
+                        <tr key={s._id} className="border-t hover:bg-blue-50/40">
+                          <td className="p-3 text-center">
+                            <input
+                              type="checkbox"
+                              checked={selectedIds.includes(s._id)}
+                              onChange={() => toggleSalary(s._id)}
+                            />
+                          </td>
+                          <td className="p-3">{i + 1}</td>
+                          <td className="p-3 font-medium">{s.employeeName}</td>
+                          <td className="p-3">{s.employeeCode || "-"}</td>
+                          <td className="p-3 text-right">
+                            ৳ {money(s.basicSalary)}
+                          </td>
+                          <td className="p-3 text-right">
+                            ৳ {money(s.overtimeAmount)}
+                          </td>
+                          <td className="p-3 text-right">
+                            ৳ {money(s.bonusAmount)}
+                          </td>
+                          <td className="p-3 text-right text-red-500">
+                            ৳ {money(deduction)}
+                          </td>
+                          <td className="p-3 text-right font-bold text-blue-600">
+                            ৳ {money(s.dueAmount || s.finalSalary)}
+                          </td>
+                        </tr>
+                      );
+                    })
                   )}
                 </tbody>
-
-                {filteredEmployees.length > 0 && (
-                  <tfoot className="bg-gray-50 font-bold">
-                    <tr>
-                      <td className="p-3"></td>
-                      <td className="p-3" colSpan="8">
-                        Total Payable
-                      </td>
-                      <td className="p-3 text-right">৳ {money(totalPayable)}</td>
-                    </tr>
-                  </tfoot>
-                )}
               </table>
             </div>
           </div>
@@ -482,8 +450,7 @@ export default function SalarySheetPage() {
               bank={selectedBank}
               month={month}
               subject={subject}
-              employees={selectedEmployees}
-              finalSalary={finalSalary}
+              salaries={selectedSalaries}
               totalPayable={totalPayable}
               totalBasic={totalBasic}
               totalOvertime={totalOvertime}
@@ -493,8 +460,7 @@ export default function SalarySheetPage() {
           ) : (
             <CashRegister
               month={month}
-              employees={selectedEmployees}
-              finalSalary={finalSalary}
+              salaries={selectedSalaries}
               totalPayable={totalPayable}
             />
           )}
@@ -506,11 +472,9 @@ export default function SalarySheetPage() {
           body {
             background: white !important;
           }
-
           .print\\:hidden {
             display: none !important;
           }
-
           @page {
             size: A4;
             margin: 18mm 14mm;
@@ -525,8 +489,7 @@ function BankAdvice({
   bank,
   month,
   subject,
-  employees,
-  finalSalary,
+  salaries,
   totalPayable,
   totalBasic,
   totalOvertime,
@@ -536,15 +499,11 @@ function BankAdvice({
   return (
     <div className="bg-white border rounded-[24px] p-6 print:border-0 print:rounded-none print:p-0">
       <div className="text-sm leading-6">
-        <div className="flex justify-between">
-          <div>
-            <p>Date: {new Date().toLocaleDateString("en-GB")}</p>
-            <p className="mt-4">To,</p>
-            <p>The Manager</p>
-            <p>{bank?.bankName || "Bank Name"}</p>
-            <p>{bank?.branchName || "Branch Name"}</p>
-          </div>
-        </div>
+        <p>Date: {new Date().toLocaleDateString("en-GB")}</p>
+        <p className="mt-4">To,</p>
+        <p>The Manager</p>
+        <p>{bank?.bankName || "Bank Name"}</p>
+        <p>{bank?.branchName || "Branch Name"}</p>
 
         <p className="mt-6 font-bold">Subject: {subject}</p>
 
@@ -561,25 +520,29 @@ function BankAdvice({
             <tr className="bg-gray-100">
               <th className="border p-2 w-[50px]">SL</th>
               <th className="border p-2 text-left">Employee Name</th>
-              <th className="border p-2 text-left">Account Number</th>
+              <th className="border p-2 text-left">Employee Code</th>
               <th className="border p-2 text-right">Amount (BDT)</th>
             </tr>
           </thead>
 
           <tbody>
-            {employees.length === 0 ? (
+            {salaries.length === 0 ? (
               <tr>
                 <td colSpan="4" className="border p-4 text-center text-gray-500">
-                  No employee selected.
+                  No approved salary selected.
                 </td>
               </tr>
             ) : (
-              employees.map((e, i) => (
-                <tr key={e._id}>
+              salaries.map((s, i) => (
+                <tr key={s._id}>
                   <td className="border p-2 text-center">{i + 1}</td>
-                  <td className="border p-2 font-semibold uppercase">{e.name}</td>
-                  <td className="border p-2">{e.bankAccountNo || "-"}</td>
-                  <td className="border p-2 text-right">{money(finalSalary(e))}</td>
+                  <td className="border p-2 font-semibold uppercase">
+                    {s.employeeName}
+                  </td>
+                  <td className="border p-2">{s.employeeCode || "-"}</td>
+                  <td className="border p-2 text-right">
+                    {money(s.dueAmount || s.finalSalary)}
+                  </td>
                 </tr>
               ))
             )}
@@ -624,24 +587,21 @@ function BankAdvice({
         <p className="mt-6">Thanking You,</p>
 
         <div className="mt-16 flex justify-between">
-          <div>
-            <div className="border-t w-52 pt-2">Authorized Signature</div>
-          </div>
-
-          <div>
-            <div className="border-t w-52 pt-2 text-center">Company Seal</div>
-          </div>
+          <div className="border-t w-52 pt-2">Authorized Signature</div>
+          <div className="border-t w-52 pt-2 text-center">Company Seal</div>
         </div>
       </div>
     </div>
   );
 }
 
-function CashRegister({ month, employees, finalSalary, totalPayable }) {
+function CashRegister({ month, salaries, totalPayable }) {
   return (
     <div className="bg-white border rounded-[24px] p-6 print:border-0 print:rounded-none print:p-0">
       <h2 className="text-xl font-bold text-center">Cash Salary Register</h2>
-      <p className="text-center text-sm mt-1">Salary Month: {monthText(month)}</p>
+      <p className="text-center text-sm mt-1">
+        Salary Month: {monthText(month)}
+      </p>
 
       <table className="w-full text-sm border-collapse mt-6">
         <thead>
@@ -654,18 +614,22 @@ function CashRegister({ month, employees, finalSalary, totalPayable }) {
         </thead>
 
         <tbody>
-          {employees.length === 0 ? (
+          {salaries.length === 0 ? (
             <tr>
               <td colSpan="4" className="border p-4 text-center text-gray-500">
-                No employee selected.
+                No approved salary selected.
               </td>
             </tr>
           ) : (
-            employees.map((e, i) => (
-              <tr key={e._id}>
+            salaries.map((s, i) => (
+              <tr key={s._id}>
                 <td className="border p-2 text-center">{i + 1}</td>
-                <td className="border p-2 font-semibold uppercase">{e.name}</td>
-                <td className="border p-2 text-right">{money(finalSalary(e))}</td>
+                <td className="border p-2 font-semibold uppercase">
+                  {s.employeeName}
+                </td>
+                <td className="border p-2 text-right">
+                  {money(s.dueAmount || s.finalSalary)}
+                </td>
                 <td className="border p-2 h-10"></td>
               </tr>
             ))

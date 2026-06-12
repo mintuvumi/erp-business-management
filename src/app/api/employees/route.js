@@ -4,6 +4,22 @@ import Employee from "@/models/Employee";
 import SalaryPayment from "@/models/SalaryPayment";
 import AdvanceSalary from "@/models/AdvanceSalary";
 import { getTenant } from "@/lib/tenant";
+import { requirePermission } from "@/lib/checkPermission";
+
+async function checkEmployeeAccess(tenant) {
+  try {
+    await requirePermission(tenant, "employees");
+    return null;
+  } catch (error) {
+    return NextResponse.json(
+      {
+        success: false,
+        message: error.message || "Access denied",
+      },
+      { status: 403 }
+    );
+  }
+}
 
 export async function POST(req) {
   try {
@@ -17,6 +33,9 @@ export async function POST(req) {
         { status: 401 }
       );
     }
+
+    const denied = await checkEmployeeAccess(tenant);
+    if (denied) return denied;
 
     const body = await req.json();
 
@@ -43,14 +62,48 @@ export async function POST(req) {
 
     const employee = await Employee.create({
       ...body,
+
       companyId: tenant.companyId,
-      createdByUserId: tenant.user.id,
-      createdBy: tenant.user.name || "",
+      createdByUserId: tenant.user?.id || null,
+      createdBy: tenant.user?.name || "",
 
       name: String(body.name).trim(),
+      phone: body.phone || "",
+      email: body.email || "",
+      address: body.address || "",
+      photo: body.photo || "",
+
+      deviceUserId: body.deviceUserId || "",
+      rfidCardNo: body.rfidCardNo || "",
+      faceId: body.faceId || "",
+
+      designation: body.designation || "",
+      department: body.department || "",
+      joiningDate: body.joiningDate || new Date().toISOString().slice(0, 10),
+
       basicSalary: Number(body.basicSalary) || 0,
       bonusSalary: Number(body.bonusSalary) || 0,
       overtimeSalary: Number(body.overtimeSalary) || 0,
+
+      paymentMethod: body.paymentMethod || "cash",
+      bankName: body.bankName || "",
+      bankAccountNo: body.bankAccountNo || "",
+      bankAccountName: body.bankAccountName || "",
+      mobileBankingType: body.mobileBankingType || "",
+      mobileBankingNo: body.mobileBankingNo || "",
+
+      nidNo: body.nidNo || "",
+      emergencyContact: body.emergencyContact || "",
+
+      presentToday:
+        typeof body.presentToday === "boolean" ? body.presentToday : true,
+
+      monthlyLeave: Number(body.monthlyLeave) || 0,
+      yearlyLeave: Number(body.yearlyLeave) || 0,
+
+      workProgress: body.workProgress || "good",
+      role: body.role || "staff",
+      note: body.note || "",
       status: body.status || "active",
     });
 
@@ -88,8 +141,13 @@ export async function GET(req) {
       );
     }
 
+    const denied = await checkEmployeeAccess(tenant);
+    if (denied) return denied;
+
     const { searchParams } = new URL(req.url);
-    const search = searchParams.get("search") || "";
+    const search = String(
+      searchParams.get("search") || searchParams.get("q") || ""
+    ).trim();
 
     const query = {
       companyId: tenant.companyId,
@@ -104,6 +162,8 @@ export async function GET(req) {
         { email: { $regex: search, $options: "i" } },
         { designation: { $regex: search, $options: "i" } },
         { department: { $regex: search, $options: "i" } },
+        { deviceUserId: { $regex: search, $options: "i" } },
+        { rfidCardNo: { $regex: search, $options: "i" } },
       ];
     }
 

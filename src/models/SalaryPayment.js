@@ -80,6 +80,13 @@ const SalaryPaymentSchema = new mongoose.Schema(
       default: 0,
     },
 
+    paymentMethod: {
+  type: String,
+  enum: ["cash", "bank", "mobile_banking"],
+  default: "cash",
+  index: true,
+},
+
     paymentStatus: {
   type: String,
   enum: ["paid", "partial", "due"],

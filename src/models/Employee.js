@@ -12,6 +12,7 @@ const EmployeeSchema = new mongoose.Schema(
     employeeCode: {
       type: String,
       default: "",
+      trim: true,
       index: true,
     },
 
@@ -46,6 +47,27 @@ const EmployeeSchema = new mongoose.Schema(
       default: "",
     },
 
+    // Future Attendance Device Support
+    deviceUserId: {
+      type: String,
+      default: "",
+      trim: true,
+      index: true,
+    },
+
+    rfidCardNo: {
+      type: String,
+      default: "",
+      trim: true,
+      index: true,
+    },
+
+    faceId: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
     designation: {
       type: String,
       default: "",
@@ -57,6 +79,7 @@ const EmployeeSchema = new mongoose.Schema(
       type: String,
       default: "",
       trim: true,
+      index: true,
     },
 
     joiningDate: {
@@ -83,6 +106,7 @@ const EmployeeSchema = new mongoose.Schema(
       type: String,
       enum: ["cash", "bank", "mobile_banking"],
       default: "cash",
+      index: true,
     },
 
     bankName: {
@@ -152,6 +176,7 @@ const EmployeeSchema = new mongoose.Schema(
       type: String,
       enum: ["manager", "accountant", "cashier", "salesman", "staff"],
       default: "staff",
+      index: true,
     },
 
     userId: {
@@ -200,6 +225,16 @@ EmployeeSchema.index(
 EmployeeSchema.index({
   companyId: 1,
   employeeCode: 1,
+});
+
+EmployeeSchema.index({
+  companyId: 1,
+  deviceUserId: 1,
+});
+
+EmployeeSchema.index({
+  companyId: 1,
+  rfidCardNo: 1,
 });
 
 EmployeeSchema.pre("save", function () {

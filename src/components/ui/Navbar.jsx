@@ -26,66 +26,41 @@ import {
   XCircle,
 } from "lucide-react";
 
-const fallbackImages = [
-  "https://i.pravatar.cc/100?img=1",
-  "https://i.pravatar.cc/100?img=2",
-  "https://i.pravatar.cc/100?img=3",
-  "https://i.pravatar.cc/100?img=4",
-];
+const fallbackImages = ["https://i.pravatar.cc/100?img=1"];
 
 const softwareOptions = [
-  {
-    title: "Dashboard",
-    type: "option",
-    path: "/dashboard",
-    subtitle: "Open dashboard",
-  },
-
-  {
-    title: "Sales",
-    type: "option",
-    path: "/sales",
-    subtitle: "Create sales bill",
-  },
-
-  {
-    title: "Purchase",
-    type: "option",
-    path: "/purchase",
-    subtitle: "Purchase entry",
-  },
-
-  {
-    title: "Stock",
-    type: "option",
-    path: "/stock",
-    subtitle: "Stock management",
-  },
-
-  {
-    title: "Employee",
-    type: "option",
-    path: "/employee",
-    subtitle: "Employee management",
-  },
-
-  {
-    title: "Reports",
-    type: "option",
-    path: "/reports",
-    subtitle: "Reports center",
-  },
-
-  {
-    title: "Settings",
-    type: "option",
-    path: "/settings",
-    subtitle: "Software settings",
-  },
+  { title: "Dashboard", type: "option", path: "/dashboard", subtitle: "Open dashboard" },
+  { title: "Sales", type: "option", path: "/sales", subtitle: "Create sales bill" },
+  { title: "Purchase", type: "option", path: "/purchase", subtitle: "Purchase entry" },
+  { title: "Stock", type: "option", path: "/stock", subtitle: "Stock management" },
+  { title: "Employee", type: "option", path: "/employee", subtitle: "Employee management" },
+  { title: "Reports", type: "option", path: "/reports", subtitle: "Reports center" },
+  { title: "Settings", type: "option", path: "/settings", subtitle: "Software settings" },
 ];
 
-export default function Navbar({ setOpen }) {
+function isMarketingUser(user) {
+  return user?.role === "marketing_officer";
+}
 
+function normalizePhotos(user) {
+  const photos = [];
+
+  if (user?.photo) photos.push(user.photo);
+  if (user?.avatar) photos.push(user.avatar);
+
+  if (Array.isArray(user?.profilePhotos)) {
+    user.profilePhotos.forEach((item) => {
+      if (typeof item === "string") photos.push(item);
+      if (item?.url) photos.push(item.url);
+    });
+  }
+
+  const uniquePhotos = [...new Set(photos.filter(Boolean))];
+
+  return uniquePhotos.length > 0 ? uniquePhotos : fallbackImages;
+}
+
+export default function Navbar({ setOpen }) {
   const router = useRouter();
   const fileInputRef = useRef(null);
 
@@ -113,14 +88,44 @@ export default function Navbar({ setOpen }) {
   const [aiAnswer, setAiAnswer] = useState(null);
   const [searchLoading, setSearchLoading] = useState(false);
 
+  const [authUser, setAuthUser] = useState(null);
+  const [companies, setCompanies] = useState([]);
+  const [activeCompanyId, setActiveCompanyId] = useState("");
+
+  const isMarketingOfficer = isMarketingUser(authUser);
+
+  const saveCompanyLocal = (company) => {
+    if (!company) return;
+
+    const selectedId = String(company._id || company.id || "");
+
+    if (!selectedId) return;
+
+    setActiveCompanyId(selectedId);
+    localStorage.setItem("selectedCompanyId", selectedId);
+    localStorage.setItem("selectedCompany", JSON.stringify(company));
+    localStorage.setItem("activeCompany", JSON.stringify(company));
+  };
+
   const fetchNotifications = async () => {
     try {
       setNotificationLoading(true);
 
       let finalNotifications = [];
 
+      const companyId =
+        typeof window !== "undefined"
+          ? localStorage.getItem("selectedCompanyId")
+          : "";
+
+      const headers = companyId ? { "x-company-id": companyId } : {};
+
       try {
-        const res = await fetch("/api/notifications");
+        const res = await fetch("/api/notifications", {
+          credentials: "include",
+          cache: "no-store",
+          headers,
+        });
 
         if (res.ok) {
           const data = await res.json();
@@ -135,7 +140,39 @@ export default function Navbar({ setOpen }) {
       }
 
       try {
-        const aiRes = await fetch("/api/ai-search?q=business summary");
+        const dueRes = await fetch("/api/customers/statement?dueToday=true", {
+          credentials: "include",
+          cache: "no-store",
+          headers,
+        });
+
+        if (dueRes.ok) {
+          const dueData = await dueRes.json();
+          const dueRows = dueData?.data?.rows || [];
+
+          const dueNotifications = dueRows.slice(0, 10).map((row) => ({
+            title: `${row.customerName} - Due Collection`,
+            message: `Invoice ${row.billNo || ""} | Due ৳ ${Number(
+              row.currentDue || 0
+            ).toFixed(2)} | Date ${row.nextCollectionDate || ""}`,
+            type: row.collectionStatus === "overdue" ? "danger" : "warning",
+            refType: "customer_due_today",
+            path: `/customers/statement?customer=${encodeURIComponent(
+              row.customerName || ""
+            )}`,
+          }));
+
+          finalNotifications = [...dueNotifications, ...finalNotifications];
+        }
+      } catch (error) {
+        console.warn("DUE_NOTIFICATION_ERROR:", error);
+      }
+
+      try {
+        const aiRes = await fetch("/api/ai-search?q=business%20summary", {
+          credentials: "include",
+          headers,
+        });
 
         if (aiRes.ok) {
           const aiData = await aiRes.json();
@@ -147,14 +184,18 @@ export default function Navbar({ setOpen }) {
                 message: aiData.data.answer || "Business summary ready",
                 type: "info",
                 refType: "ai_business",
-                path: "/dashboard",
+                path: isMarketingOfficer
+                  ? "/customers/statement?dueOnly=true"
+                  : "/dashboard",
               },
               ...(aiData.data.suggestions || []).map((item, index) => ({
                 title: `AI Suggestion ${index + 1}`,
                 message: item,
                 type: "warning",
                 refType: "ai_suggestion",
-                path: "/dashboard",
+                path: isMarketingOfficer
+                  ? "/customers/statement?dueOnly=true"
+                  : "/dashboard",
               })),
             ];
 
@@ -166,9 +207,7 @@ export default function Navbar({ setOpen }) {
       }
 
       setNotifications(finalNotifications);
-      setUnreadCount((prev) =>
-        finalNotifications.length > 0 ? finalNotifications.length : prev
-      );
+      setUnreadCount(finalNotifications.length);
     } catch (error) {
       console.error("NOTIFICATION_LOAD_ERROR:", error);
     } finally {
@@ -176,45 +215,61 @@ export default function Navbar({ setOpen }) {
     }
   };
 
+  const loadMe = async () => {
+    try {
+      const res = await fetch("/api/auth/me", {
+        credentials: "include",
+        cache: "no-store",
+      });
+
+      if (!res.ok) return;
+
+      const json = await res.json();
+
+      if (!json.success || !json.data) return;
+
+      const user = json.data;
+
+      setAuthUser(user);
+      localStorage.setItem("user", JSON.stringify(user));
+
+      const userPhotos = normalizePhotos(user);
+
+      setOwnerImages(userPhotos);
+      setCurrentImage((prev) =>
+        userPhotos.includes(prev) ? prev : userPhotos[0] || fallbackImages[0]
+      );
+
+      const companyList = Array.isArray(user.companies) ? user.companies : [];
+      setCompanies(companyList);
+      localStorage.setItem("companies", JSON.stringify(companyList));
+
+      const savedCompanyId = localStorage.getItem("selectedCompanyId");
+
+      const selected =
+        companyList.find(
+          (c) => String(c._id || c.id) === String(savedCompanyId)
+        ) ||
+        user.company ||
+        companyList[0];
+
+      saveCompanyLocal(selected);
+    } catch (error) {
+      console.error("AUTH_ME_LOAD_ERROR:", error);
+    }
+  };
+
   useEffect(() => {
-    const fetchUserPhotos = async () => {
-      try {
-        const localPhoto = localStorage.getItem("profilePhoto");
-
-        if (localPhoto) {
-          setOwnerImages([localPhoto, ...fallbackImages]);
-          setCurrentImage(localPhoto);
-          return;
-        }
-
-        const res = await fetch("/api/users/photos");
-
-        if (!res.ok) return;
-
-        const data = await res.json();
-
-        if (data.success && data.data?.length > 0) {
-          setOwnerImages(data.data);
-          setCurrentImage(data.data[0]);
-        }
-      } catch (error) {
-        console.error("PHOTO_LOAD_ERROR:", error);
-      }
-    };
-
-    fetchUserPhotos();
+    loadMe();
     fetchNotifications();
 
     const notificationInterval = setInterval(fetchNotifications, 60000);
+
     return () => clearInterval(notificationInterval);
   }, []);
 
-
-
-
-
   useEffect(() => {
-    if (!ownerImages.length) return;
+    if (!ownerImages.length || ownerImages.length <= 1) return;
 
     const interval = setInterval(() => {
       setImageFade(false);
@@ -222,141 +277,120 @@ export default function Navbar({ setOpen }) {
       setTimeout(() => {
         setCurrentImage((prev) => {
           const currentIndex = ownerImages.indexOf(prev);
-          const nextIndex = (currentIndex + 1) % ownerImages.length;
+          const nextIndex =
+            currentIndex === -1 ? 0 : (currentIndex + 1) % ownerImages.length;
+
           return ownerImages[nextIndex] || ownerImages[0];
         });
 
         setImageFade(true);
       }, 450);
-    }, 45000);
+    }, 30000);
 
     return () => clearInterval(interval);
   }, [ownerImages]);
 
-// ** search useEffect
+  useEffect(() => {
+    const timer = setTimeout(async () => {
+      if (!searchText.trim()) {
+        setSearchResults([]);
+        setAiAnswer(null);
+        return;
+      }
 
-useEffect(() => {
-  const timer = setTimeout(async () => {
-    if (!searchText.trim()) {
-      setSearchResults([]);
-      setAiAnswer(null);
-      return;
-    }
+      try {
+        setSearchLoading(true);
 
-    try {
-      setSearchLoading(true);
+        const companyId =
+          typeof window !== "undefined"
+            ? localStorage.getItem("selectedCompanyId")
+            : "";
 
-      const [searchRes, aiRes, geminiRes] =
-        await Promise.all([
-          fetch(
-            `/api/global-search?q=${encodeURIComponent(
-              searchText
-            )}`
-          ),
+        const headers = companyId ? { "x-company-id": companyId } : {};
 
-          fetch(
-            `/api/ai-search?q=${encodeURIComponent(
-              searchText
-            )}`
-          ),
-
-          fetch(
-            `/api/gemini-search?q=${encodeURIComponent(
-              searchText
-            )}`
-          ),
+        const [searchRes, aiRes, geminiRes] = await Promise.all([
+          fetch(`/api/global-search?q=${encodeURIComponent(searchText)}`, {
+            credentials: "include",
+            headers,
+          }),
+          fetch(`/api/ai-search?q=${encodeURIComponent(searchText)}`, {
+            credentials: "include",
+            headers,
+          }),
+          fetch(`/api/gemini-search?q=${encodeURIComponent(searchText)}`, {
+            credentials: "include",
+            headers,
+          }).catch(() => null),
         ]);
 
-      let apiResults = [];
+        let apiResults = [];
 
-      if (searchRes.ok) {
-        const searchData = await searchRes.json();
-
-        apiResults = searchData?.data || [];
-      }
-
-      const optionResults =
-        softwareOptions.filter((item) => {
-          const text =
-            `${item.title} ${item.subtitle} ${item.type}`.toLowerCase();
-
-          return text.includes(
-            searchText.toLowerCase()
-          );
-        });
-
-      setSearchResults([
-        ...optionResults,
-        ...apiResults,
-      ]);
-
-      let finalAiAnswer = null;
-
-      if (aiRes.ok) {
-        const aiData = await aiRes.json();
-
-        finalAiAnswer =
-          aiData?.data || null;
-      }
-
-      if (geminiRes.ok) {
-        const geminiData =
-          await geminiRes.json();
-
-        if (geminiData?.data) {
-          finalAiAnswer = {
-            ...(finalAiAnswer || {}),
-
-            title:
-              finalAiAnswer?.title ||
-              geminiData.data.title ||
-              "AI Business Assistant",
-
-            answer:
-              finalAiAnswer?.answer ||
-              geminiData.data.answer,
-
-            suggestions: [
-              ...(finalAiAnswer?.suggestions ||
-                []),
-
-              ...(geminiData.data
-                .suggestions || []),
-            ],
-
-            path:
-              finalAiAnswer?.path ||
-              geminiData.data.path ||
-              "/dashboard",
-          };
+        if (searchRes?.ok) {
+          const searchData = await searchRes.json();
+          apiResults = searchData?.data || [];
         }
+
+        const optionResults = softwareOptions
+          .filter((item) => {
+            const text = `${item.title} ${item.subtitle} ${item.type}`.toLowerCase();
+            return text.includes(searchText.toLowerCase());
+          })
+          .filter((item) => {
+            if (!isMarketingOfficer) return true;
+            return [
+              "/customers",
+              "/customers/statement",
+              "/customers/statement?dueOnly=true",
+            ].includes(item.path);
+          });
+
+        setSearchResults([...optionResults, ...apiResults]);
+
+        let finalAiAnswer = null;
+
+        if (aiRes?.ok) {
+          const aiData = await aiRes.json();
+          finalAiAnswer = aiData?.data || null;
+        }
+
+        if (geminiRes?.ok) {
+          const geminiData = await geminiRes.json();
+
+          if (geminiData?.data) {
+            finalAiAnswer = {
+              ...(finalAiAnswer || {}),
+              title:
+                finalAiAnswer?.title ||
+                geminiData.data.title ||
+                "AI Business Assistant",
+              answer: finalAiAnswer?.answer || geminiData.data.answer,
+              suggestions: [
+                ...(finalAiAnswer?.suggestions || []),
+                ...(geminiData.data.suggestions || []),
+              ],
+              path:
+                finalAiAnswer?.path ||
+                geminiData.data.path ||
+                (isMarketingOfficer
+                  ? "/customers/statement?dueOnly=true"
+                  : "/dashboard"),
+            };
+          }
+        }
+
+        setAiAnswer(finalAiAnswer);
+        localStorage.setItem("searchHistory", searchText);
+      } catch (error) {
+        console.error("SEARCH_ERROR:", error);
+        setSearchResults([]);
+        setAiAnswer(null);
+      } finally {
+        setSearchLoading(false);
       }
+    }, 250);
 
-      setAiAnswer(finalAiAnswer);
-
-      localStorage.setItem(
-        "searchHistory",
-        searchText
-      );
-    } catch (error) {
-      console.error(
-        "SEARCH_ERROR:",
-        error
-      );
-
-      setSearchResults([]);
-      setAiAnswer(null);
-    } finally {
-      setSearchLoading(false);
-    }
-  }, 250);
-
-  return () => clearTimeout(timer);
-}, [searchText]);
-  
-// search useEffect end
-
-
+    return () => clearTimeout(timer);
+  }, [searchText, isMarketingOfficer]);
 
   useEffect(() => {
     const keyHandler = (e) => {
@@ -370,30 +404,24 @@ useEffect(() => {
     return () => window.removeEventListener("keydown", keyHandler);
   }, []);
 
+  const handleSearchEnter = (e) => {
+    if (e.key !== "Enter") return;
 
-const handleSearchEnter = (e) => {
-  if (e.key !== "Enter") return;
+    e.preventDefault();
 
-  e.preventDefault();
+    if (searchResults.length > 0) {
+      const first = searchResults[0];
+      goTo(first.path || first.route || "/dashboard");
+      return;
+    }
 
-  if (searchResults.length > 0) {
-    const first = searchResults[0];
+    if (aiAnswer?.path) {
+      goTo(aiAnswer.path);
+      return;
+    }
 
-    goTo(first.path || first.route || "/dashboard");
-
-    return;
-  }
-
-  if (aiAnswer?.path) {
-    goTo(aiAnswer.path);
-    return;
-  }
-
-  router.push(
-    `/search?q=${encodeURIComponent(searchText)}`
-  );
-};
-
+    router.push(`/search?q=${encodeURIComponent(searchText)}`);
+  };
 
   const goTo = (path) => {
     if (!path) return;
@@ -411,13 +439,21 @@ const handleSearchEnter = (e) => {
 
   const logout = async () => {
     try {
-      await fetch("/api/auth/logout", { method: "POST" });
+      await fetch("/api/auth/logout", {
+        method: "POST",
+        credentials: "include",
+      });
     } catch (error) {
       console.error("LOGOUT_ERROR:", error);
     }
 
     localStorage.removeItem("user");
     localStorage.removeItem("token");
+    localStorage.removeItem("selectedCompanyId");
+    localStorage.removeItem("selectedCompany");
+    localStorage.removeItem("activeCompany");
+    localStorage.removeItem("companies");
+
     window.location.href = "/login";
   };
 
@@ -433,6 +469,42 @@ const handleSearchEnter = (e) => {
     setOpenProfile((prev) => !prev);
   };
 
+  const switchCompany = async (selectedId) => {
+    if (!selectedId) return;
+
+    const selected = companies.find(
+      (c) => String(c._id || c.id) === String(selectedId)
+    );
+
+    if (selected) saveCompanyLocal(selected);
+
+    try {
+      const res = await fetch("/api/company/switch", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ companyId: selectedId }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok || !data.success) {
+        alert(data.message || "Company switch failed");
+        await loadMe();
+        return;
+      }
+
+      if (data.company || data.data?.company) {
+        saveCompanyLocal(data.company || data.data.company);
+      }
+    } catch (error) {
+      console.error("COMPANY_SWITCH_ERROR:", error);
+    }
+
+    fetchNotifications();
+    window.location.reload();
+  };
+
   const handlePhotoUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -443,8 +515,7 @@ const handleSearchEnter = (e) => {
       reader.onload = async () => {
         const localUrl = reader.result;
 
-        localStorage.setItem("profilePhoto", localUrl);
-        setOwnerImages((prev) => [localUrl, ...prev]);
+        setOwnerImages((prev) => [...new Set([localUrl, ...prev])]);
         setCurrentImage(localUrl);
 
         try {
@@ -457,34 +528,59 @@ const handleSearchEnter = (e) => {
           });
 
           if (!res.ok) {
-            alert("Photo saved locally ✅");
+            alert("Photo preview updated ✅");
             return;
           }
 
           const data = await res.json();
 
-          if (data.success) {
-            await fetch("/api/users/profile-photo", {
+          if (data.success && data.url) {
+            const saveRes = await fetch("/api/users/profile-photo", {
               method: "POST",
+              credentials: "include",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
-                name: "Company User",
-                role: "Admin / Owner",
                 photo: data.url,
               }),
             });
 
-            localStorage.setItem("profilePhoto", data.url);
-            setOwnerImages((prev) => [data.url, ...prev]);
-            setCurrentImage(data.url);
+            const saveData = await saveRes.json().catch(() => ({}));
 
-            alert("Photo uploaded and saved ✅");
-          } else {
-            alert("Photo saved locally ✅");
+            if (saveRes.ok && saveData.success) {
+              const savedPhotos =
+                saveData.data?.profilePhotos?.length > 0
+                  ? saveData.data.profilePhotos
+                  : [data.url];
+
+              const uniquePhotos = [
+                ...new Set([data.url, ...savedPhotos, ...ownerImages].filter(Boolean)),
+              ];
+
+              setOwnerImages(uniquePhotos);
+              setCurrentImage(data.url);
+
+              setAuthUser((prev) =>
+                prev
+                  ? {
+                      ...prev,
+                      photo: data.url,
+                      avatar: data.url,
+                      profilePhotos: uniquePhotos,
+                    }
+                  : prev
+              );
+
+              await loadMe();
+
+              alert("Photo uploaded and saved ✅");
+              return;
+            }
           }
+
+          alert("Photo preview updated ✅");
         } catch (error) {
           console.warn("UPLOAD_API_ERROR:", error);
-          alert("Photo saved locally ✅");
+          alert("Photo preview updated ✅");
         }
       };
 
@@ -492,6 +588,8 @@ const handleSearchEnter = (e) => {
     } catch (error) {
       console.error(error);
       alert("Photo upload failed");
+    } finally {
+      e.target.value = "";
     }
   };
 
@@ -504,6 +602,7 @@ const handleSearchEnter = (e) => {
     }
 
     const recognition = new window.webkitSpeechRecognition();
+
     recognition.lang = "bn-BD";
     recognition.continuous = false;
     recognition.interimResults = false;
@@ -548,45 +647,44 @@ const handleSearchEnter = (e) => {
           <div className="relative px-3 md:px-6 h-[70px] flex items-end justify-between pb-2">
             <div className="flex items-center gap-2 md:gap-3">
               <button
-                onClick={() => setOpen(true)}
+                onClick={() => setOpen?.(true)}
                 className="md:hidden w-9 h-9 rounded-full flex items-center justify-center hover:bg-blue-50 hover:text-blue-600 active:scale-95"
               >
                 <Menu size={21} />
               </button>
 
+              <select
+                value={activeCompanyId || ""}
+                onChange={(e) => switchCompany(e.target.value)}
+                className="bg-blue-50 text-blue-700 text-[11px] md:text-xs px-3 md:px-4 py-1.5 md:py-2 rounded-full shadow-sm outline-none border border-blue-100 hover:bg-blue-100 hover:shadow-md focus:ring-4 focus:ring-blue-100"
+              >
+                <option value="">Select Company</option>
 
-{/* company select */}
-             <select
-                  value={
-                    typeof window !== "undefined"
-                      ? localStorage.getItem("activeCompany") || "Select Company"
-                      : "Select Company"
-                  }
-                  onChange={(e) => {
-                    localStorage.setItem("activeCompany", e.target.value);
-                    fetchNotifications();
-                  }}
-                  className="bg-blue-50 text-blue-700 text-[11px] md:text-xs px-3 md:px-4 py-1.5 md:py-2 rounded-full shadow-sm outline-none border border-blue-100 hover:bg-blue-100 hover:shadow-md focus:ring-4 focus:ring-blue-100"
-                >
-                  <option>Select Company</option>
-                  <option>Let's Go See</option>
-                  <option>XYZ Group</option>
-                  <option>NextCore</option>
-                </select>
-                </div>
+                {companies.map((company) => (
+                  <option
+                    key={company._id || company.id}
+                    value={company._id || company.id}
+                  >
+                    {company.name}
+                  </option>
+                ))}
+              </select>
+            </div>
 
             <div className="flex items-center gap-2 md:gap-3">
-              <IconBtn
-                active={activeTopIcon === "plus"}
-                onClick={() => {
-                  setActiveTopIcon("plus");
-                  setOpenProfile(false);
-                  setOpenNotification(false);
-                  setOpenQuick(true);
-                }}
-              >
-                <Plus size={14} />
-              </IconBtn>
+              {!isMarketingOfficer && (
+                <IconBtn
+                  active={activeTopIcon === "plus"}
+                  onClick={() => {
+                    setActiveTopIcon("plus");
+                    setOpenProfile(false);
+                    setOpenNotification(false);
+                    setOpenQuick(true);
+                  }}
+                >
+                  <Plus size={14} />
+                </IconBtn>
+              )}
 
               <div className="relative">
                 <IconBtn active={openNotification} onClick={openBell}>
@@ -608,7 +706,7 @@ const handleSearchEnter = (e) => {
 
                 <img
                   src={currentImage}
-                  alt="Company User"
+                  alt={authUser?.name || "Company User"}
                   onError={(e) => {
                     e.currentTarget.src = "https://i.pravatar.cc/100?img=1";
                   }}
@@ -647,17 +745,21 @@ const handleSearchEnter = (e) => {
                   <Search size={17} className="text-gray-400 mr-2" />
 
                   <input
-                        id="premium-navbar-search"
-                        value={searchText}
-                        onKeyDown={handleSearchEnter}
-                        onChange={(e) => {
-                          setSearchText(e.target.value);
-                          setOpenSearch(true);
-                        }}
-                        onFocus={() => setOpenSearch(true)}
-                        className="bg-transparent outline-none w-full text-xs md:text-sm placeholder:text-gray-400"
-                        placeholder="Search sales, purchase, stock, bank, employee..."
-                      />
+                    id="premium-navbar-search"
+                    value={searchText}
+                    onKeyDown={handleSearchEnter}
+                    onChange={(e) => {
+                      setSearchText(e.target.value);
+                      setOpenSearch(true);
+                    }}
+                    onFocus={() => setOpenSearch(true)}
+                    className="bg-transparent outline-none w-full text-xs md:text-sm placeholder:text-gray-400"
+                    placeholder={
+                      isMarketingOfficer
+                        ? "Search customer, due, collection..."
+                        : "Search sales, purchase, stock, bank, employee..."
+                    }
+                  />
 
                   <button
                     type="button"
@@ -682,7 +784,13 @@ const handleSearchEnter = (e) => {
                       {aiAnswer && (
                         <button
                           onMouseDown={(e) => e.preventDefault()}
-                          onClick={() => goTo("/dashboard")}
+                          onClick={() =>
+                            goTo(
+                              isMarketingOfficer
+                                ? "/customers/statement?dueOnly=true"
+                                : "/dashboard"
+                            )
+                          }
                           className="w-full text-left p-4 bg-blue-50 hover:bg-blue-100 border-b transition-all"
                         >
                           <p className="text-sm font-bold text-blue-700">
@@ -708,12 +816,16 @@ const handleSearchEnter = (e) => {
                       {searchResults.length > 0 ? (
                         searchResults.map((item, index) => (
                           <button
-                    key={`${item.type || "item"}-${item.title || item.name}-${index}`}
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => goTo(item.path || item.route || "/dashboard")}
-                    className="w-full text-left p-4 border-b last:border-b-0 hover:bg-blue-50 transition-all"
-                  >
-                                              <div className="flex items-start justify-between gap-3">
+                            key={`${item.type || "item"}-${
+                              item.title || item.name || index
+                            }-${index}`}
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() =>
+                              goTo(item.path || item.route || "/dashboard")
+                            }
+                            className="w-full text-left p-4 border-b last:border-b-0 hover:bg-blue-50 transition-all"
+                          >
+                            <div className="flex items-start justify-between gap-3">
                               <div>
                                 <p className="text-sm font-semibold text-gray-900">
                                   {item.title || item.name}
@@ -753,28 +865,30 @@ const handleSearchEnter = (e) => {
                 </div>
               </div>
 
-              <div className="flex gap-2 md:gap-3">
-                <ActionIcon
-                  active={activeCardIcon === "doc"}
-                  onClick={() => setActiveCardIcon("doc")}
-                >
-                  <FileText size={17} />
-                </ActionIcon>
+              {!isMarketingOfficer && (
+                <div className="flex gap-2 md:gap-3">
+                  <ActionIcon
+                    active={activeCardIcon === "doc"}
+                    onClick={() => setActiveCardIcon("doc")}
+                  >
+                    <FileText size={17} />
+                  </ActionIcon>
 
-                <ActionIcon
-                  active={activeCardIcon === "book"}
-                  onClick={() => setActiveCardIcon("book")}
-                >
-                  <BookOpen size={17} />
-                </ActionIcon>
+                  <ActionIcon
+                    active={activeCardIcon === "book"}
+                    onClick={() => setActiveCardIcon("book")}
+                  >
+                    <BookOpen size={17} />
+                  </ActionIcon>
 
-                <ActionIcon
-                  active={activeCardIcon === "box"}
-                  onClick={() => setActiveCardIcon("box")}
-                >
-                  <Package2 size={17} />
-                </ActionIcon>
-              </div>
+                  <ActionIcon
+                    active={activeCardIcon === "box"}
+                    onClick={() => setActiveCardIcon("box")}
+                  >
+                    <Package2 size={17} />
+                  </ActionIcon>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -784,9 +898,13 @@ const handleSearchEnter = (e) => {
         <div className="fixed right-4 md:right-6 top-[76px] z-[999999] w-[calc(100vw-32px)] max-w-[340px] bg-white/95 backdrop-blur-xl border rounded-[24px] shadow-[0_24px_70px_rgba(15,23,42,0.18)] overflow-hidden animate-profileDrop">
           <div className="p-4 border-b flex items-center justify-between">
             <div>
-              <h3 className="font-bold text-sm">AI Notifications</h3>
+              <h3 className="font-bold text-sm">
+                {isMarketingOfficer ? "Due Notifications" : "AI Notifications"}
+              </h3>
               <p className="text-xs text-gray-500 mt-1">
-                Business alert & smart insight
+                {isMarketingOfficer
+                  ? "Customer due & collection reminder"
+                  : "Business alert & smart insight"}
               </p>
             </div>
 
@@ -838,7 +956,7 @@ const handleSearchEnter = (e) => {
             <div className="flex items-center gap-3">
               <img
                 src={currentImage}
-                alt="Company User"
+                alt={authUser?.name || "Company User"}
                 onError={(e) => {
                   e.currentTarget.src = "https://i.pravatar.cc/100?img=1";
                 }}
@@ -846,8 +964,12 @@ const handleSearchEnter = (e) => {
               />
 
               <div>
-                <h3 className="font-bold text-sm">Company User</h3>
-                <p className="text-xs text-gray-500">Admin / Owner</p>
+                <h3 className="font-bold text-sm">
+                  {authUser?.name || "Company User"}
+                </h3>
+                <p className="text-xs text-gray-500">
+                  {authUser?.role || "Admin / Owner"}
+                </p>
               </div>
             </div>
           </div>
@@ -874,11 +996,13 @@ const handleSearchEnter = (e) => {
               }}
             />
 
-            <ProfileItem
-              icon={<Settings size={16} />}
-              title="Settings"
-              onClick={() => goTo("/settings")}
-            />
+            {!isMarketingOfficer && (
+              <ProfileItem
+                icon={<Settings size={16} />}
+                title="Settings"
+                onClick={() => goTo("/settings")}
+              />
+            )}
 
             <ProfileItem
               icon={<LogOut size={16} />}
@@ -898,19 +1022,14 @@ const handleSearchEnter = (e) => {
         </div>
       )}
 
-      {openQuick && (
+      {openQuick && !isMarketingOfficer && (
         <div className="fixed inset-0 z-[999999] bg-black/30 backdrop-blur-[3px] flex items-center justify-center p-4">
           <div className="w-full max-w-md bg-white/95 backdrop-blur-xl rounded-[28px] border border-white/70 shadow-[0_30px_80px_rgba(15,23,42,0.25)] overflow-hidden animate-quickFloat">
             <div className="p-5 border-b flex items-center justify-between">
               <div>
                 <h2 className="text-lg font-bold">Quick Action</h2>
-                <p className="text-sm text-gray-500">
-                AI Smart Searching
-              </p>
-           </div>
-
-
-
+                <p className="text-sm text-gray-500">AI Smart Searching</p>
+              </div>
 
               <button
                 onClick={() => setOpenQuick(false)}
@@ -1072,22 +1191,13 @@ function ChangePasswordModal({ onClose }) {
     try {
       setLoading(true);
 
-      const user =
-        typeof window !== "undefined"
-          ? JSON.parse(localStorage.getItem("user") || "null")
-          : null;
-
-      const token =
-        typeof window !== "undefined" ? localStorage.getItem("token") : "";
-
       const res = await fetch("/api/auth/change-password", {
         method: "POST",
+        credentials: "include",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token || ""}`,
         },
         body: JSON.stringify({
-          userId: user?._id || user?.id,
           oldPassword: form.oldPassword,
           newPassword: form.newPassword,
         }),
@@ -1212,7 +1322,6 @@ function NotificationIcon({ type }) {
     </div>
   );
 }
-
 
 function ProfileItem({ icon, title, onClick, danger }) {
   return (

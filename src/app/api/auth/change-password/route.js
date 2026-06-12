@@ -2,12 +2,32 @@ import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import connectDB from "@/lib/db";
 import User from "@/models/User";
+import { verifyToken } from "@/lib/auth";
 
 export async function POST(req) {
   try {
     await connectDB();
 
-    const { oldPassword, newPassword, userId } = await req.json();
+    const token = req.cookies.get("erp_token")?.value;
+
+    if (!token) {
+      return NextResponse.json(
+        { success: false, message: "Unauthorized" },
+        { status: 401 }
+      );
+    }
+
+    const decoded = verifyToken(token);
+    const userId = decoded?._id || decoded?.id;
+
+    if (!userId) {
+      return NextResponse.json(
+        { success: false, message: "Invalid token" },
+        { status: 401 }
+      );
+    }
+
+    const { oldPassword, newPassword } = await req.json();
 
     if (!oldPassword || !newPassword) {
       return NextResponse.json(
@@ -16,14 +36,14 @@ export async function POST(req) {
       );
     }
 
-    if (!userId) {
+    if (newPassword.length < 6) {
       return NextResponse.json(
-        { success: false, message: "User ID missing" },
+        { success: false, message: "New password must be at least 6 characters" },
         { status: 400 }
       );
     }
 
-    const user = await User.findById(userId);
+    const user = await User.findById(userId).select("+password");
 
     if (!user) {
       return NextResponse.json(

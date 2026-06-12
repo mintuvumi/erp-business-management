@@ -1,85 +1,213 @@
 import { NextResponse } from "next/server";
 import connectDB from "@/lib/db";
 import Sale from "@/models/Sale";
+import CashTransaction from "@/models/CashTransaction";
+import BankTransaction from "@/models/BankTransaction";
+import MarketingOfficer from "@/models/MarketingOfficer";
+import { getTenant } from "@/lib/tenant";
+import { requirePermission } from "@/lib/checkPermission";
 
-function moneyNumber(value) {
+function money(value) {
   return Number(value || 0);
+}
+
+function normalizeDate(date) {
+  if (!date) return "";
+  return String(date).slice(0, 10);
+}
+
+async function getLoggedInOfficer({ tenant, user }) {
+  if (user.role !== "marketing_officer") return null;
+
+  const officer = await MarketingOfficer.findOne({
+    companyId: tenant.companyId,
+    userId: tenant.user?.id,
+    status: "active",
+  });
+
+  if (!officer) {
+    throw new Error("Marketing officer profile not found");
+  }
+
+  return officer;
 }
 
 export async function GET(req) {
   try {
     await connectDB();
 
+    const tenant = getTenant(req);
+
+    if (!tenant.companyId) {
+      return NextResponse.json(
+        { success: false, message: "Unauthorized" },
+        { status: 401 }
+      );
+    }
+
+    let user;
+
+    try {
+      user = await requirePermission(tenant, "customerLedger");
+    } catch (error) {
+      return NextResponse.json(
+        { success: false, message: error.message || "Access denied" },
+        { status: 403 }
+      );
+    }
+
+    const officer = await getLoggedInOfficer({ tenant, user });
+
     const { searchParams } = new URL(req.url);
 
     const customer = searchParams.get("customer") || "";
+    const customerId = searchParams.get("customerId") || "";
+    const marketingOfficerId = searchParams.get("marketingOfficerId") || "";
     const from = searchParams.get("from") || "";
     const to = searchParams.get("to") || "";
+    const dueOnly = searchParams.get("dueOnly") || "";
+    const dueToday = searchParams.get("dueToday") || "";
 
-    const query = {
+    const saleQuery = {
+      companyId: tenant.companyId,
       status: { $ne: "cancelled" },
     };
 
-    // 🔥 SEARCH FIX
+    if (user.role === "marketing_officer") {
+      saleQuery.marketingOfficerId = officer._id;
+    } else if (marketingOfficerId) {
+      saleQuery.marketingOfficerId = marketingOfficerId;
+    }
+
     if (customer) {
-      query.customerName = { $regex: customer, $options: "i" };
+      saleQuery.customerName = { $regex: customer, $options: "i" };
     }
 
-    // 🔥 DATE FILTER
+    if (customerId) {
+      saleQuery.customerId = customerId;
+    }
+
     if (from || to) {
-      query.date = {};
-      if (from) query.date.$gte = from;
-      if (to) query.date.$lte = to;
+      saleQuery.date = {};
+      if (from) saleQuery.date.$gte = from;
+      if (to) saleQuery.date.$lte = to;
     }
 
-    const sales = await Sale.find(query).sort({ date: 1, createdAt: 1 });
+    if (dueOnly === "true") {
+      saleQuery.dueAmount = { $gt: 0 };
+    }
+
+    if (dueToday === "true") {
+      saleQuery.dueAmount = { $gt: 0 };
+      saleQuery.nextCollectionDate = {
+        $lte: new Date().toISOString().slice(0, 10),
+      };
+    }
+
+    const sales = await Sale.find(saleQuery).sort({
+      date: 1,
+      createdAt: 1,
+    });
+
+    const saleIds = sales.map((s) => s._id);
+
+    const [cashCollections, bankCollections] = await Promise.all([
+      CashTransaction.find({
+        companyId: tenant.companyId,
+        saleId: { $in: saleIds },
+        category: "due_collection",
+        status: { $ne: "cancelled" },
+      }).sort({ date: 1, createdAt: 1 }),
+
+      BankTransaction.find({
+        companyId: tenant.companyId,
+        saleId: { $in: saleIds },
+        category: "due_collection",
+        status: { $ne: "cancelled" },
+      }).sort({ date: 1, createdAt: 1 }),
+    ]);
+
+    const collectionMap = {};
+
+    [...cashCollections, ...bankCollections].forEach((txn) => {
+      const key = String(txn.saleId || "");
+
+      if (!collectionMap[key]) collectionMap[key] = [];
+
+      collectionMap[key].push({
+        _id: String(txn._id),
+        date: normalizeDate(txn.date || txn.createdAt),
+        source: txn.bankId ? "bank" : "cash",
+        amount: money(txn.amount),
+        note: txn.note || "",
+        comment: txn.comment || "",
+        voucherNo: txn.voucherNo || txn.transactionNo || "",
+      });
+    });
 
     let balance = 0;
-    let lastCustomer = null;
+    const rows = [];
 
-    const rows = sales.map((sale) => {
-      const salesAmount = moneyNumber(
+    sales.forEach((sale) => {
+      const salesAmount = money(
         sale.salesAmount || sale.afterDiscount || sale.baseSalesAmount
       );
 
-      const vatAmount = moneyNumber(sale.vatAmount);
-      const aitAmount = moneyNumber(sale.aitAmount);
-      const paidAmount = moneyNumber(sale.paidAmount);
+      const vatAmount = money(sale.vatAmount);
+      const aitAmount = money(sale.aitAmount);
+      const paidAmount = money(sale.paidAmount);
 
-      const netReceivable = moneyNumber(
+      const netReceivable = money(
         sale.netReceivable || salesAmount - vatAmount - aitAmount
       );
 
-      const currentDue = Math.max(netReceivable - paidAmount, 0);
-
-      // 🔥 CUSTOMER CHANGE হলে balance reset
-      if (sale.customerName !== lastCustomer) {
-        balance = 0;
-        lastCustomer = sale.customerName;
-      }
+      const currentDue = money(sale.statementDueAmount || sale.dueAmount);
+      const invoiceTotal = money(
+        sale.invoiceTotal || sale.netTotal || sale.total
+      );
 
       balance += currentDue;
 
-      return {
-        _id: sale._id,
+      rows.push({
+        _id: String(sale._id),
+        type: "sale",
         date: sale.date,
         billNo: sale.billNo,
+        customerId: sale.customerId,
         customerName: sale.customerName,
         customerPhone: sale.customerPhone,
+
+        marketingOfficerId: sale.marketingOfficerId,
+        marketingOfficerName: sale.marketingOfficerName,
 
         description: sale.note || "",
 
         salesAmount,
         vatAmount,
         aitAmount,
-
+        invoiceTotal,
         netReceivable,
         paidAmount,
 
         currentDue,
         dueAmount: currentDue,
-
         balance,
+
+        nextCollectionDate: sale.nextCollectionDate || "",
+        collectionStatus: sale.collectionStatus || "",
+        collectionComment: sale.collectionComment || "",
+        lastCollectionComment: sale.lastCollectionComment || "",
+
+        dueSchedule: sale.dueSchedule || {},
+        installmentEnabled: sale.installmentEnabled,
+        installmentMonths: sale.installmentMonths,
+        installmentAmount: sale.installmentAmount,
+
+        dueInterestPercent: sale.dueInterestPercent,
+        dueInterestAmount: sale.dueInterestAmount,
+        interestApplied: sale.interestApplied,
+
+        collections: collectionMap[String(sale._id)] || [],
 
         vatDocumentReceived: sale.vatDocumentReceived,
         aitDocumentReceived: sale.aitDocumentReceived,
@@ -88,16 +216,18 @@ export async function GET(req) {
 
         paymentType: sale.paymentType,
         note: sale.note,
-      };
+      });
     });
 
     const summary = {
       salesTotal: rows.reduce((s, r) => s + r.salesAmount, 0),
       vatTotal: rows.reduce((s, r) => s + r.vatAmount, 0),
       aitTotal: rows.reduce((s, r) => s + r.aitAmount, 0),
+      invoiceTotal: rows.reduce((s, r) => s + r.invoiceTotal, 0),
       netReceivableTotal: rows.reduce((s, r) => s + r.netReceivable, 0),
       paidTotal: rows.reduce((s, r) => s + r.paidAmount, 0),
       currentDueTotal: rows.reduce((s, r) => s + r.currentDue, 0),
+      interestTotal: rows.reduce((s, r) => s + money(r.dueInterestAmount), 0),
       closingBalance: rows.length ? rows[rows.length - 1].balance : 0,
 
       grossTotal: rows.reduce((s, r) => s + r.salesAmount, 0),
@@ -109,6 +239,14 @@ export async function GET(req) {
       data: {
         rows,
         summary,
+        officer: officer
+          ? {
+              _id: officer._id,
+              name: officer.name,
+              phone: officer.phone,
+              area: officer.area,
+            }
+          : null,
       },
     });
   } catch (error) {

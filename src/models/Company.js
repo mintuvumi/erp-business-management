@@ -8,9 +8,29 @@ const CompanySchema = new mongoose.Schema(
       index: true,
     },
 
+    ownerUserId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      index: true,
+      default: null,
+    },
+
+    createdByUserId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      index: true,
+      default: null,
+    },
+
     name: {
       type: String,
       required: true,
+      trim: true,
+    },
+
+    legalName: {
+      type: String,
+      default: "",
       trim: true,
     },
 
@@ -32,6 +52,8 @@ const CompanySchema = new mongoose.Schema(
     email: {
       type: String,
       default: "",
+      lowercase: true,
+      trim: true,
     },
 
     website: {
@@ -81,6 +103,7 @@ const CompanySchema = new mongoose.Schema(
         "service",
       ],
       default: "shop",
+      index: true,
     },
 
     subscriptionPlan: {
@@ -99,9 +122,50 @@ const CompanySchema = new mongoose.Schema(
       default: 1,
     },
 
+    fiscalDayStart: {
+      type: String,
+      default: "00:00",
+    },
+
+    fiscalDayEnd: {
+      type: String,
+      default: "23:59",
+    },
+
+    allowDueInterest: {
+      type: Boolean,
+      default: false,
+    },
+
+    dueInterestPercent: {
+      type: Number,
+      default: 0,
+    },
+
+    enableDueReminder: {
+      type: Boolean,
+      default: true,
+    },
+
+    reminderBeforeDays: {
+      type: Number,
+      default: 0,
+    },
+
+    monthlyProfitMessageDays: {
+      type: Number,
+      default: 3,
+    },
+
+    yearlyProfitMessageDays: {
+      type: Number,
+      default: 7,
+    },
+
     isActive: {
       type: Boolean,
       default: true,
+      index: true,
     },
 
     setupCompleted: {

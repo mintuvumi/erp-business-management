@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   Wallet,
   Landmark,
@@ -22,6 +23,8 @@ import ExpenseModal from "./ExpenseModal";
 import EmployeeModal from "./EmployeeModal";
 
 export default function Dashboard() {
+  const router = useRouter();
+
   const [openBankModal, setOpenBankModal] = useState(false);
   const [openSalesModal, setOpenSalesModal] = useState(false);
   const [openPurchaseModal, setOpenPurchaseModal] = useState(false);
@@ -33,6 +36,7 @@ export default function Dashboard() {
 
   const [bankBalance, setBankBalance] = useState(0);
   const [cashInHand, setCashInHand] = useState(0);
+  const [cashAndBankBalance, setCashAndBankBalance] = useState(0);
   const [purchaseDue, setPurchaseDue] = useState(0);
   const [stockValue, setStockValue] = useState(0);
   const [employeeCount, setEmployeeCount] = useState(0);
@@ -48,43 +52,120 @@ export default function Dashboard() {
     value: "৳ 0.00",
   });
 
+  const resetDashboard = () => {
+    setBankBalance(0);
+    setCashInHand(0);
+    setCashAndBankBalance(0);
+    setPurchaseDue(0);
+    setStockValue(0);
+    setEmployeeCount(0);
+    setTotalSales(0);
+    setProfitCard({ title: "Profit", value: "৳ 0.00" });
+    setExpenseCard({ title: "Expense", value: "৳ 0.00" });
+  };
 
+  const getSavedUser = () => {
+    try {
+      return JSON.parse(localStorage.getItem("user") || "{}");
+    } catch {
+      return {};
+    }
+  };
 
-  const fetchAll = async () => {
-  try {
-    const safeFetch = async (url) => {
-      try {
-        const res = await fetch(url);
-        return await res.json();
-      } catch (error) {
-        console.error("DASHBOARD_API_ERROR:", url, error);
+  const getCompanyId = () => localStorage.getItem("selectedCompanyId");
+
+  const isMarketingOfficer = () => {
+    const user = getSavedUser();
+    return user?.role === "marketing_officer";
+  };
+
+  const safeFetch = async (url) => {
+    try {
+      const user = localStorage.getItem("user");
+      const companyId = getCompanyId();
+
+      if (!user || !companyId) {
+        resetDashboard();
         return { success: false };
       }
-    };
 
-    const bank = await safeFetch("/api/bank");
-    const cash = await safeFetch("/api/cash");
-    const purchase = await safeFetch("/api/dashboard/purchase");
-    const stock = await safeFetch("/api/dashboard/stock");
-    const profit = await safeFetch("/api/dashboard/profit");
-    const expense = await safeFetch("/api/dashboard/expense");
-    const employee = await safeFetch("/api/employees");
-    const salesReport = await safeFetch("/api/sales/report");
+      if (isMarketingOfficer()) {
+        return { success: false };
+      }
 
-    if (bank.success) {
-      setBankBalance(bank.data?.totalBankBalance || 0);
+      const res = await fetch(url, {
+        credentials: "include",
+        cache: "no-store",
+        headers: {
+          "x-company-id": companyId,
+        },
+      });
+
+      if (!res.ok) {
+        console.error("DASHBOARD_API_ERROR:", url, "Status:", res.status);
+        return { success: false };
+      }
+
+      return await res.json();
+    } catch (error) {
+      console.error("DASHBOARD_API_ERROR:", url, error);
+      return { success: false };
+    }
+  };
+
+  const fetchAll = async () => {
+    const user = localStorage.getItem("user");
+    const companyId = getCompanyId();
+
+    if (!user || !companyId) {
+      resetDashboard();
+      return;
     }
 
+    if (isMarketingOfficer()) {
+      router.replace("/customers/statement?dueOnly=true");
+      return;
+    }
+
+    const [
+      bank,
+      cash,
+      purchase,
+      stock,
+      profit,
+      expense,
+      employee,
+      salesReport,
+    ] = await Promise.all([
+      safeFetch("/api/bank"),
+      safeFetch("/api/cash"),
+      safeFetch("/api/dashboard/purchase"),
+      safeFetch("/api/dashboard/stock"),
+      safeFetch("/api/dashboard/profit"),
+      safeFetch("/api/dashboard/expense"),
+      safeFetch("/api/employees"),
+      safeFetch("/api/sales/report"),
+    ]);
+
+    const bankTotal = Number(bank.data?.totalBankBalance || 0);
+    const cashTotal = Number(cash.data?.cashInHand || 0);
+    const cashBankTotal = Number(
+      cash.data?.cashAndBankBalance || cashTotal + bankTotal
+    );
+
+    if (bank.success) setBankBalance(bankTotal);
+
     if (cash.success) {
-      setCashInHand(cash.data?.cashInHand || 0);
+      setCashInHand(cashTotal);
+      setCashAndBankBalance(cashBankTotal);
     }
 
     if (purchase.success) {
-      setPurchaseDue(purchase.data?.totalDuePurchase || 0);
+      setPurchaseDue(Number(purchase.data?.totalDuePurchase || 0));
     }
 
     if (stock.success) {
-      setStockValue(stock.data?.totalValue || 0);
+      setStockValue(Number(stock.data?.totalValue || 0));
     }
 
     if (profit.success) {
@@ -102,29 +183,61 @@ export default function Dashboard() {
     }
 
     if (employee.success) {
-      setEmployeeCount(employee.data?.totalEmployee || 0);
+      setEmployeeCount(Number(employee.data?.totalEmployee || 0));
     }
 
     if (salesReport.success) {
-      setTotalSales(salesReport.data?.totalSales || 0);
+      setTotalSales(Number(salesReport.data?.totalSales || 0));
     }
-  } catch (err) {
-    console.error("DASHBOARD_LOAD_ERROR:", err);
-  }
-};
+  };
 
-useEffect(() => {
-  fetchAll();
+  useEffect(() => {
+    const user = localStorage.getItem("user");
+    const companyId = getCompanyId();
 
-  const interval = setInterval(() => {
+    if (!user || !companyId) {
+      resetDashboard();
+      return;
+    }
+
+    if (isMarketingOfficer()) {
+      router.replace("/customers/statement?dueOnly=true");
+      return;
+    }
+
     fetchAll();
-  }, 3000);
 
-  return () => clearInterval(interval);
-}, []);
+    const interval = setInterval(() => {
+      if (!isMarketingOfficer()) {
+        fetchAll();
+      }
+    }, 5000);
 
+    const handleCompanyChange = () => {
+      resetDashboard();
+      localStorage.removeItem("dashboard_cache");
 
+      if (isMarketingOfficer()) {
+        router.replace("/customers/statement?dueOnly=true");
+        return;
+      }
 
+      fetchAll();
+    };
+
+    window.addEventListener("companyChanged", handleCompanyChange);
+    window.addEventListener("companySwitched", handleCompanyChange);
+    window.addEventListener("companyAdded", handleCompanyChange);
+    window.addEventListener("authChanged", handleCompanyChange);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("companyChanged", handleCompanyChange);
+      window.removeEventListener("companySwitched", handleCompanyChange);
+      window.removeEventListener("companyAdded", handleCompanyChange);
+      window.removeEventListener("authChanged", handleCompanyChange);
+    };
+  }, [router]);
 
   const cards = [
     {
@@ -168,7 +281,7 @@ useEffect(() => {
       glow: "bg-cyan-400",
     },
     {
-      title: "Total Purchase",
+      title: "Total Purchase Due",
       value: `৳ ${money(purchaseDue)}`,
       action: "purchase",
       icon: Package,
@@ -210,6 +323,11 @@ useEffect(() => {
   ];
 
   const handleCardClick = (card) => {
+    if (isMarketingOfficer()) {
+      router.replace("/customers/statement?dueOnly=true");
+      return;
+    }
+
     if (card.action === "bank") setOpenBankModal(true);
     if (card.action === "cash") setOpenCashModal(true);
     if (card.action === "profit") setOpenProfitModal(true);
@@ -219,6 +337,10 @@ useEffect(() => {
     if (card.action === "expense") setOpenExpenseModal(true);
     if (card.action === "employee") setOpenEmployeeModal(true);
   };
+
+  if (typeof window !== "undefined" && isMarketingOfficer()) {
+    return null;
+  }
 
   return (
     <>
@@ -231,50 +353,23 @@ useEffect(() => {
               key={i}
               onClick={() => handleCardClick(card)}
               className="
-                group relative overflow-hidden
-                bg-gray-50/80 backdrop-blur-2xl
-                p-4 md:p-5
-                rounded-[30px]
-                border border-white/70
+                group relative overflow-hidden bg-gray-50/80 backdrop-blur-2xl
+                p-4 md:p-5 rounded-[30px] border border-white/70
                 shadow-[0_8px_32px_rgba(31,38,135,0.10)]
-                transition-all duration-500 ease-out
-                hover:-translate-y-3
-                hover:scale-[1.02]
-                hover:bg-gray-50/90
+                transition-all duration-500 ease-out hover:-translate-y-3
+                hover:scale-[1.02] hover:bg-gray-50/90
                 hover:shadow-[0_25px_60px_rgba(31,38,135,0.18)]
-                cursor-pointer
-                before:absolute
-                before:inset-0
-                before:rounded-[30px]
-                before:bg-gradient-to-br
-                before:from-white/60
-                before:via-white/20
-                before:to-transparent
-                before:pointer-events-none
+                cursor-pointer before:absolute before:inset-0 before:rounded-[30px]
+                before:bg-gradient-to-br before:from-white/60 before:via-white/20
+                before:to-transparent before:pointer-events-none
               "
             >
               <div
-                className={`
-                  absolute -right-16 -top-16
-                  w-44 h-44 rounded-full
-                  ${card.glow}
-                  blur-3xl
-                  opacity-[0.12]
-                  group-hover:opacity-[0.24]
-                  transition-all duration-700
-                `}
+                className={`absolute -right-16 -top-16 w-44 h-44 rounded-full ${card.glow} blur-3xl opacity-[0.12] group-hover:opacity-[0.24] transition-all duration-700`}
               />
 
               <div
-                className={`
-                  absolute left-0 bottom-0
-                  w-36 h-36 rounded-full
-                  ${card.glow}
-                  blur-3xl
-                  opacity-[0.07]
-                  group-hover:opacity-[0.16]
-                  transition-all duration-700
-                `}
+                className={`absolute left-0 bottom-0 w-36 h-36 rounded-full ${card.glow} blur-3xl opacity-[0.07] group-hover:opacity-[0.16] transition-all duration-700`}
               />
 
               <div className="relative z-10 flex items-start justify-between gap-3">
@@ -289,26 +384,10 @@ useEffect(() => {
                 </div>
 
                 <div
-                  className={`
-                    relative shrink-0
-                    w-12 h-12 md:w-14 md:h-14
-                    rounded-[20px]
-                    flex items-center justify-center
-                    ${card.softBg}
-                    border border-white/70
-                    shadow-[0_10px_30px_rgba(255,255,255,0.35),inset_0_1px_1px_rgba(255,255,255,0.9)]
-                    backdrop-blur-xl
-                    transition-all duration-500
-                    group-hover:scale-110
-                    group-hover:rotate-6
-                  `}
+                  className={`relative shrink-0 w-12 h-12 md:w-14 md:h-14 rounded-[20px] flex items-center justify-center ${card.softBg} border border-white/70 shadow-[0_10px_30px_rgba(255,255,255,0.35),inset_0_1px_1px_rgba(255,255,255,0.9)] backdrop-blur-xl transition-all duration-500 group-hover:scale-110 group-hover:rotate-6`}
                 >
                   <div
-                    className={`
-                      absolute inset-0 rounded-[20px]
-                      bg-gradient-to-br ${card.color}
-                      opacity-[0.10]
-                    `}
+                    className={`absolute inset-0 rounded-[20px] bg-gradient-to-br ${card.color} opacity-[0.10]`}
                   />
 
                   <Icon size={26} className={`relative z-10 ${card.iconColor}`} />
@@ -321,12 +400,7 @@ useEffect(() => {
                 </span>
 
                 <span
-                  className={`
-                    text-[11px] font-semibold px-2.5 py-1 rounded-full
-                    ${card.softBg} ${card.iconColor}
-                    border border-white/70
-                    shadow-sm
-                  `}
+                  className={`text-[11px] font-semibold px-2.5 py-1 rounded-full ${card.softBg} ${card.iconColor} border border-white/70 shadow-sm`}
                 >
                   Active
                 </span>
@@ -340,6 +414,9 @@ useEffect(() => {
         <CashInHandModal
           open={openCashModal}
           onClose={() => setOpenCashModal(false)}
+          cashInHand={cashInHand}
+          bankBalance={bankBalance}
+          cashAndBankBalance={cashAndBankBalance}
         />
 
         <BankBalanceModal

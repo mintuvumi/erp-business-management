@@ -3,11 +3,39 @@ import { getUserFromRequest } from "@/lib/auth";
 export function getTenant(req) {
   const user = getUserFromRequest(req);
 
-  if (!user?.companyId) {
+  if (!user?.id || !user?.companyId) {
     return {
       user: null,
       companyId: null,
+      activeCompanyId: null,
+      role: null,
+      permissions: {},
       error: "Unauthorized",
+    };
+  }
+
+  const selectedCompanyId =
+    req.headers.get("x-company-id") ||
+    req.nextUrl?.searchParams?.get("companyId") ||
+    user.activeCompanyId ||
+    user.companyId;
+
+  const allowedCompanyIds = [
+    user.companyId,
+    user.activeCompanyId,
+    ...(user.companyIds || []),
+  ]
+    .filter(Boolean)
+    .map((id) => String(id));
+
+  if (!allowedCompanyIds.includes(String(selectedCompanyId))) {
+    return {
+      user: null,
+      companyId: null,
+      activeCompanyId: null,
+      role: null,
+      permissions: {},
+      error: "Company access denied",
     };
   }
 
@@ -17,9 +45,11 @@ export function getTenant(req) {
       id: user.id,
       name: user.name || "",
     },
-    companyId: user.companyId,
+    companyId: String(selectedCompanyId),
+    activeCompanyId: String(selectedCompanyId),
     role: user.role,
     permissions: user.permissions || {},
+    error: null,
   };
 }
 
@@ -28,7 +58,7 @@ export function tenantFilter(req, extra = {}) {
 
   if (!tenant.companyId) {
     return {
-      error: tenant.error,
+      error: tenant.error || "Unauthorized",
       filter: null,
       tenant,
     };

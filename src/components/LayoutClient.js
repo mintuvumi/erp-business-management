@@ -1,11 +1,42 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import Sidebar from "@/components/ui/Sidebar";
 import Navbar from "@/components/ui/Navbar";
 
+const MARKETING_ALLOWED_PATHS = [
+  "/customers",
+  "/customers/statement",
+  "/customers/payment",
+  "/notifications",
+  "/marketing-officers/ledger",
+  "/profile",
+  "/login",
+];
+
 export default function LayoutClient({ children }) {
   const [open, setOpen] = useState(false);
+  const pathname = usePathname();
+  const router = useRouter();
+
+  useEffect(() => {
+    try {
+      const user = JSON.parse(localStorage.getItem("user") || "{}");
+
+      if (user?.role !== "marketing_officer") return;
+
+      const allowed = MARKETING_ALLOWED_PATHS.some(
+        (path) => pathname === path || pathname.startsWith(`${path}/`)
+      );
+
+      if (!allowed) {
+        router.replace("/customers/statement?dueToday=true");
+      }
+    } catch (error) {
+      console.error("MARKETING_ROUTE_GUARD_ERROR:", error);
+    }
+  }, [pathname, router]);
 
   return (
     <div className="min-h-screen bg-gray-50 overflow-x-hidden">

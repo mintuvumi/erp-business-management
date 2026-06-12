@@ -20,9 +20,7 @@ export async function GET(req) {
     const { searchParams } = new URL(req.url);
     const q = String(searchParams.get("q") || "").trim();
 
-    const filter = {
-      companyId: tenant.companyId,
-    };
+    const filter = { companyId: tenant.companyId };
 
     if (q) {
       filter.$or = [
@@ -42,10 +40,7 @@ export async function GET(req) {
       createdAt: -1,
     });
 
-    return NextResponse.json({
-      success: true,
-      data: officers,
-    });
+    return NextResponse.json({ success: true, data: officers });
   } catch (error) {
     console.error("MARKETING_OFFICER_GET_ERROR:", error);
 
@@ -83,6 +78,8 @@ export async function POST(req) {
 
     const officer = await MarketingOfficer.create({
       companyId: tenant.companyId,
+      userId: body.userId || null,
+
       officerId: body.officerId || "",
       name: String(body.name || "").trim(),
       phone: body.phone || "",
@@ -100,6 +97,7 @@ export async function POST(req) {
       yearlyTarget: Number(body.yearlyTarget || 0),
       status: body.status || "active",
       note: body.note || "",
+
       createdByUserId: tenant.user?.id || null,
       createdBy: tenant.user?.name || "",
     });

@@ -4,16 +4,31 @@ import Stock from "@/models/Stock";
 import Customer from "@/models/Customer";
 import CompanySetting from "@/models/CompanySetting";
 import CashTransaction from "@/models/CashTransaction";
+import BankTransaction from "@/models/BankTransaction";
+import BankAccount from "@/models/BankAccount";
 import MarketingOfficer from "@/models/MarketingOfficer";
 import MarketingOfficerLedger from "@/models/MarketingOfficerLedger";
 import connectDB from "@/lib/db";
 import generateBillNo from "@/utils/generateBillNo";
 import { getTenant } from "@/lib/tenant";
+import Notification from "@/models/Notification";
+
+function today() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function cleanString(value) {
+  return String(value || "").trim();
+}
+
+function toNumber(value) {
+  return Number(value || 0) || 0;
+}
 
 function calculateTax({ salesAmount, vatPercent, aitPercent, amountType }) {
-  const amount = Number(salesAmount) || 0;
-  const vatRate = Number(vatPercent) || 0;
-  const aitRate = Number(aitPercent) || 0;
+  const amount = toNumber(salesAmount);
+  const vatRate = toNumber(vatPercent);
+  const aitRate = toNumber(aitPercent);
 
   let baseSalesAmount = 0;
   let vatAmount = 0;
@@ -43,8 +58,8 @@ function calculateTax({ salesAmount, vatPercent, aitPercent, amountType }) {
 }
 
 function getPaymentType({ paidAmount, targetAmount }) {
-  const paid = Number(paidAmount || 0);
-  const target = Number(targetAmount || 0);
+  const paid = toNumber(paidAmount);
+  const target = toNumber(targetAmount);
 
   if (paid <= 0) return "credit";
   if (paid >= target) return "cash";
@@ -59,13 +74,13 @@ async function getCustomerPreviousDue(customerName, companyId) {
   });
 
   return sales.reduce(
-    (sum, sale) => sum + Number(sale.statementDueAmount || sale.dueAmount || 0),
+    (sum, sale) => sum + toNumber(sale.statementDueAmount || sale.dueAmount),
     0
   );
 }
 
 async function getOrCreateCustomer(body, tenant) {
-  const customerName = String(body.customerName || "").trim();
+  const customerName = cleanString(body.customerName);
 
   let customer = await Customer.findOne({
     companyId: tenant.companyId,
@@ -73,23 +88,27 @@ async function getOrCreateCustomer(body, tenant) {
   });
 
   if (!customer) {
-    customer = await Customer.create({
+    return await Customer.create({
       companyId: tenant.companyId,
-      createdByUserId: tenant.user.id,
-      createdBy: tenant.user.name || "",
+      createdByUserId: tenant.user?.id || null,
+      createdBy: tenant.user?.name || "",
       name: customerName,
       phone: body.customerPhone || "",
+      email: body.customerEmail || "",
       address: body.customerAddress || "",
       status: "active",
     });
-
-    return customer;
   }
 
   let changed = false;
 
   if (body.customerPhone && body.customerPhone !== customer.phone) {
     customer.phone = body.customerPhone;
+    changed = true;
+  }
+
+  if (body.customerEmail && body.customerEmail !== customer.email) {
+    customer.email = body.customerEmail;
     changed = true;
   }
 
@@ -103,6 +122,200 @@ async function getOrCreateCustomer(body, tenant) {
   return customer;
 }
 
+async function addBankBalance({ bankId, amount, companyId }) {
+  if (!bankId || toNumber(amount) <= 0) return null;
+
+  const bank = await BankAccount.findOne({
+    _id: bankId,
+    companyId,
+    status: { $ne: "inactive" },
+  });
+
+  if (!bank) {
+    throw new Error("Bank account not found");
+  }
+
+  const balanceBefore = toNumber(bank.currentBalance);
+  const balanceAfter = balanceBefore + toNumber(amount);
+
+  bank.currentBalance = balanceAfter;
+  await bank.save();
+
+  return { bank, balanceBefore, balanceAfter };
+}
+
+function stockQueryForItem(item, tenant, name) {
+  if (item.productId) {
+    return {
+      _id: item.productId,
+      companyId: tenant.companyId,
+      status: "active",
+    };
+  }
+
+  return {
+    companyId: tenant.companyId,
+    itemName: name,
+    status: "active",
+  };
+}
+
+async function buildSaleItems({ bodyItems, tenant }) {
+  const result = [];
+
+  for (const item of bodyItems) {
+    const name = cleanString(item.name || item.itemName || item.productName);
+    const qty = toNumber(item.qty || item.quantity);
+    const price = toNumber(item.price || item.rate);
+    const sourceType = item.sourceType || "stock";
+
+    if (!name || qty <= 0) continue;
+
+    let stock = null;
+    let displayPurchasePrice = toNumber(item.purchasePrice);
+    let profitCost = toNumber(item.purchasePrice);
+
+    if (sourceType === "stock" || sourceType === "finished_goods") {
+      stock = await Stock.findOne(stockQueryForItem(item, tenant, name));
+
+      if (!stock) {
+        throw new Error(`Stock not found for ${name}`);
+      }
+
+      if (toNumber(stock.qty) < qty) {
+        throw new Error(`Not enough stock for ${name}`);
+      }
+
+      if (
+        stock.productType === "finished_goods" ||
+        sourceType === "finished_goods"
+      ) {
+        displayPurchasePrice = toNumber(
+          stock.lastProductionCost || stock.avgProductionCost || stock.avgCost
+        );
+
+        profitCost = toNumber(
+          stock.avgProductionCost || stock.lastProductionCost || stock.avgCost
+        );
+      } else {
+        displayPurchasePrice = toNumber(
+          stock.lastPurchasePrice || stock.avgCost
+        );
+
+        profitCost = toNumber(stock.avgCost || stock.lastPurchasePrice);
+      }
+    }
+
+    const total = qty * price;
+    const costTotal = qty * profitCost;
+    const profit = total - costTotal;
+
+    result.push({
+      ...item,
+      name,
+      itemName: item.itemName || name,
+      productName: item.productName || name,
+      productId: item.productId || stock?._id || null,
+      description: cleanString(item.description),
+      unit: item.unit || stock?.unit || "pcs",
+      sourceType,
+      qty,
+      quantity: qty,
+      price,
+      rate: price,
+      purchasePrice: displayPurchasePrice,
+      avgCostUsed: profitCost,
+      total,
+      amount: total,
+      costTotal,
+      profit,
+    });
+  }
+
+  return result;
+}
+
+async function reduceStockAfterSale({ items, tenant }) {
+  for (const item of items) {
+    if (item.sourceType !== "stock" && item.sourceType !== "finished_goods") {
+      continue;
+    }
+
+    const stock = await Stock.findOne(stockQueryForItem(item, tenant, item.name));
+
+    if (!stock) continue;
+
+    stock.qty = Math.max(toNumber(stock.qty) - toNumber(item.qty), 0);
+    stock.quantity = stock.qty;
+    stock.availableQty = Math.max(stock.qty - toNumber(stock.reservedQty), 0);
+
+    const cost =
+      stock.productType === "finished_goods"
+        ? toNumber(stock.avgProductionCost || stock.lastProductionCost)
+        : toNumber(stock.avgCost || stock.lastPurchasePrice);
+
+    stock.totalValue = toNumber(stock.qty) * cost;
+    stock.updatedByUserId = tenant.user?.id || null;
+    stock.updatedBy = tenant.user?.name || "";
+
+    await stock.save();
+  }
+}
+
+function buildDueSchedule({
+  body,
+  dueAmount,
+  installmentEnabled,
+  installmentMonths,
+  installmentAmount,
+}) {
+  const reminderType =
+    body.dueSchedule?.reminderType ||
+    body.reminderType ||
+    (installmentEnabled ? "monthly" : "none");
+
+  const promiseDate =
+    body.dueSchedule?.promiseDate ||
+    body.promiseDate ||
+    body.nextCollectionDate ||
+    "";
+
+  const nextDueDate =
+    body.dueSchedule?.nextDueDate ||
+    body.nextDueDate ||
+    body.nextCollectionDate ||
+    promiseDate ||
+    "";
+
+  return {
+    enabled: Boolean(
+      toNumber(dueAmount) > 0 &&
+        (nextDueDate || promiseDate || installmentEnabled)
+    ),
+    reminderType,
+    nextDueDate,
+    promiseDate,
+    installmentAmount: toNumber(
+      body.dueSchedule?.installmentAmount ||
+        body.installmentAmount ||
+        installmentAmount
+    ),
+    totalInstallments: toNumber(
+      body.dueSchedule?.totalInstallments ||
+        body.totalInstallments ||
+        installmentMonths
+    ),
+    completedInstallments: toNumber(
+      body.dueSchedule?.completedInstallments
+    ),
+    reminderNote:
+      body.dueSchedule?.reminderNote ||
+      body.reminderNote ||
+      body.collectionComment ||
+      "",
+    isClosed: toNumber(dueAmount) <= 0,
+  };
+}
 
 export async function POST(req) {
   try {
@@ -119,7 +332,7 @@ export async function POST(req) {
 
     const body = await req.json();
 
-    if (!body.customerName || !String(body.customerName).trim()) {
+    if (!cleanString(body.customerName)) {
       return NextResponse.json(
         { success: false, message: "Customer name required" },
         { status: 400 }
@@ -153,8 +366,8 @@ export async function POST(req) {
       );
     }
 
-    const customerName = String(body.customerName || "").trim();
-    const manualBillNo = String(body.manualBillNo || "").trim();
+    const customerName = cleanString(body.customerName);
+    const manualBillNo = cleanString(body.manualBillNo);
 
     if (manualBillNo) {
       const exists = await Sale.findOne({
@@ -170,11 +383,11 @@ export async function POST(req) {
       }
     }
 
-    const validBodyItems = (body.items || []).filter(
+    const validBodyItems = body.items.filter(
       (item) =>
         item &&
-        String(item.name || "").trim() &&
-        Number(item.qty || 0) > 0
+        cleanString(item.name || item.itemName || item.productName) &&
+        toNumber(item.qty || item.quantity) > 0
     );
 
     if (validBodyItems.length === 0) {
@@ -185,64 +398,23 @@ export async function POST(req) {
     }
 
     for (const item of validBodyItems) {
-      if (Number(item.price || 0) < 0) {
+      if (toNumber(item.price || item.rate) < 0) {
         return NextResponse.json(
           { success: false, message: `Invalid price for ${item.name}` },
           { status: 400 }
         );
       }
-
-      if (item.sourceType === "stock") {
-        const stock = await Stock.findOne({
-          companyId: tenant.companyId,
-          itemName: item.name,
-        });
-
-        if (!stock) {
-          return NextResponse.json(
-            { success: false, message: `Stock not found for ${item.name}` },
-            { status: 400 }
-          );
-        }
-
-        if (Number(stock.qty || 0) < Number(item.qty || 0)) {
-          return NextResponse.json(
-            { success: false, message: `Not enough stock for ${item.name}` },
-            { status: 400 }
-          );
-        }
-      }
     }
 
-    const items = validBodyItems.map((i) => {
-      const qty = Number(i.qty) || 0;
-      const price = Number(i.price) || 0;
-      const purchasePrice = Number(i.purchasePrice) || 0;
-
-      const total = qty * price;
-      const costTotal = qty * purchasePrice;
-      const profit = total - costTotal;
-
-      return {
-        ...i,
-        name: String(i.name || "").trim(),
-        description: String(i.description || "").trim(),
-        unit: i.unit || "pcs",
-        sourceType: i.sourceType || "stock",
-        qty,
-        price,
-        purchasePrice,
-        total,
-        costTotal,
-        profit,
-      };
+    const items = await buildSaleItems({
+      bodyItems: validBodyItems,
+      tenant,
     });
 
-    const subTotal = items.reduce((sum, i) => sum + Number(i.total || 0), 0);
-    const totalCost = items.reduce((sum, i) => sum + Number(i.costTotal || 0), 0);
-    const totalProfit = items.reduce((sum, i) => sum + Number(i.profit || 0), 0);
+    const subTotal = items.reduce((sum, i) => sum + toNumber(i.total), 0);
+    const totalCost = items.reduce((sum, i) => sum + toNumber(i.costTotal), 0);
 
-    const discount = Number(body.discount) || 0;
+    const discount = toNumber(body.discount);
 
     if (discount < 0) {
       return NextResponse.json(
@@ -251,13 +423,15 @@ export async function POST(req) {
       );
     }
 
+    const grossProfit = items.reduce((sum, i) => sum + toNumber(i.profit), 0);
+    const totalProfit = grossProfit - discount;
+
     const afterDiscount = Math.max(subTotal - discount, 0);
     const amountType = body.amountType || "exclusive";
-    const salesAmount =
-      Number(body.salesAmount) > 0 ? Number(body.salesAmount) : afterDiscount;
+    const salesAmount = toNumber(body.salesAmount) > 0 ? toNumber(body.salesAmount) : afterDiscount;
 
-    const vatPercent = Number(body.vatPercent) || 0;
-    const aitPercent = Number(body.aitPercent) || 0;
+    const vatPercent = toNumber(body.vatPercent);
+    const aitPercent = toNumber(body.aitPercent);
 
     if (vatPercent < 0 || aitPercent < 0) {
       return NextResponse.json(
@@ -273,11 +447,18 @@ export async function POST(req) {
       amountType,
     });
 
-    const paidAmount = Number(body.paidAmount) || 0;
+    const paidAmount = toNumber(body.paidAmount);
 
     if (paidAmount < 0) {
       return NextResponse.json(
         { success: false, message: "Payment amount cannot be negative" },
+        { status: 400 }
+      );
+    }
+
+    if (paidAmount > tax.invoiceTotal) {
+      return NextResponse.json(
+        { success: false, message: "Paid amount cannot exceed invoice total" },
         { status: 400 }
       );
     }
@@ -302,10 +483,11 @@ export async function POST(req) {
     const creditApprovalRequired =
       settings?.creditApprovalRequired === false ? false : true;
 
-    const defaultCreditLimit = Number(settings?.defaultCreditLimit || 50000);
+    const defaultCreditLimit = toNumber(settings?.defaultCreditLimit || 50000);
+
     const customerCreditLimit =
-      Number(customer?.creditLimit || 0) > 0
-        ? Number(customer.creditLimit)
+      toNumber(customer?.creditLimit) > 0
+        ? toNumber(customer.creditLimit)
         : defaultCreditLimit;
 
     if (
@@ -313,8 +495,8 @@ export async function POST(req) {
       statementDueAmount > 0 &&
       totalDueAfterSale > customerCreditLimit
     ) {
-      const ownerPin = String(body.ownerPin || "").trim();
-      const savedOwnerPin = String(settings?.ownerPin || "1234").trim();
+      const ownerPin = cleanString(body.ownerPin);
+      const savedOwnerPin = cleanString(settings?.ownerPin || "1234");
 
       if (!ownerPin || ownerPin !== savedOwnerPin) {
         return NextResponse.json(
@@ -336,21 +518,6 @@ export async function POST(req) {
       }
     }
 
-    for (const item of items) {
-      if (item.sourceType === "stock") {
-        const stock = await Stock.findOne({
-          companyId: tenant.companyId,
-          itemName: item.name,
-        });
-
-        if (stock) {
-          stock.qty = Number(stock.qty || 0) - Number(item.qty || 0);
-          stock.totalValue = Number(stock.qty || 0) * Number(stock.avgCost || 0);
-          await stock.save();
-        }
-      }
-    }
-
     const count = await Sale.countDocuments({
       companyId: tenant.companyId,
     });
@@ -363,20 +530,63 @@ export async function POST(req) {
       targetAmount: tax.invoiceTotal,
     });
 
+    const installmentEnabled = Boolean(body.installmentEnabled);
+    const installmentMonths = toNumber(body.installmentMonths);
+    const installmentAmount =
+      installmentMonths > 0 ? toNumber(dueAmount) / installmentMonths : 0;
+
+    const dueInterestPercent = toNumber(
+      body.dueInterestPercent || settings?.dueInterestPercent
+    );
+
+    const dueInterestAmount = toNumber(body.dueInterestAmount);
+    const date = body.date || today();
+
+    const dueSchedule = buildDueSchedule({
+      body,
+      dueAmount,
+      installmentEnabled,
+      installmentMonths,
+      installmentAmount,
+    });
+
+    let bankInfo = null;
+
+    if (paidAmount > 0 && body.paymentTo === "bank") {
+      if (!body.bankId) {
+        return NextResponse.json(
+          { success: false, message: "Bank account required" },
+          { status: 400 }
+        );
+      }
+
+      bankInfo = await addBankBalance({
+        bankId: body.bankId,
+        amount: paidAmount,
+        companyId: tenant.companyId,
+      });
+    }
+
+    const nextCollectionDate = dueSchedule.nextDueDate || "";
+    const collectionComment =
+      body.collectionComment || dueSchedule.reminderNote || "";
+
     const sale = await Sale.create({
       ...body,
 
       companyId: tenant.companyId,
-      createdByUserId: tenant.user.id,
-      createdBy: tenant.user.name || "",
+      createdByUserId: tenant.user?.id || null,
+      createdBy: tenant.user?.name || "",
 
       billNo,
       manualBillNo,
       autoBillNo,
+      date,
 
       customerId: customer?._id || null,
       customerName,
       customerPhone: body.customerPhone || customer?.phone || "",
+      customerEmail: body.customerEmail || customer?.email || "",
       customerAddress: body.customerAddress || customer?.address || "",
 
       marketingOfficerId: marketingOfficer._id,
@@ -410,6 +620,7 @@ export async function POST(req) {
       netSalesAmount: tax.netSalesAmount,
 
       netTotal: tax.invoiceTotal,
+      total: tax.invoiceTotal,
       dueAmount,
 
       paidAmount,
@@ -417,6 +628,20 @@ export async function POST(req) {
 
       paymentTo: body.paymentTo || "cash",
       bankId: body.paymentTo === "bank" ? body.bankId : null,
+
+      dueSchedule,
+
+      installmentEnabled,
+      installmentMonths,
+      installmentAmount,
+
+      nextCollectionDate,
+      collectionComment,
+
+      dueInterestPercent,
+      dueInterestAmount,
+      interestApplied: false,
+      interestAppliedAt: null,
 
       vatDocumentReceived: Boolean(body.vatDocumentReceived),
       aitDocumentReceived: Boolean(body.aitDocumentReceived),
@@ -430,13 +655,16 @@ export async function POST(req) {
       status: body.status || "completed",
     });
 
+    await reduceStockAfterSale({ items, tenant });
+
+
     await MarketingOfficerLedger.create({
       companyId: tenant.companyId,
 
       marketingOfficerId: marketingOfficer._id,
       marketingOfficerName: marketingOfficer.name,
 
-      date: body.date || new Date().toISOString().slice(0, 10),
+      date,
       type: "sale",
 
       referenceType: "sale",
@@ -453,24 +681,102 @@ export async function POST(req) {
       dueAmount: statementDueAmount,
       profitAmount: totalProfit,
 
+      nextCollectionDate,
+      collectionComment,
+
       note: body.note || "",
-      createdByUserId: tenant.user.id,
-      createdBy: tenant.user.name || "",
+      createdByUserId: tenant.user?.id || null,
+      createdBy: tenant.user?.name || "",
     });
 
-    if (paidAmount > 0) {
+    if (sale.nextCollectionDate && Number(sale.dueAmount || 0) > 0) {
+  await Notification.create({
+    companyId: tenant.companyId,
+
+    type: "warning",
+    title: "Customer Due Reminder",
+
+    message: `${sale.customerName} এর due collection date ${sale.nextCollectionDate}. Due ৳ ${Number(
+      sale.dueAmount || 0
+    ).toFixed(2)}`,
+
+    refType: "sale_due",
+    refId: sale._id,
+
+    path: "/customers/statement?dueToday=true",
+
+    read: false,
+
+    createdByUserId: tenant.user?.id || null,
+    createdBy: tenant.user?.name || "",
+  });
+}
+
+    if (paidAmount > 0 && body.paymentTo === "bank") {
+      await BankTransaction.create({
+        companyId: tenant.companyId,
+        createdByUserId: tenant.user?.id || null,
+        createdBy: tenant.user?.name || "",
+
+        bankId: body.bankId,
+        type: "in",
+        category: paymentType === "cash" ? "cash_sale" : "due_collection",
+        title: `Bank received from sale ${billNo}`,
+        amount: paidAmount,
+
+        paymentMethod: body.paymentMethod || "bank",
+        chequeNo: body.chequeNo || "",
+        transactionId: body.transactionId || "",
+
+        personName: customerName,
+        personType: "customer",
+
+        customerId: customer?._id || null,
+        customerName,
+        customerPhone: body.customerPhone || customer?.phone || "",
+
+        saleId: sale._id,
+        billNo,
+
+        marketingOfficerId: marketingOfficer._id,
+        marketingOfficerName: marketingOfficer.name,
+
+        date,
+        note: body.note || "",
+
+        refType: "sale",
+        refId: sale._id.toString(),
+
+        balanceBefore: bankInfo?.balanceBefore || 0,
+        balanceAfter: bankInfo?.balanceAfter || 0,
+        status: "active",
+      });
+    }
+
+    if (paidAmount > 0 && body.paymentTo !== "bank") {
       await CashTransaction.create({
         companyId: tenant.companyId,
         type: "in",
         category: paymentType === "cash" ? "cash_sale" : "due_collection",
         title: `Cash received from sale ${billNo}`,
         amount: paidAmount,
-        date: body.date || new Date().toISOString().slice(0, 10),
+        date,
         note: body.note || "",
         refType: "sale",
         refId: sale._id.toString(),
-        createdByUserId: tenant.user.id,
-        createdBy: tenant.user.name || "",
+
+        customerId: customer?._id || null,
+        customerName,
+        customerPhone: body.customerPhone || customer?.phone || "",
+
+        saleId: sale._id,
+        billNo,
+
+        marketingOfficerId: marketingOfficer._id,
+        marketingOfficerName: marketingOfficer.name,
+
+        createdByUserId: tenant.user?.id || null,
+        createdBy: tenant.user?.name || "",
       });
     }
 
@@ -513,9 +819,67 @@ export async function GET(req) {
       );
     }
 
-    const sales = await Sale.find({
+    const { searchParams } = new URL(req.url);
+
+    const search = searchParams.get("search") || "";
+    const date = searchParams.get("date") || "";
+    const customerId = searchParams.get("customerId") || "";
+    const marketingOfficerId = searchParams.get("marketingOfficerId") || "";
+    const dueOnly = searchParams.get("dueOnly") || "";
+    const collectionStatus = searchParams.get("collectionStatus") || "";
+    const dueDate = searchParams.get("dueDate") || "";
+    const dueBefore = searchParams.get("dueBefore") || "";
+    const dueToday = searchParams.get("dueToday") || "";
+
+    const query = {
       companyId: tenant.companyId,
-    }).sort({ createdAt: -1 });
+      status: { $ne: "cancelled" },
+    };
+
+    if (search) {
+      const regex = { $regex: search, $options: "i" };
+
+      query.$or = [
+        { billNo: regex },
+        { manualBillNo: regex },
+        { invoiceNo: regex },
+        { customerName: regex },
+        { customerPhone: regex },
+        { marketingOfficerName: regex },
+        { note: regex },
+        { collectionComment: regex },
+        { lastCollectionComment: regex },
+        { "dueSchedule.reminderNote": regex },
+        { "items.name": regex },
+        { "items.itemName": regex },
+        { "items.productName": regex },
+      ];
+    }
+
+    if (date) query.date = date;
+    if (customerId) query.customerId = customerId;
+    if (marketingOfficerId) query.marketingOfficerId = marketingOfficerId;
+    if (dueOnly === "true") query.dueAmount = { $gt: 0 };
+    if (collectionStatus) query.collectionStatus = collectionStatus;
+
+    if (dueDate) {
+      query.nextCollectionDate = dueDate;
+    }
+
+    if (dueBefore) {
+      query.nextCollectionDate = { $lte: dueBefore };
+      query.dueAmount = { $gt: 0 };
+    }
+
+    if (dueToday === "true") {
+      query.nextCollectionDate = { $lte: today() };
+      query.dueAmount = { $gt: 0 };
+    }
+
+    const sales = await Sale.find(query).sort({
+      nextCollectionDate: 1,
+      createdAt: -1,
+    });
 
     return NextResponse.json(
       {

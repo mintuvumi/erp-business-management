@@ -5,7 +5,7 @@ const CompanySettingSchema = new mongoose.Schema(
     companyId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Company",
-      default: null,
+      required: true,
     },
 
     companyName: {
@@ -36,12 +36,28 @@ const CompanySettingSchema = new mongoose.Schema(
       type: String,
       default: "",
       trim: true,
+      lowercase: true,
     },
 
     companyWebsite: {
       type: String,
       default: "",
       trim: true,
+    },
+
+    businessType: {
+      type: String,
+      enum: [
+        "retail",
+        "wholesale",
+        "pharmacy",
+        "manufacturing",
+        "shop",
+        "restaurant",
+        "service",
+      ],
+      default: "shop",
+      index: true,
     },
 
     tradeLicense: { type: String, default: "", trim: true },
@@ -87,6 +103,7 @@ const CompanySettingSchema = new mongoose.Schema(
     },
 
     invoiceNote: { type: String, default: "" },
+
     invoiceFooter: {
       type: String,
       default: "Thank you for doing business with us.",
@@ -143,10 +160,33 @@ const CompanySettingSchema = new mongoose.Schema(
     attendanceEnabled: { type: Boolean, default: true },
     payrollEnabled: { type: Boolean, default: true },
     warehouseEnabled: { type: Boolean, default: false },
+
     manufacturingEnabled: { type: Boolean, default: false },
     pharmacyEnabled: { type: Boolean, default: false },
+
     posEnabled: { type: Boolean, default: true },
     ecommerceEnabled: { type: Boolean, default: false },
+
+    offerEnabled: { type: Boolean, default: false },
+    manufacturingProductEnabled: { type: Boolean, default: false },
+    rawMaterialEnabled: { type: Boolean, default: false },
+    productionEnabled: { type: Boolean, default: false },
+    bomEnabled: { type: Boolean, default: false },
+    wastageEnabled: { type: Boolean, default: false },
+    factoryCostEnabled: { type: Boolean, default: false },
+    finishedGoodsEnabled: { type: Boolean, default: false },
+
+    dueReminderEnabled: { type: Boolean, default: true },
+    allowDueInterest: { type: Boolean, default: false },
+    dueInterestPercent: { type: Number, default: 0 },
+    installmentEnabled: { type: Boolean, default: true },
+    collectionReminderDays: { type: Number, default: 3 },
+
+    salesNotification: { type: Boolean, default: true },
+    purchaseNotification: { type: Boolean, default: true },
+    stockNotification: { type: Boolean, default: true },
+    dueNotification: { type: Boolean, default: true },
+    collectionNotification: { type: Boolean, default: true },
 
     createdByUserId: {
       type: mongoose.Schema.Types.ObjectId,
@@ -165,6 +205,50 @@ const CompanySettingSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+CompanySettingSchema.pre("save", function () {
+  const isManufacturing = this.businessType === "manufacturing";
+  const isPharmacy = this.businessType === "pharmacy";
+
+  this.manufacturingEnabled = isManufacturing;
+  this.pharmacyEnabled = isPharmacy;
+
+  this.offerEnabled = isManufacturing;
+  this.manufacturingProductEnabled = isManufacturing;
+  this.rawMaterialEnabled = isManufacturing;
+  this.productionEnabled = isManufacturing;
+  this.bomEnabled = isManufacturing;
+  this.wastageEnabled = isManufacturing;
+  this.factoryCostEnabled = isManufacturing;
+  this.finishedGoodsEnabled = isManufacturing;
+
+  this.vatPercent = Math.max(Number(this.vatPercent || 0), 0);
+  this.aitPercent = Math.max(Number(this.aitPercent || 0), 0);
+  this.lowStockLimit = Math.max(Number(this.lowStockLimit || 5), 0);
+  this.defaultCreditLimit = Math.max(Number(this.defaultCreditLimit || 0), 0);
+  this.dueInterestPercent = Math.max(Number(this.dueInterestPercent || 0), 0);
+  this.collectionReminderDays = Math.max(
+    Number(this.collectionReminderDays || 3),
+    0
+  );
+
+  if (!this.currencyCode) this.currencyCode = "BDT";
+  if (!this.currency) this.currency = "৳";
+  if (!this.timezone) this.timezone = "Asia/Dhaka";
+});
+
+CompanySettingSchema.index(
+  { companyId: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      companyId: { $exists: true },
+    },
+  }
+);
+
+CompanySettingSchema.index({ businessType: 1 });
+CompanySettingSchema.index({ companyName: 1 });
 
 const CompanySetting =
   mongoose.models.CompanySetting ||
