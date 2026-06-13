@@ -3,6 +3,7 @@ import connectDB from "@/lib/db";
 import Employee from "@/models/Employee";
 import Attendance from "@/models/Attendance";
 import { getTenant } from "@/lib/tenant";
+import { requirePermission } from "@/lib/checkPermission";
 
 export async function GET(req) {
   try {
@@ -16,6 +17,20 @@ export async function GET(req) {
         { status: 401 }
       );
     }
+
+    try {
+      await requirePermission(tenant, "employees");
+    } catch (error) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: error.message || "Access denied",
+        },
+        { status: 403 }
+      );
+    }
+
+    
 
     const { searchParams } = new URL(req.url);
 

@@ -3,6 +3,7 @@ import connectDB from "@/lib/db";
 import Attendance from "@/models/Attendance";
 import Employee from "@/models/Employee";
 import { getTenant } from "@/lib/tenant";
+import { requirePermission } from "@/lib/checkPermission";
 
 function getMonthRange(month) {
   const [year, m] = month.split("-").map(Number);
@@ -17,6 +18,7 @@ function getMonthRange(month) {
   return { start, end, totalDays: lastDate };
 }
 
+
 export async function GET(req) {
   try {
     await connectDB();
@@ -29,6 +31,17 @@ export async function GET(req) {
         { status: 401 }
       );
     }
+
+    try {
+      await requirePermission(tenant, "attendance");
+    } catch (error) {
+      return NextResponse.json(
+        { success: false, message: error.message || "Access denied" },
+        { status: 403 }
+      );
+    }
+
+
 
     const { searchParams } = new URL(req.url);
 

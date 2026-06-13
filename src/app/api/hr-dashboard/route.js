@@ -6,6 +6,7 @@ import SalaryPayment from "@/models/SalaryPayment";
 import AdvanceSalary from "@/models/AdvanceSalary";
 import EmployeeLoan from "@/models/EmployeeLoan";
 import { getTenant } from "@/lib/tenant";
+import { requirePermission } from "@/lib/checkPermission";
 
 export async function GET(req) {
   try {
@@ -20,6 +21,16 @@ export async function GET(req) {
       );
     }
 
+    try {
+      await requirePermission(tenant, "employees");
+    } catch (error) {
+      return NextResponse.json(
+        { success: false, message: error.message || "Access denied" },
+        { status: 403 }
+      );
+    }
+
+    
     const today = new Date().toISOString().slice(0, 10);
     const month = new Date().toISOString().slice(0, 7);
 
