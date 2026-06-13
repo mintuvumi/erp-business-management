@@ -24,7 +24,8 @@ export function generateToken(user) {
       companyCode: user.companyCode || "",
 
       role: user.role || "staff",
-      isSaasAdmin: Boolean(user.isSaasAdmin),
+      isSaasAdmin:
+  user.isSaasAdmin === true || user.isSaasAdmin === "true",
 
       permissions: user.permissions || {},
 

@@ -97,7 +97,7 @@ export async function POST(req) {
 
     const user = await User.findOne(
       isEmail ? { email: cleanIdentifier } : { phone: cleanIdentifier }
-    ).select("+password isSaasAdmin");
+    ).select("+password isSaasAdmin role permissions isActive");
 
     if (!user) {
       return NextResponse.json(
@@ -216,7 +216,8 @@ export async function POST(req) {
         profilePhotos: photoList,
 
         role: user.role,
-        isSaasAdmin: Boolean(user.isSaasAdmin),
+        isSaasAdmin:
+  user.isSaasAdmin === true || user.isSaasAdmin === "true",
         permissions: user.permissions,
         branch: user.branch,
 
@@ -236,12 +237,12 @@ export async function POST(req) {
     });
 
     response.cookies.set("erp_token", token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      path: "/",
-      maxAge: 60 * 60 * 24 * 7,
-    });
+  httpOnly: true,
+  secure: true,
+  sameSite: "lax",
+  path: "/",
+  maxAge: 60 * 60 * 24 * 7,
+});
 
     return response;
   } catch (error) {
