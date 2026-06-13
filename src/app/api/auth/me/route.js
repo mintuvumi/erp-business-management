@@ -8,13 +8,27 @@ function companyDTO(c) {
   return {
     id: String(c._id),
     _id: String(c._id),
+
     name: c.name,
     businessType: c.businessType,
     logo: c.logo,
+
+    address: c.address || "",
+    phone: c.phone || "",
+    email: c.email || "",
+
     currency: c.currency || "BDT",
     timezone: c.timezone || "Asia/Dhaka",
     setupCompleted: c.setupCompleted,
     companyCode: c.companyCode || "",
+
+    subscriptionPlan: c.subscriptionPlan || "free",
+    subscriptionStatus: c.subscriptionStatus || "trial",
+    paymentStatus: c.paymentStatus || "unpaid",
+    serviceLocked: Boolean(c.serviceLocked),
+    graceActive: Boolean(c.graceActive),
+    graceUntil: c.graceUntil || "",
+    promisePaymentDate: c.promisePaymentDate || "",
   };
 }
 
@@ -110,6 +124,7 @@ export async function GET(req) {
         profilePhotos: photoList,
 
         role: user.role,
+        isSaasAdmin: Boolean(user.isSaasAdmin),
         permissions: user.permissions,
         branch: user.branch,
 

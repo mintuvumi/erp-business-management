@@ -13,15 +13,10 @@ export function generateToken(user) {
       email: user.email || "",
       phone: user.phone || "",
 
-      // Default Company
       companyId: String(user.companyId || ""),
 
-      // Current Selected Company
-      activeCompanyId: String(
-        user.activeCompanyId || user.companyId || ""
-      ),
+      activeCompanyId: String(user.activeCompanyId || user.companyId || ""),
 
-      // User এর সব কোম্পানি
       companyIds: (user.companyIds || [user.companyId])
         .filter(Boolean)
         .map((id) => String(id)),
@@ -29,6 +24,7 @@ export function generateToken(user) {
       companyCode: user.companyCode || "",
 
       role: user.role || "staff",
+      isSaasAdmin: Boolean(user.isSaasAdmin),
 
       permissions: user.permissions || {},
 
@@ -54,19 +50,13 @@ export function getUserFromRequest(req) {
   try {
     const token =
       req.cookies.get("erp_token")?.value ||
-      req.headers
-        .get("authorization")
-        ?.replace("Bearer ", "");
+      req.headers.get("authorization")?.replace("Bearer ", "");
 
-    if (!token) {
-      return null;
-    }
+    if (!token) return null;
 
     const user = verifyToken(token);
 
-    if (!user) {
-      return null;
-    }
+    if (!user) return null;
 
     return user;
   } catch (error) {
@@ -78,14 +68,9 @@ export function getUserFromRequest(req) {
 export function hasPermission(user, permissionKey) {
   if (!user) return false;
 
-  if (
-    user.role === "owner" ||
-    user.role === "admin"
-  ) {
+  if (user.role === "owner" || user.role === "admin") {
     return true;
   }
 
-  return Boolean(
-    user.permissions?.[permissionKey]
-  );
+  return Boolean(user.permissions?.[permissionKey]);
 }

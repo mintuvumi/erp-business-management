@@ -27,6 +27,7 @@ import {
   WalletCards,
   BadgeDollarSign,
   Bell,
+  ShieldCheck,
 } from "lucide-react";
 
 import { usePathname, useRouter } from "next/navigation";
@@ -38,8 +39,11 @@ export default function Sidebar({ open, setOpen }) {
 
   const [businessType, setBusinessType] = useState("shop");
   const [role, setRole] = useState("admin");
+  const [isSaasAdmin, setIsSaasAdmin] = useState(false);
   const [lang, setLang] = useState("en");
+
   const [openGroups, setOpenGroups] = useState({
+    saas: true,
     hr: true,
     crm: true,
     sales: false,
@@ -56,9 +60,12 @@ export default function Sidebar({ open, setOpen }) {
           ? JSON.parse(localStorage.getItem("user") || "{}")
           : {};
 
+      setIsSaasAdmin(Boolean(savedUser?.isSaasAdmin));
+
       if (!savedUser?.id && !savedUser?.name) {
         setBusinessType("shop");
         setRole("admin");
+        setIsSaasAdmin(false);
         return;
       }
 
@@ -69,16 +76,13 @@ export default function Sidebar({ open, setOpen }) {
 
       const res = await fetch("/api/company", {
         credentials: "include",
-        headers: selectedCompanyId
-          ? {
-              "x-company-id": selectedCompanyId,
-            }
-          : {},
+        headers: selectedCompanyId ? { "x-company-id": selectedCompanyId } : {},
       });
 
       if (!res.ok) {
         setBusinessType(savedUser?.company?.businessType || "shop");
         setRole(savedUser?.role || "admin");
+        setIsSaasAdmin(Boolean(savedUser?.isSaasAdmin));
         return;
       }
 
@@ -106,6 +110,7 @@ export default function Sidebar({ open, setOpen }) {
 
       setBusinessType(activeCompany?.businessType || "shop");
       setRole(savedUser?.role || data?.data?.user?.role || "admin");
+      setIsSaasAdmin(Boolean(savedUser?.isSaasAdmin || data?.data?.user?.isSaasAdmin));
     } catch (error) {
       console.error("SIDEBAR_COMPANY_LOAD_ERROR:", error);
 
@@ -123,9 +128,11 @@ export default function Sidebar({ open, setOpen }) {
             "shop"
         );
         setRole(savedUser?.role || "admin");
+        setIsSaasAdmin(Boolean(savedUser?.isSaasAdmin));
       } catch {
         setBusinessType("shop");
         setRole("admin");
+        setIsSaasAdmin(false);
       }
     }
   };
@@ -154,6 +161,45 @@ export default function Sidebar({ open, setOpen }) {
   );
 
   const groups = [
+    isSaasAdmin && {
+      key: "saas",
+      name: "SaaS Admin",
+      bn: "সাস অ্যাডমিন",
+      icon: ShieldCheck,
+      items: [
+        {
+          name: "SaaS Control",
+          bn: "সাস কন্ট্রোল",
+          icon: ShieldCheck,
+          path: "/saas-admin",
+        },
+        {
+          name: "Company Control",
+          bn: "কোম্পানি কন্ট্রোল",
+          icon: BriefcaseBusiness,
+          path: "/saas-admin",
+        },
+        {
+          name: "Subscriptions",
+          bn: "সাবস্ক্রিপশন",
+          icon: WalletCards,
+          path: "/saas-admin",
+        },
+        {
+          name: "Payments",
+          bn: "পেমেন্ট",
+          icon: DollarSign,
+          path: "/saas-admin",
+        },
+        {
+          name: "Login Logs",
+          bn: "লগইন লগ",
+          icon: ClipboardList,
+          path: "/saas-admin",
+        },
+      ],
+    },
+
     !isMarketingOfficer && {
       key: "main",
       name: "Main",
@@ -174,7 +220,7 @@ export default function Sidebar({ open, setOpen }) {
       bn: "এইচআর ও পেরোল",
       icon: Users,
       items: [
-        {
+        features.hrDashboard && {
           name: "HR Dashboard",
           bn: "এইচআর ড্যাশবোর্ড",
           icon: LayoutDashboard,
@@ -186,31 +232,31 @@ export default function Sidebar({ open, setOpen }) {
           icon: Users,
           path: "/employee",
         },
-        {
+        features.attendance && {
           name: "Attendance",
           bn: "উপস্থিতি",
           icon: CalendarCheck,
           path: "/attendance",
         },
-        {
+        features.attendanceSummary && {
           name: "Attendance Summary",
           bn: "উপস্থিতি সারাংশ",
           icon: ClipboardList,
           path: "/attendance/summary",
         },
-        {
+        features.advanceSalary && {
           name: "Advance Salary",
           bn: "অগ্রিম বেতন",
           icon: WalletCards,
           path: "/advance-salary",
         },
-        {
+        features.employeeLoan && {
           name: "Employee Loan",
           bn: "কর্মচারী লোন",
           icon: BadgeDollarSign,
           path: "/employee-loans",
         },
-        {
+        features.salarySheet && {
           name: "Salary History",
           bn: "বেতন হিস্টোরি",
           icon: FileText,
@@ -231,14 +277,15 @@ export default function Sidebar({ open, setOpen }) {
       bn: isMarketingOfficer ? "কাস্টমার ডিউ কাজ" : "সিআরএম",
       icon: UserRound,
       items: [
-        !isMarketingOfficer && {
-          name: "Marketing Officer",
-          bn: "মার্কেটিং অফিসার",
-          icon: BriefcaseBusiness,
-          path: "/marketing-officers",
-        },
+        !isMarketingOfficer &&
+          features.marketingOfficer && {
+            name: "Marketing Officer",
+            bn: "মার্কেটিং অফিসার",
+            icon: BriefcaseBusiness,
+            path: "/marketing-officers",
+          },
 
-        {
+        features.customerStatement && {
           name: "Customers",
           bn: "কাস্টমার",
           icon: UserRound,
@@ -252,21 +299,21 @@ export default function Sidebar({ open, setOpen }) {
           path: "/suppliers",
         },
 
-        {
+        features.customerStatement && {
           name: "Customer Statement",
           bn: "কাস্টমার স্টেটমেন্ট",
           icon: ClipboardList,
           path: "/customers/statement",
         },
 
-        {
+        features.dueCollection && {
           name: "Due Collection",
           bn: "ডিউ কালেকশন",
           icon: WalletCards,
           path: "/customers/statement?dueOnly=true",
         },
 
-        {
+        features.dueNotifications && {
           name: "Due Notifications",
           bn: "ডিউ নোটিফিকেশন",
           icon: Bell,
@@ -334,19 +381,19 @@ export default function Sidebar({ open, setOpen }) {
           icon: Landmark,
           path: "/accounts/statements",
         },
-        features.accounts && {
+        features.profitLoss && {
           name: "Profit & Loss",
           bn: "লাভ ও লস",
           icon: FileText,
           path: "/accounts/profit-loss",
         },
-        features.accounts && {
+        features.balanceSheet && {
           name: "Balance Sheet",
           bn: "ব্যালেন্স শিট",
           icon: FileText,
           path: "/accounts/balance-sheet",
         },
-        features.accounts && {
+        features.cashFlow && {
           name: "Cash & Bank Flow",
           bn: "ক্যাশ ও ব্যাংক ফ্লো",
           icon: Banknote,
@@ -494,7 +541,11 @@ export default function Sidebar({ open, setOpen }) {
                 SeeERP
               </p>
               <p className="text-[11px] text-gray-400 mt-1">
-                {isMarketingOfficer ? "Collection Panel" : "ERP System"}
+                {isSaasAdmin
+                  ? "SaaS Control Panel"
+                  : isMarketingOfficer
+                  ? "Collection Panel"
+                  : "ERP System"}
               </p>
             </div>
           </div>
@@ -607,7 +658,9 @@ export default function Sidebar({ open, setOpen }) {
           <div className="bg-white rounded-2xl p-3 border border-gray-100 shadow-[0_8px_22px_rgba(15,23,42,0.05)]">
             <p className="font-semibold text-gray-700 text-xs">v1.0 SeeERP</p>
             <p className="mt-1 text-[11px] text-gray-400">
-              {isMarketingOfficer
+              {isSaasAdmin
+                ? "Subscription & Company Control"
+                : isMarketingOfficer
                 ? "Customer Due Collection"
                 : "Bangladesh Business Suite"}
             </p>

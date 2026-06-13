@@ -129,6 +129,7 @@ const UserSchema = new mongoose.Schema(
       },
     ],
 
+
     role: {
       type: String,
       enum: [
@@ -146,6 +147,12 @@ const UserSchema = new mongoose.Schema(
       default: "staff",
       index: true,
     },
+
+    isSaasAdmin: {
+  type: Boolean,
+  default: false,
+  index: true,
+},
 
     permissions: {
       type: PermissionSchema,
