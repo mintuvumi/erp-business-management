@@ -6,9 +6,17 @@ export async function GET() {
   await connectDB();
 
   const user = await User.findOneAndUpdate(
-    { email: "mdmozammolhossain10@gmail.com" },
-    { $set: { isSaasAdmin: true } },
-    { new: true }
+    {
+      email: "mintuhossain060@gmail.com",
+    },
+    {
+      $set: {
+        isSaasAdmin: true,
+      },
+    },
+    {
+      new: true,
+    }
   ).select("name email role isSaasAdmin");
 
   return NextResponse.json({
