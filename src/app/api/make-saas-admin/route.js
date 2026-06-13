@@ -7,7 +7,7 @@ export async function GET() {
 
   const user = await User.findOneAndUpdate(
     {
-      email: "mintuhossain060@gmail.com",
+      email: "mintuhossain0606@gmail.com",
     },
     {
       $set: {
