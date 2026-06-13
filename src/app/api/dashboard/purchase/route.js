@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import connectDB from "@/lib/db";
 import Purchase from "@/models/Purchase";
+import User from "@/models/User";
 import { getTenant } from "@/lib/tenant";
 
 import { requirePermission } from "@/lib/checkPermission";

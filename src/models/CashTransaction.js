@@ -17,31 +17,47 @@ const CashTransactionSchema = new mongoose.Schema(
     },
 
     category: {
-      type: String,
-      enum: [
-        "cash_sale",
-        "due_collection",
-        "customer_collection",
-        "installment_collection",
-        "other_income",
-        "bank_withdraw",
-        "refund_received",
+  type: String,
+  enum: [
+    // SALES
+    "cash_sale",
+    "due_collection",
+    "customer_collection",
+    "installment_collection",
 
-        "cash_purchase",
-        "expense",
-        "supplier_payment",
-        "salary_payment",
-        "bank_deposit",
-        "refund_paid",
+    // INCOME
+    "other_income",
+    "refund_received",
 
-        "marketing_officer_expense",
-        "marketing_officer_salary",
-        "marketing_officer_commission",
-      ],
-      required: true,
-      index: true,
-    },
+    // BANK
+    "bank_withdraw",
+    "bank_deposit",
 
+    // PURCHASE & EXPENSE
+    "cash_purchase",
+    "expense",
+    "supplier_payment",
+    "refund_paid",
+
+    // HR & PAYROLL
+    "salary_payment",
+    "advance_salary",
+    "employee_loan",
+    "employee_bonus",
+    "employee_overtime",
+
+    // MARKETING OFFICER
+    "marketing_officer_expense",
+    "marketing_officer_salary",
+    "marketing_officer_commission",
+
+    // ADJUSTMENT
+    "opening_balance",
+    "closing_adjustment",
+  ],
+  required: true,
+  index: true,
+},
     title: {
       type: String,
       required: true,
