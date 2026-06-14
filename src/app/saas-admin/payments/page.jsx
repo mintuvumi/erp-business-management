@@ -92,26 +92,47 @@ export default function SaasAdminPaymentsPage() {
       .slice(0, 8);
   }, [q, payments]);
 
-  const updatePayment = async (payload) => {
-    try {
-      const res = await fetch("/api/saas/admin/payments", {
-        method: "PATCH",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
+const updatePayment = async (payload) => {
+  try {
+    let url = "/api/saas/admin/payments";
+    let body = payload;
 
-      const data = await res.json();
-
-      if (!data.success) throw new Error(data.message);
-
-      alert(data.message || "Payment updated");
-      setRejecting(null);
-      await loadPayments();
-    } catch (error) {
-      alert(error.message || "Update failed");
+    if (payload.action === "approve") {
+      url = `/api/saas/admin/payments/${payload.paymentId}/approve`;
+      body = {};
     }
-  };
+
+    if (payload.action === "reject") {
+      url = `/api/saas/admin/payments/${payload.paymentId}/reject`;
+      body = {
+        rejectReason: payload.rejectReason,
+      };
+    }
+
+    const res = await fetch(url, {
+      method: "PATCH",
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    });
+
+    const data = await res.json();
+
+    if (!data.success) {
+      throw new Error(data.message);
+    }
+
+    alert(data.message || "Payment updated");
+
+    setRejecting(null);
+
+    await loadPayments();
+  } catch (error) {
+    alert(error.message || "Update failed");
+  }
+};
 
   return (
     <div className="space-y-5">
