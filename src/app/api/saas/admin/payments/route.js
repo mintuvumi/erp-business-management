@@ -63,8 +63,8 @@ function paymentDTO(p) {
     companyId: p.companyId ? String(p.companyId) : "",
     companyName: p.companyName || "",
 
-    billingMonth: p.billingMonth || "",
     invoiceNo: p.invoiceNo || "",
+    billingMonth: p.billingMonth || "",
 
     amount: Number(p.amount || 0),
     paidAmount: Number(p.paidAmount || 0),
@@ -76,11 +76,18 @@ function paymentDTO(p) {
     paymentScreenshot: p.paymentScreenshot || "",
 
     paidDate: p.paidDate || "",
-    status: p.status || "",
+    status: p.status || "pending",
     rejectReason: p.rejectReason || "",
     note: p.note || "",
 
+    submittedByUserId: p.submittedByUserId
+      ? String(p.submittedByUserId)
+      : "",
     submittedBy: p.submittedBy || "",
+
+    approvedByUserId: p.approvedByUserId
+      ? String(p.approvedByUserId)
+      : "",
     approvedBy: p.approvedBy || "",
     approvedAt: p.approvedAt || null,
 
