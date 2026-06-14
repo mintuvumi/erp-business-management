@@ -6,21 +6,25 @@ import SaasLoginLog from "@/models/SaasLoginLog";
 import bcrypt from "bcryptjs";
 import { generateToken } from "@/lib/auth";
 
+function isTrue(value) {
+  return value === true || value === "true";
+}
+
 function companyDTO(c) {
   return {
     id: String(c._id),
     _id: String(c._id),
-    name: c.name,
-    logo: c.logo,
-    businessType: c.businessType,
+    name: c.name || "",
+    logo: c.logo || "",
+    businessType: c.businessType || "shop",
     currency: c.currency || "BDT",
     timezone: c.timezone || "Asia/Dhaka",
-    setupCompleted: c.setupCompleted,
+    setupCompleted: Boolean(c.setupCompleted),
     companyCode: c.companyCode || "",
 
     subscriptionPlan: c.subscriptionPlan || "free",
-    subscriptionStatus: c.subscriptionStatus || "trial",
-    paymentStatus: c.paymentStatus || "unpaid",
+    subscriptionStatus: c.subscriptionStatus || "active",
+    paymentStatus: c.paymentStatus || "paid",
     serviceLocked: Boolean(c.serviceLocked),
     graceActive: Boolean(c.graceActive),
     graceUntil: c.graceUntil || "",
@@ -29,7 +33,6 @@ function companyDTO(c) {
 
 function activePhotoList(user) {
   const list = [];
-
   if (user.photo) list.push(user.photo);
   if (user.avatar && user.avatar !== user.photo) list.push(user.avatar);
 
@@ -52,51 +55,132 @@ function getIp(req) {
 
 function detectBrowser(userAgent = "") {
   const ua = userAgent.toLowerCase();
-
   if (ua.includes("edg")) return "Edge";
   if (ua.includes("chrome")) return "Chrome";
   if (ua.includes("firefox")) return "Firefox";
   if (ua.includes("safari")) return "Safari";
   if (ua.includes("opera") || ua.includes("opr")) return "Opera";
-
   return "Unknown";
 }
 
 function detectDevice(userAgent = "") {
   const ua = userAgent.toLowerCase();
-
   if (ua.includes("mobile") || ua.includes("android") || ua.includes("iphone")) {
     return "Mobile";
   }
+  if (ua.includes("ipad") || ua.includes("tablet")) return "Tablet";
+  return "Desktop";
+}
 
-  if (ua.includes("ipad") || ua.includes("tablet")) {
-    return "Tablet";
+async function getOrCreateActiveCompany(user) {
+  const ids = [
+    user.activeCompanyId,
+    user.companyId,
+    user.defaultCompanyId,
+    ...(user.companyIds || []),
+    ...(user.selectedCompanyIds || []),
+  ]
+    .filter(Boolean)
+    .map((id) => String(id));
+
+  const uniqueIds = [...new Set(ids)];
+
+  let company = null;
+
+  if (uniqueIds.length) {
+    company = await Company.findOne({
+      _id: { $in: uniqueIds },
+      isActive: true,
+    }).sort({ createdAt: 1 });
   }
 
-  return "Desktop";
+  if (!company && user.email) {
+    company = await Company.findOne({
+      email: String(user.email).toLowerCase(),
+      isActive: true,
+    }).sort({ createdAt: 1 });
+  }
+
+  if (!company) {
+    company = await Company.findOne({
+      ownerUserId: user._id,
+      isActive: true,
+    }).sort({ createdAt: 1 });
+  }
+
+  if (!company) {
+    company = await Company.findOne({
+      createdByUserId: user._id,
+      isActive: true,
+    }).sort({ createdAt: 1 });
+  }
+
+  if (!company) {
+    company = await Company.create({
+      name: user.name || "My Company",
+      email: user.email || "",
+      phone: user.phone || "",
+      ownerName: user.name || "",
+      ownerUserId: user._id,
+      createdByUserId: user._id,
+      businessType: "shop",
+      currency: "BDT",
+      timezone: "Asia/Dhaka",
+      isActive: true,
+      setupCompleted: true,
+      subscriptionPlan: "free",
+      subscriptionStatus: "active",
+      paymentStatus: "paid",
+      serviceLocked: false,
+      lockReason: "",
+    });
+  }
+
+  company.isActive = true;
+  company.subscriptionStatus = company.subscriptionStatus || "active";
+  company.paymentStatus = company.paymentStatus || "paid";
+  company.serviceLocked = false;
+  company.lockReason = "";
+  await company.save();
+
+  await User.updateOne(
+    { _id: user._id },
+    {
+      $set: {
+        companyId: company._id,
+        activeCompanyId: company._id,
+        defaultCompanyId: company._id,
+        companyIds: [company._id],
+        selectedCompanyIds: [company._id],
+        companyCode: company.companyCode || "",
+      },
+    }
+  );
+
+  return company;
 }
 
 export async function POST(req) {
   try {
     await connectDB();
 
-    const { identifier, password } = await req.json();
+    const body = await req.json();
+    const identifier = String(body.identifier || body.email || body.phone || "")
+      .trim()
+      .toLowerCase();
+    const password = String(body.password || "");
 
     if (!identifier || !password) {
       return NextResponse.json(
-        {
-          success: false,
-          message: "Email/phone and password are required",
-        },
+        { success: false, message: "Email/phone and password are required" },
         { status: 400 }
       );
     }
 
-    const cleanIdentifier = identifier.trim().toLowerCase();
-    const isEmail = cleanIdentifier.includes("@");
+    const isEmail = identifier.includes("@");
 
     const user = await User.findOne(
-      isEmail ? { email: cleanIdentifier } : { phone: cleanIdentifier }
+      isEmail ? { email: identifier } : { phone: identifier }
     ).select("+password isSaasAdmin role permissions isActive");
 
     if (!user) {
@@ -122,75 +206,14 @@ export async function POST(req) {
       );
     }
 
-    const allowedIds = [
-      user.companyId,
-      user.activeCompanyId,
-      user.defaultCompanyId,
-      ...(user.companyIds || []),
-    ]
-      .filter(Boolean)
-      .map((id) => String(id));
+    const activeCompany = await getOrCreateActiveCompany(user);
 
-    const selectedIds = (user.selectedCompanyIds || [])
-      .filter(Boolean)
-      .map((id) => String(id));
+    const freshUser = await User.findById(user._id).select(
+      "userId name email phone photo avatar profilePhotos role isSaasAdmin permissions branch companyId activeCompanyId defaultCompanyId companyIds selectedCompanyIds companyCode"
+    );
 
-    const finalCompanyIds = selectedIds.length > 0 ? selectedIds : allowedIds;
-    const uniqueCompanyIds = [...new Set(finalCompanyIds)];
-
-    const companies = await Company.find({
-      _id: { $in: uniqueCompanyIds },
-      isActive: true,
-    }).sort({ createdAt: 1 });
-
-   if (!companies.length) {
-  return NextResponse.json(
-    {
-      success: false,
-      message: "No active company found",
-      debug: {
-        userEmail: user.email,
-        userCompanyId: String(user.companyId || ""),
-        activeCompanyId: String(user.activeCompanyId || ""),
-        defaultCompanyId: String(user.defaultCompanyId || ""),
-        allowedIds,
-        selectedIds,
-        uniqueCompanyIds,
-      },
-    },
-    { status: 403 }
-  );
-}
-
-    const activeCompany =
-      companies.find((c) => String(c._id) === String(user.activeCompanyId)) ||
-      companies.find((c) => String(c._id) === String(user.defaultCompanyId)) ||
-      companies.find((c) => String(c._id) === String(user.companyId)) ||
-      companies[0];
-
-    user.companyId = user.companyId || activeCompany._id;
-    user.activeCompanyId = activeCompany._id;
-
-    if (!user.defaultCompanyId) {
-      user.defaultCompanyId = activeCompany._id;
-    }
-
-    user.companyIds = [
-      ...new Set([...allowedIds, ...companies.map((c) => String(c._id))]),
-    ];
-
-    if (!user.selectedCompanyIds || user.selectedCompanyIds.length === 0) {
-      user.selectedCompanyIds = companies.map((c) => c._id);
-    }
-
-    user.companyCode = activeCompany.companyCode || user.companyCode || "";
-    user.lastLoginAt = new Date();
-    user.loginCount = Number(user.loginCount || 0) + 1;
-
-    await user.save();
-
-    const token = generateToken(user);
-    const photoList = activePhotoList(user);
+    const token = generateToken(freshUser);
+    const photoList = activePhotoList(freshUser);
 
     try {
       const userAgent = req.headers.get("user-agent") || "";
@@ -198,9 +221,9 @@ export async function POST(req) {
       await SaasLoginLog.create({
         companyId: activeCompany._id,
         companyName: activeCompany.name || "",
-        userId: user._id,
-        userName: user.name || "",
-        role: user.role || "",
+        userId: freshUser._id,
+        userName: freshUser.name || "",
+        role: freshUser.role || "",
         ip: getIp(req),
         userAgent,
         device: detectDevice(userAgent),
@@ -215,56 +238,49 @@ export async function POST(req) {
       success: true,
       message: "Login success",
       data: {
-        id: String(user._id),
-        _id: String(user._id),
-        userId: user.userId,
+        id: String(freshUser._id),
+        _id: String(freshUser._id),
+        userId: freshUser.userId || "",
 
-        name: user.name,
-        email: user.email,
-        phone: user.phone,
+        name: freshUser.name || "",
+        email: freshUser.email || "",
+        phone: freshUser.phone || "",
 
         photo: photoList[0] || "",
         avatar: photoList[0] || "",
         profilePhotos: photoList,
 
-        role: user.role,
-        isSaasAdmin:
-  user.isSaasAdmin === true || user.isSaasAdmin === "true",
-        permissions: user.permissions,
-        branch: user.branch,
+        role: freshUser.role || "staff",
+        isSaasAdmin: isTrue(freshUser.isSaasAdmin),
+        permissions: freshUser.permissions || {},
+        branch: freshUser.branch || "Main Branch",
 
         companyId: String(activeCompany._id),
         activeCompanyId: String(activeCompany._id),
-        defaultCompanyId: user.defaultCompanyId
-          ? String(user.defaultCompanyId)
-          : String(activeCompany._id),
-
-        companyIds: companies.map((c) => String(c._id)),
-        selectedCompanyIds: companies.map((c) => String(c._id)),
-        companyCode: activeCompany.companyCode || user.companyCode || "",
+        defaultCompanyId: String(activeCompany._id),
+        companyIds: [String(activeCompany._id)],
+        selectedCompanyIds: [String(activeCompany._id)],
+        companyCode: activeCompany.companyCode || "",
 
         company: companyDTO(activeCompany),
-        companies: companies.map(companyDTO),
+        companies: [companyDTO(activeCompany)],
       },
     });
 
     response.cookies.set("erp_token", token, {
-  httpOnly: true,
-  secure: true,
-  sameSite: "lax",
-  path: "/",
-  maxAge: 60 * 60 * 24 * 7,
-});
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: 60 * 60 * 24 * 7,
+    });
 
     return response;
   } catch (error) {
     console.error("LOGIN_ERROR:", error);
 
     return NextResponse.json(
-      {
-        success: false,
-        message: error.message || "Login failed",
-      },
+      { success: false, message: error.message || "Login failed" },
       { status: 500 }
     );
   }
