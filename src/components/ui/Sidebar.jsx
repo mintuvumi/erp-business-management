@@ -161,44 +161,48 @@ export default function Sidebar({ open, setOpen }) {
   );
 
   const groups = [
-    isSaasAdmin && {
-      key: "saas",
-      name: "SaaS Admin",
-      bn: "সাস অ্যাডমিন",
-      icon: ShieldCheck,
-      items: [
-        {
-          name: "SaaS Control",
-          bn: "সাস কন্ট্রোল",
-          icon: ShieldCheck,
-          path: "/saas-admin",
-        },
-        {
-          name: "Company Control",
-          bn: "কোম্পানি কন্ট্রোল",
-          icon: BriefcaseBusiness,
-          path: "/saas-admin",
-        },
-        {
-          name: "Subscriptions",
-          bn: "সাবস্ক্রিপশন",
-          icon: WalletCards,
-          path: "/saas-admin",
-        },
-        {
-          name: "Payments",
-          bn: "পেমেন্ট",
-          icon: DollarSign,
-          path: "/saas-admin",
-        },
-        {
-          name: "Login Logs",
-          bn: "লগইন লগ",
-          icon: ClipboardList,
-          path: "/saas-admin",
-        },
-      ],
-    },
+  isSaasAdmin && {
+    key: "saas",
+    name: "SaaS Admin",
+    bn: "সাস অ্যাডমিন",
+    icon: ShieldCheck,
+    items: [
+      {
+        name: "SaaS Control",
+        bn: "সাস কন্ট্রোল",
+        icon: ShieldCheck,
+        path: "/saas-admin",
+      },
+
+      {
+        name: "Company Control",
+        bn: "কোম্পানি কন্ট্রোল",
+        icon: BriefcaseBusiness,
+        path: "/saas-admin/companies",
+      },
+
+      {
+        name: "Subscriptions",
+        bn: "সাবস্ক্রিপশন",
+        icon: WalletCards,
+        path: "/subscription",
+      },
+
+      {
+        name: "Payments",
+        bn: "পেমেন্ট",
+        icon: DollarSign,
+        path: "/saas-admin/payments",
+      },
+
+      {
+        name: "Login Logs",
+        bn: "লগইন লগ",
+        icon: ClipboardList,
+        path: "/saas-admin/login-logs",
+      },
+    ],
+  },
 
     !isMarketingOfficer && {
       key: "main",
