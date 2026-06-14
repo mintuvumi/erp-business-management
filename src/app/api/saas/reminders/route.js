@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import connectDB from "@/lib/db";
 import Company from "@/models/Company";
 import Notification from "@/models/Notification";
+import User from "@/models/User";
 import { getTenant } from "@/lib/tenant";
 
 function today() {
@@ -12,8 +13,32 @@ function dayOfMonth() {
   return new Date().getDate();
 }
 
-function isSuperAdmin(tenant) {
-  return tenant.role === "owner" || tenant.role === "admin";
+function isTrue(value) {
+  return value === true || value === "true";
+}
+
+async function requireSaasAdmin(tenant) {
+  if (!tenant?.user?.id) {
+    return { ok: false, message: "Unauthorized", status: 401 };
+  }
+
+  const user = await User.findById(tenant.user.id).select(
+    "isSaasAdmin role isActive"
+  );
+
+  if (!user || !user.isActive) {
+    return { ok: false, message: "User inactive", status: 401 };
+  }
+
+  if (!isTrue(user.isSaasAdmin)) {
+    return {
+      ok: false,
+      message: "SaaS admin access required",
+      status: 403,
+    };
+  }
+
+  return { ok: true, user };
 }
 
 function reminderMessage(day, company) {
@@ -68,7 +93,9 @@ function reminderMessage(day, company) {
 
 function shouldSendReminder(company, day) {
   if (company.paymentStatus === "paid") return false;
-  if (company.subscriptionStatus === "active" && !company.monthlyFee) return false;
+  if (company.isDeleted) return false;
+  if (!company.isActive) return false;
+  if (company.monthlyFee <= 0) return false;
 
   const reminderDays = [5, 10, 15, 20, 25, 30];
   if (!reminderDays.includes(day)) return false;
@@ -81,11 +108,12 @@ export async function GET(req) {
     await connectDB();
 
     const tenant = getTenant(req);
+    const access = await requireSaasAdmin(tenant);
 
-    if (!tenant?.user?.id || !isSuperAdmin(tenant)) {
+    if (!access.ok) {
       return NextResponse.json(
-        { success: false, message: "Super admin access required" },
-        { status: 403 }
+        { success: false, message: access.message },
+        { status: access.status }
       );
     }
 
@@ -94,6 +122,7 @@ export async function GET(req) {
 
     const companies = await Company.find({
       isActive: true,
+      isDeleted: { $ne: true },
       monthlyFee: { $gt: 0 },
     }).sort({ createdAt: -1 });
 
@@ -131,15 +160,31 @@ export async function GET(req) {
       ) {
         company.serviceLocked = true;
         company.subscriptionStatus = "expired";
+        company.paymentStatus = "unpaid";
+        company.graceActive = false;
         company.lockReason =
           "Grace period expired. Please pay your bill to continue service.";
         await company.save();
+
+        await Notification.create({
+          companyId: company._id,
+          type: "danger",
+          title: "Grace Period Expired",
+          message:
+            "আপনার grace period শেষ হয়েছে। Service সাময়িকভাবে বন্ধ করা হয়েছে। Payment দিলে আবার active হবে।",
+          refType: "saas_subscription",
+          refId: String(company._id),
+          path: "/subscription",
+          read: false,
+          createdBy: "SeeERP System",
+        });
 
         results.push({
           companyId: String(company._id),
           companyName: company.name,
           action: "locked_after_grace",
         });
+
         continue;
       }
 
@@ -165,7 +210,7 @@ export async function GET(req) {
           message: msg.message,
           refType: "saas_subscription",
           refId: String(company._id),
-          path: "/company",
+          path: "/subscription",
           read: false,
           createdBy: "SeeERP System",
         });
@@ -205,7 +250,10 @@ export async function GET(req) {
     console.error("SAAS_REMINDER_ERROR:", error);
 
     return NextResponse.json(
-      { success: false, message: error.message || "Failed to process reminders" },
+      {
+        success: false,
+        message: error.message || "Failed to process reminders",
+      },
       { status: 500 }
     );
   }
