@@ -29,8 +29,9 @@ export default function LoginPage() {
   };
 
   const handleLogin = async () => {
-    if (!identifier || !password) {
-      return toast.error("Email/Phone & Password required");
+    if (!identifier.trim() || !password.trim()) {
+      toast.error("Email/Phone & Password required");
+      return;
     }
 
     try {
@@ -39,61 +40,59 @@ export default function LoginPage() {
 
       const res = await axios.post(
         "/api/auth/login",
-        { identifier, password },
-        { withCredentials: true }
+        {
+          identifier: identifier.trim(),
+          password,
+        },
+        {
+          withCredentials: true,
+          validateStatus: () => true,
+        }
       );
 
       const data = res.data;
 
-      if (!data.success) {
-        return toast.error(data.message || "Login failed");
+      if (!data?.success) {
+        toast.error(data?.message || "Login failed");
+        return;
       }
 
       const user = data.data || data.user;
 
-      // cookie আসলেই set হয়েছে কিনা verify
-      const meRes = await axios.get("/api/auth/me", {
-        withCredentials: true,
-      });
+      localStorage.setItem("user", JSON.stringify(user));
 
-      if (!meRes.data?.success) {
-        return toast.error("Login cookie not saved. Please try again.");
+      if (user?.companyId) {
+        localStorage.setItem("selectedCompanyId", user.companyId);
       }
 
-      const verifiedUser = meRes.data.data || user;
-
-      localStorage.setItem("user", JSON.stringify(verifiedUser));
-
-      if (verifiedUser?.companyId) {
-        localStorage.setItem("selectedCompanyId", verifiedUser.companyId);
-      }
-
-      if (verifiedUser?.company) {
-        localStorage.setItem(
-          "selectedCompany",
-          JSON.stringify(verifiedUser.company)
-        );
-        localStorage.setItem(
-          "activeCompany",
-          JSON.stringify(verifiedUser.company)
-        );
+      if (user?.company) {
+        localStorage.setItem("selectedCompany", JSON.stringify(user.company));
+        localStorage.setItem("activeCompany", JSON.stringify(user.company));
       }
 
       if (rememberMe) {
-        localStorage.setItem("remember_identifier", identifier);
+        localStorage.setItem("remember_identifier", identifier.trim());
       } else {
         localStorage.removeItem("remember_identifier");
       }
 
+      window.dispatchEvent(new Event("authChanged"));
+      window.dispatchEvent(new Event("companyChanged"));
+
       toast.success("Login Successful!");
 
-      if (!verifiedUser?.companyId) {
-        window.location.href = "/settings/company";
-      } else {
-        window.location.href = "/dashboard";
-      }
+      setTimeout(() => {
+        if (user?.isSaasAdmin) {
+          window.location.href = "/saas-admin";
+        } else if (!user?.companyId) {
+          window.location.href = "/company";
+        } else {
+          window.location.href = "/dashboard";
+        }
+      }, 300);
     } catch (err) {
-      toast.error(err.response?.data?.message || "Server error");
+      console.error("LOGIN_PAGE_ERROR:", err);
+      toast.error(err?.response?.data?.message || "Server error");
     } finally {
       setLoading(false);
     }
@@ -123,7 +122,7 @@ export default function LoginPage() {
             className="w-full p-3 pr-16 rounded-xl border"
             onChange={(e) => setPassword(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter") handleLogin();
+              if (e.key === "Enter" && !loading) handleLogin();
             }}
           />
 
