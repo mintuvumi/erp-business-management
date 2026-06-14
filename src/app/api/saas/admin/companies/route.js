@@ -14,6 +14,25 @@ function monthNow() {
   return new Date().toISOString().slice(0, 7);
 }
 
+function nextMonthBillingDate(billingDay = 30) {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = now.getMonth() + 1;
+
+  const next = new Date(y, m + 1, 0);
+  const lastDay = next.getDate();
+  const day = Math.min(Number(billingDay || 30), lastDay);
+
+  return `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(
+    2,
+    "0"
+  )}-${String(day).padStart(2, "0")}`;
+}
+
+function isTrue(value) {
+  return value === true || value === "true";
+}
+
 async function requireSaasAdmin(tenant) {
   if (!tenant?.user?.id) {
     return { ok: false, message: "Unauthorized", status: 401 };
@@ -27,7 +46,7 @@ async function requireSaasAdmin(tenant) {
     return { ok: false, message: "User inactive", status: 401 };
   }
 
-  if (!user.isSaasAdmin) {
+  if (!isTrue(user.isSaasAdmin)) {
     return {
       ok: false,
       message: "SaaS admin access required",
@@ -36,6 +55,28 @@ async function requireSaasAdmin(tenant) {
   }
 
   return { ok: true, user };
+}
+
+function paymentDTO(p) {
+  if (!p) return null;
+
+  return {
+    _id: String(p._id),
+    id: String(p._id),
+    companyId: p.companyId ? String(p.companyId) : "",
+    companyName: p.companyName || "",
+    billingMonth: p.billingMonth || "",
+    amount: Number(p.amount || 0),
+    paidAmount: Number(p.paidAmount || 0),
+    dueAmount: Number(p.dueAmount || 0),
+    paymentMethod: p.paymentMethod || "",
+    transactionId: p.transactionId || "",
+    paidDate: p.paidDate || "",
+    status: p.status || "",
+    note: p.note || "",
+    createdAt: p.createdAt,
+    updatedAt: p.updatedAt,
+  };
 }
 
 function companyDTO(c, payment = null) {
@@ -74,11 +115,31 @@ function companyDTO(c, payment = null) {
     lockReason: c.lockReason || "",
 
     isActive: Boolean(c.isActive),
+    isDeleted: Boolean(c.isDeleted),
+    deletedAt: c.deletedAt || null,
     setupCompleted: Boolean(c.setupCompleted),
 
-    currentMonthPayment: payment,
+    currentMonthPayment: paymentDTO(payment),
     createdAt: c.createdAt,
     updatedAt: c.updatedAt,
+  };
+}
+
+function loginDTO(log) {
+  return {
+    _id: String(log._id),
+    id: String(log._id),
+    companyId: log.companyId ? String(log.companyId) : "",
+    companyName: log.companyName || "",
+    userId: log.userId ? String(log.userId) : "",
+    userName: log.userName || "",
+    role: log.role || "",
+    ip: log.ip || "",
+    device: log.device || "",
+    browser: log.browser || "",
+    userAgent: log.userAgent || "",
+    loginAt: log.loginAt || log.createdAt,
+    createdAt: log.createdAt,
   };
 }
 
@@ -97,11 +158,17 @@ export async function GET(req) {
     }
 
     const { searchParams } = new URL(req.url);
+
     const q = String(searchParams.get("q") || "").trim();
-    const status = searchParams.get("status") || "";
-    const paymentStatus = searchParams.get("paymentStatus") || "";
+    const status = String(searchParams.get("status") || "").trim();
+    const paymentStatus = String(searchParams.get("paymentStatus") || "").trim();
+    const showArchived = searchParams.get("showArchived") === "true";
 
     const filter = {};
+
+    if (!showArchived) {
+      filter.isDeleted = { $ne: true };
+    }
 
     if (status) filter.subscriptionStatus = status;
     if (paymentStatus) filter.paymentStatus = paymentStatus;
@@ -121,56 +188,65 @@ export async function GET(req) {
       ];
     }
 
-    const [companies, payments, logs] = await Promise.all([
-      Company.find(filter).sort({ createdAt: -1 }),
+    const [companies, allCompaniesForSummary, payments, logs] =
+      await Promise.all([
+        Company.find(filter).sort({ createdAt: -1 }),
 
-      SaasPayment.find({
-        billingMonth: monthNow(),
-      }).sort({ createdAt: -1 }),
+        Company.find({}).select(
+          "subscriptionStatus paymentStatus serviceLocked monthlyFee isDeleted isActive"
+        ),
 
-      SaasLoginLog.find({}).sort({ loginAt: -1 }).limit(50),
-    ]);
+        SaasPayment.find({
+          billingMonth: monthNow(),
+        }).sort({ createdAt: -1 }),
+
+        SaasLoginLog.find({}).sort({ loginAt: -1 }).limit(50),
+      ]);
 
     const paymentMap = {};
 
     payments.forEach((p) => {
-      paymentMap[String(p.companyId)] = {
-        _id: String(p._id),
-        billingMonth: p.billingMonth,
-        amount: Number(p.amount || 0),
-        paidAmount: Number(p.paidAmount || 0),
-        dueAmount: Number(p.dueAmount || 0),
-        paymentMethod: p.paymentMethod,
-        transactionId: p.transactionId || "",
-        paidDate: p.paidDate || "",
-        status: p.status,
-        note: p.note || "",
-      };
+      paymentMap[String(p.companyId)] = p;
     });
 
     const data = companies.map((c) =>
       companyDTO(c, paymentMap[String(c._id)] || null)
     );
 
+    const visibleCompanies = allCompaniesForSummary.filter(
+      (c) => !Boolean(c.isDeleted)
+    );
+
     const summary = {
-      totalCompanies: companies.length,
-      activeCompanies: companies.filter(
+      totalCompanies: visibleCompanies.length,
+      archivedCompanies: allCompaniesForSummary.filter((c) => c.isDeleted)
+        .length,
+
+      activeCompanies: visibleCompanies.filter(
         (c) => c.subscriptionStatus === "active"
       ).length,
-      trialCompanies: companies.filter((c) => c.subscriptionStatus === "trial")
-        .length,
-      dueCompanies: companies.filter((c) => c.subscriptionStatus === "due")
-        .length,
-      warningCompanies: companies.filter(
+
+      trialCompanies: visibleCompanies.filter(
+        (c) => c.subscriptionStatus === "trial"
+      ).length,
+
+      dueCompanies: visibleCompanies.filter(
+        (c) => c.subscriptionStatus === "due"
+      ).length,
+
+      warningCompanies: visibleCompanies.filter(
         (c) => c.subscriptionStatus === "warning"
       ).length,
-      expiredCompanies: companies.filter(
+
+      expiredCompanies: visibleCompanies.filter(
         (c) => c.subscriptionStatus === "expired"
       ).length,
-      suspendedCompanies: companies.filter(
+
+      suspendedCompanies: visibleCompanies.filter(
         (c) => c.subscriptionStatus === "suspended"
       ).length,
-      lockedCompanies: companies.filter((c) => c.serviceLocked).length,
+
+      lockedCompanies: visibleCompanies.filter((c) => c.serviceLocked).length,
 
       monthlyRevenue: payments
         .filter((p) => p.status === "approved")
@@ -180,7 +256,7 @@ export async function GET(req) {
         .filter((p) => p.status === "pending")
         .reduce((s, p) => s + Number(p.paidAmount || 0), 0),
 
-      unpaidAmount: companies
+      unpaidAmount: visibleCompanies
         .filter((c) => c.paymentStatus !== "paid")
         .reduce((s, c) => s + Number(c.monthlyFee || 0), 0),
     };
@@ -190,7 +266,7 @@ export async function GET(req) {
       data: {
         companies: data,
         summary,
-        recentLogins: logs,
+        recentLogins: logs.map(loginDTO),
       },
     });
   } catch (error) {
@@ -249,13 +325,16 @@ export async function PATCH(req) {
       company.lockReason = "";
       company.lastPaidDate = today();
       company.lastReminderDay = 0;
+      company.nextBillingDate =
+        body.nextBillingDate || nextMonthBillingDate(company.billingDay || 30);
 
       await SaasPayment.create({
         companyId: company._id,
-        companyName: company.name,
+        companyName: company.name || "",
         billingMonth: body.billingMonth || monthNow(),
         amount,
         paidAmount,
+        dueAmount: Math.max(amount - paidAmount, 0),
         paymentMethod: body.paymentMethod || "manual",
         transactionId: body.transactionId || "",
         paidDate: today(),
@@ -299,6 +378,10 @@ export async function PATCH(req) {
       company.serviceLocked = false;
       company.subscriptionStatus = "active";
       company.lockReason = "";
+
+      if (company.paymentStatus !== "paid") {
+        company.paymentStatus = "unpaid";
+      }
     }
 
     if (body.action === "update_plan") {
@@ -308,6 +391,8 @@ export async function PATCH(req) {
       company.nextBillingDate =
         body.nextBillingDate ?? company.nextBillingDate ?? "";
       company.billingDay = Number(body.billingDay ?? company.billingDay ?? 30);
+      company.maxUsers = Number(body.maxUsers ?? company.maxUsers ?? 3);
+      company.maxBranches = Number(body.maxBranches ?? company.maxBranches ?? 1);
     }
 
     if (body.action === "suspend") {
@@ -315,6 +400,30 @@ export async function PATCH(req) {
       company.serviceLocked = true;
       company.lockReason =
         body.lockReason || "Your SeeERP service has been suspended.";
+    }
+
+    if (body.action === "archive") {
+      company.isDeleted = true;
+      company.isActive = false;
+      company.subscriptionStatus = "suspended";
+      company.serviceLocked = true;
+      company.lockReason =
+        body.lockReason || "Company archived by SaaS administrator.";
+      company.deletedAt = new Date();
+      company.deletedByUserId = access.user?._id || null;
+    }
+
+    if (body.action === "restore") {
+      company.isDeleted = false;
+      company.isActive = true;
+      company.serviceLocked = false;
+      company.lockReason = "";
+      company.deletedAt = null;
+      company.deletedByUserId = null;
+
+      if (company.subscriptionStatus === "suspended") {
+        company.subscriptionStatus = "active";
+      }
     }
 
     await company.save();
