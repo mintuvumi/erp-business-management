@@ -2,8 +2,9 @@ import { NextResponse } from "next/server";
 import connectDB from "@/lib/db";
 import Purchase from "@/models/Purchase";
 import User from "@/models/User";
+import Supplier from "@/models/Supplier";
+import BankAccount from "@/models/BankAccount";
 import { getTenant } from "@/lib/tenant";
-
 import { requirePermission } from "@/lib/checkPermission";
 
 function normalizeDate(date) {
@@ -55,6 +56,8 @@ function purchaseDTO(p) {
   return {
     ...p,
     _id: String(p._id),
+    supplierId: p.supplierId?._id ? String(p.supplierId._id) : p.supplierId,
+    bankId: p.bankId?._id ? String(p.bankId._id) : p.bankId,
     totalAmount: amountOf(p),
     paidAmount: paidOf(p),
     dueAmount: dueOf(p),
@@ -66,7 +69,6 @@ export async function GET(req) {
   try {
     await connectDB();
 
-
     const tenant = getTenant(req);
 
     if (!tenant.companyId) {
@@ -77,34 +79,33 @@ export async function GET(req) {
     }
 
     try {
-  await requirePermission(tenant, "purchase");
-} catch (error) {
-  return NextResponse.json(
-    {
-      success: false,
-      message: error.message || "Access denied",
-    },
-    { status: 403 }
-  );
-}
+      await requirePermission(tenant, "purchase");
+    } catch (error) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: error.message || "Access denied",
+        },
+        { status: 403 }
+      );
+    }
 
     const user = await User.findById(tenant.user?.id).select(
-  "role permissions"
-);
+      "role permissions"
+    );
 
-if (
-  user?.role === "marketing_officer" ||
-  user?.permissions?.purchase === false
-) {
-  return NextResponse.json(
-    {
-      success: false,
-      message: "Access denied",
-    },
-    { status: 403 }
-  );
-}
-
+    if (
+      user?.role === "marketing_officer" ||
+      user?.permissions?.purchase === false
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Access denied",
+        },
+        { status: 403 }
+      );
+    }
 
     const { searchParams } = new URL(req.url);
 
@@ -242,11 +243,15 @@ if (
     );
 
     const cashPurchase = allPurchases
-      .filter((p) => p.paymentFrom === "cash" || p.paymentType === "cash")
+      .filter(
+        (p) =>
+          String(p.paymentFrom || "").toLowerCase() === "cash" ||
+          String(p.paymentType || "").toLowerCase() === "cash"
+      )
       .reduce((sum, p) => sum + paidOf(p), 0);
 
     const bankPurchase = allPurchases
-      .filter((p) => p.paymentFrom === "bank")
+      .filter((p) => String(p.paymentFrom || "").toLowerCase() === "bank")
       .reduce((sum, p) => sum + paidOf(p), 0);
 
     const supplierMap = {};
