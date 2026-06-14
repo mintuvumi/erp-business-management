@@ -17,9 +17,34 @@ function isTrue(value) {
   return value === true || value === "true";
 }
 
-async function requireSaasAdmin(tenant) {
+function isValidCronSecret(req) {
+  const url = new URL(req.url);
+  const secretFromQuery = url.searchParams.get("secret") || "";
+  const secretFromHeader = req.headers.get("x-cron-secret") || "";
+  const expected = process.env.SAAS_CRON_SECRET || "";
+
+  if (!expected) return false;
+
+  return secretFromQuery === expected || secretFromHeader === expected;
+}
+
+async function requireSaasAdminOrCron(req) {
+  if (isValidCronSecret(req)) {
+    return {
+      ok: true,
+      source: "cron",
+      user: null,
+    };
+  }
+
+  const tenant = getTenant(req);
+
   if (!tenant?.user?.id) {
-    return { ok: false, message: "Unauthorized", status: 401 };
+    return {
+      ok: false,
+      message: "Unauthorized",
+      status: 401,
+    };
   }
 
   const user = await User.findById(tenant.user.id).select(
@@ -27,7 +52,11 @@ async function requireSaasAdmin(tenant) {
   );
 
   if (!user || !user.isActive) {
-    return { ok: false, message: "User inactive", status: 401 };
+    return {
+      ok: false,
+      message: "User inactive",
+      status: 401,
+    };
   }
 
   if (!isTrue(user.isSaasAdmin)) {
@@ -38,7 +67,11 @@ async function requireSaasAdmin(tenant) {
     };
   }
 
-  return { ok: true, user };
+  return {
+    ok: true,
+    source: "admin",
+    user,
+  };
 }
 
 function reminderMessage(day, company) {
@@ -95,9 +128,10 @@ function shouldSendReminder(company, day) {
   if (company.paymentStatus === "paid") return false;
   if (company.isDeleted) return false;
   if (!company.isActive) return false;
-  if (company.monthlyFee <= 0) return false;
+  if (Number(company.monthlyFee || 0) <= 0) return false;
 
   const reminderDays = [5, 10, 15, 20, 25, 30];
+
   if (!reminderDays.includes(day)) return false;
 
   return Number(company.lastReminderDay || 0) !== day;
@@ -107,12 +141,14 @@ export async function GET(req) {
   try {
     await connectDB();
 
-    const tenant = getTenant(req);
-    const access = await requireSaasAdmin(tenant);
+    const access = await requireSaasAdminOrCron(req);
 
     if (!access.ok) {
       return NextResponse.json(
-        { success: false, message: access.message },
+        {
+          success: false,
+          message: access.message,
+        },
         { status: access.status }
       );
     }
@@ -136,6 +172,7 @@ export async function GET(req) {
           skipped: true,
           reason: "Already paid",
         });
+
         continue;
       }
 
@@ -150,6 +187,7 @@ export async function GET(req) {
           skipped: true,
           reason: `Grace active until ${company.graceUntil}`,
         });
+
         continue;
       }
 
@@ -164,6 +202,7 @@ export async function GET(req) {
         company.graceActive = false;
         company.lockReason =
           "Grace period expired. Please pay your bill to continue service.";
+
         await company.save();
 
         await Notification.create({
@@ -241,6 +280,7 @@ export async function GET(req) {
       success: true,
       message: "SaaS reminders processed",
       data: {
+        source: access.source,
         date: todayDate,
         day,
         results,
