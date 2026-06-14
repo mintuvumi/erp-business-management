@@ -143,12 +143,24 @@ export async function POST(req) {
       isActive: true,
     }).sort({ createdAt: 1 });
 
-    if (!companies.length) {
-      return NextResponse.json(
-        { success: false, message: "No active company found" },
-        { status: 403 }
-      );
-    }
+   if (!companies.length) {
+  return NextResponse.json(
+    {
+      success: false,
+      message: "No active company found",
+      debug: {
+        userEmail: user.email,
+        userCompanyId: String(user.companyId || ""),
+        activeCompanyId: String(user.activeCompanyId || ""),
+        defaultCompanyId: String(user.defaultCompanyId || ""),
+        allowedIds,
+        selectedIds,
+        uniqueCompanyIds,
+      },
+    },
+    { status: 403 }
+  );
+}
 
     const activeCompany =
       companies.find((c) => String(c._id) === String(user.activeCompanyId)) ||
