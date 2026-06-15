@@ -5,6 +5,16 @@ import { usePathname, useRouter } from "next/navigation";
 import Sidebar from "@/components/ui/Sidebar";
 import Navbar from "@/components/ui/Navbar";
 
+const PUBLIC_PATHS = [
+  "/",
+  "/login",
+  "/register",
+  "/forgot-password",
+  "/reset-password",
+  "/verify-otp",
+  "/subscription",
+];
+
 const MARKETING_ALLOWED_PATHS = [
   "/customers",
   "/customers/statement",
@@ -15,14 +25,28 @@ const MARKETING_ALLOWED_PATHS = [
   "/login",
 ];
 
+function isPublicPath(pathname) {
+  if (PUBLIC_PATHS.includes(pathname)) return true;
+  return false;
+}
+
 export default function LayoutClient({ children }) {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
   const router = useRouter();
 
+  const publicPage = isPublicPath(pathname);
+
   useEffect(() => {
+    if (publicPage) return;
+
     try {
       const user = JSON.parse(localStorage.getItem("user") || "{}");
+
+      if (!user?.id && !user?._id) {
+        router.replace("/login");
+        return;
+      }
 
       if (user?.role !== "marketing_officer") return;
 
@@ -34,9 +58,14 @@ export default function LayoutClient({ children }) {
         router.replace("/customers/statement?dueToday=true");
       }
     } catch (error) {
-      console.error("MARKETING_ROUTE_GUARD_ERROR:", error);
+      console.error("LAYOUT_ROUTE_GUARD_ERROR:", error);
+      router.replace("/login");
     }
-  }, [pathname, router]);
+  }, [pathname, router, publicPage]);
+
+  if (publicPage) {
+    return <>{children}</>;
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 overflow-x-hidden">
