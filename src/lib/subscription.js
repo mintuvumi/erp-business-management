@@ -7,12 +7,33 @@ function today() {
 export async function requireActiveSubscription(tenant) {
   const company = await Company.findById(tenant.companyId);
 
-  if (!company || !company.isActive) {
+  if (!company || !company.isActive || company.isDeleted) {
     return {
       ok: false,
       status: 403,
       message: "Company inactive",
       company: null,
+    };
+  }
+
+  if (company.paymentStatus === "paid") {
+    if (
+      company.serviceLocked ||
+      company.subscriptionStatus === "expired" ||
+      company.subscriptionStatus === "suspended"
+    ) {
+      company.serviceLocked = false;
+      company.subscriptionStatus = "active";
+      company.lockReason = "";
+      company.graceActive = false;
+      await company.save();
+    }
+
+    return {
+      ok: true,
+      status: 200,
+      message: "Active",
+      company,
     };
   }
 
@@ -38,6 +59,8 @@ export async function requireActiveSubscription(tenant) {
   ) {
     company.serviceLocked = true;
     company.subscriptionStatus = "expired";
+    company.paymentStatus = "unpaid";
+    company.graceActive = false;
     company.lockReason =
       "Grace period expired. Please pay your bill to continue service.";
     await company.save();

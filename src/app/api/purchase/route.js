@@ -7,6 +7,7 @@ import BankAccount from "@/models/BankAccount";
 import BankTransaction from "@/models/BankTransaction";
 import { getTenant } from "@/lib/tenant";
 import { requirePermission } from "@/lib/checkPermission";
+import { requireActiveSubscription } from "@/lib/subscription";
 
 function today() {
   return new Date().toISOString().slice(0, 10);
@@ -181,6 +182,19 @@ if (!tenant.companyId) {
   return NextResponse.json(
     { success: false, message: "Unauthorized" },
     { status: 401 }
+  );
+}
+
+const sub = await requireActiveSubscription(tenant);
+
+if (!sub.ok) {
+  return NextResponse.json(
+    {
+      success: false,
+      subscriptionExpired: true,
+      message: sub.message,
+    },
+    { status: sub.status }
   );
 }
 
@@ -415,6 +429,19 @@ export async function GET(req) {
       );
     }
 
+    const sub = await requireActiveSubscription(tenant);
+
+if (!sub.ok) {
+  return NextResponse.json(
+    {
+      success: false,
+      subscriptionExpired: true,
+      message: sub.message,
+    },
+    { status: sub.status }
+  );
+}
+
     const { searchParams } = new URL(req.url);
 
     const search = searchParams.get("search") || "";
@@ -512,6 +539,19 @@ export async function PATCH(req) {
         { status: 401 }
       );
     }
+
+    const sub = await requireActiveSubscription(tenant);
+
+if (!sub.ok) {
+  return NextResponse.json(
+    {
+      success: false,
+      subscriptionExpired: true,
+      message: sub.message,
+    },
+    { status: sub.status }
+  );
+}
 
     const body = await req.json();
 
