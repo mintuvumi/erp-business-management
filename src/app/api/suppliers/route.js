@@ -104,12 +104,21 @@ if (!sub.ok) {
       );
     }
 
-    const exists = await Supplier.findOne({
-      companyId: tenant.companyId,
-      name: body.name.trim(),
-      phone: body.phone || "",
-      status: "active",
-    });
+    const supplierName = body.name.trim();
+
+const exists = await Supplier.findOne({
+  companyId: tenant.companyId,
+  name: {
+    $regex: `^${supplierName.replace(
+      /[.*+?^${}()|[\]\\]/g,
+      "\\$&"
+    )}$`,
+    $options: "i",
+  },
+  phone: body.phone || "",
+  status: "active",
+});
+
 
     if (exists) {
       return NextResponse.json(

@@ -18,13 +18,19 @@ export default function PurchasePage() {
     qty: 1,
     price: 0,
     purchaseType: "stock",
+
+    supplierId: "",
     supplierName: "",
     supplierPhone: "",
     supplierAddress: "",
+
     supplierBillNo: "",
     supplierInvoiceNo: "",
+
     paymentFrom: "cash",
     paymentType: "cash",
+    bankId: "",
+
     paidAmount: 0,
     discount: 0,
     transportCost: 0,
@@ -40,14 +46,18 @@ export default function PurchasePage() {
   const [purchases, setPurchases] = useState([]);
   const [aiSearch, setAiSearch] = useState("");
 
-  const [suppliers, setSuppliers] = useState([]);
+  const [supplierSuggestions, setSupplierSuggestions] = useState([]);
   const [showSupplierDropdown, setShowSupplierDropdown] = useState(false);
+  const [supplierLoading, setSupplierLoading] = useState(false);
+
+  const [banks, setBanks] = useState([]);
 
   const [editOpen, setEditOpen] = useState(false);
   const [selectedPurchase, setSelectedPurchase] = useState(null);
 
   const qty = Number(form.qty || 0);
   const price = Number(form.price || 0);
+
   const subTotal = qty * price;
 
   const grandTotal =
@@ -56,38 +66,90 @@ export default function PurchasePage() {
     Number(form.transportCost || 0) +
     Number(form.otherCost || 0);
 
-  const dueAmount = Math.max(grandTotal - Number(form.paidAmount || 0), 0);
+  const paidAmount = Number(form.paidAmount || 0);
+  const dueAmount = Math.max(grandTotal - paidAmount, 0);
 
   const autoPaymentType =
-    Number(form.paidAmount || 0) <= 0
-      ? "credit"
-      : Number(form.paidAmount || 0) >= grandTotal
-      ? "cash"
-      : "partial";
+    paidAmount <= 0 ? "credit" : paidAmount >= grandTotal ? "cash" : "partial";
 
   const fetchPurchases = async () => {
     try {
       const query = new URLSearchParams();
       if (search) query.append("search", search);
 
-      const res = await fetch(`/api/purchase?${query.toString()}`);
+      const res = await fetch(`/api/purchase?${query.toString()}`, {
+        credentials: "include",
+      });
+
       const data = await res.json();
 
       if (data.success) setPurchases(data.data || []);
     } catch (error) {
-      console.error(error);
+      console.error("PURCHASE_FETCH_ERROR:", error);
     }
   };
 
-  const fetchSuppliers = async () => {
+  const fetchBanks = async () => {
     try {
-      const res = await fetch("/api/suppliers");
+      const res = await fetch("/api/bank", {
+        credentials: "include",
+      });
+
       const data = await res.json();
 
-      if (data.success) setSuppliers(data.data || []);
+      if (data.success) setBanks(data.data || []);
     } catch (error) {
-      console.error(error);
+      console.error("BANK_FETCH_ERROR:", error);
     }
+  };
+
+  const searchSuppliers = async (value) => {
+    setForm((prev) => ({
+      ...prev,
+      supplierName: value,
+      supplierId: "",
+    }));
+
+    if (!value || value.length < 2) {
+      setSupplierSuggestions([]);
+      setShowSupplierDropdown(false);
+      return;
+    }
+
+    try {
+      setSupplierLoading(true);
+
+      const res = await fetch(
+        `/api/suppliers?search=${encodeURIComponent(value)}`,
+        {
+          credentials: "include",
+        }
+      );
+
+      const data = await res.json();
+
+      if (data.success) {
+        setSupplierSuggestions(data.data || []);
+        setShowSupplierDropdown(true);
+      }
+    } catch (error) {
+      console.error("SUPPLIER_SEARCH_ERROR:", error);
+    } finally {
+      setSupplierLoading(false);
+    }
+  };
+
+  const selectSupplier = (supplier) => {
+    setForm((prev) => ({
+      ...prev,
+      supplierId: supplier._id || "",
+      supplierName: supplier.name || "",
+      supplierPhone: supplier.phone || "",
+      supplierAddress: supplier.address || "",
+    }));
+
+    setSupplierSuggestions([]);
+    setShowSupplierDropdown(false);
   };
 
   useEffect(() => {
@@ -95,36 +157,8 @@ export default function PurchasePage() {
   }, [search]);
 
   useEffect(() => {
-    fetchSuppliers();
+    fetchBanks();
   }, []);
-
-  const filteredSuppliers = suppliers.filter((supplier) =>
-    [supplier.name, supplier.phone, supplier.companyName]
-      .join(" ")
-      .toLowerCase()
-      .includes(form.supplierName.toLowerCase())
-  );
-
-  const selectSupplier = (supplier) => {
-    setForm((prev) => ({
-      ...prev,
-      supplierName: supplier.name || "",
-      supplierPhone: supplier.phone || "",
-      supplierAddress: supplier.address || "",
-    }));
-
-    setShowSupplierDropdown(false);
-  };
-
-  const openEditPurchase = (purchase) => {
-    setSelectedPurchase(purchase);
-    setEditOpen(true);
-  };
-
-  const closeEditPurchase = () => {
-    setEditOpen(false);
-    setSelectedPurchase(null);
-  };
 
   const applyAISearch = () => {
     const text = aiSearch.toLowerCase().trim();
@@ -142,6 +176,7 @@ export default function PurchasePage() {
       setForm((prev) => ({
         ...prev,
         paymentFrom: "cash",
+        bankId: "",
       }));
     }
 
@@ -175,22 +210,41 @@ export default function PurchasePage() {
       if (!form.supplierName.trim()) return alert("Supplier name required");
       if (qty <= 0) return alert("Valid quantity required");
       if (price <= 0) return alert("Valid price required");
+      if (grandTotal <= 0) return alert("Valid purchase total required");
+      if (paidAmount > grandTotal) {
+        return alert("Paid amount cannot exceed grand total");
+      }
+
+      if (form.paymentFrom === "bank" && paidAmount > 0 && !form.bankId) {
+        return alert("Please select bank account");
+      }
 
       setSaving(true);
       setSaved(false);
 
       const res = await fetch("/api/purchase", {
         method: "POST",
+        credentials: "include",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
           ...form,
+          items: [
+            {
+              itemName: form.itemName,
+              name: form.itemName,
+              qty,
+              price,
+              unit: "pcs",
+            },
+          ],
           total: subTotal,
           subTotal,
           grandTotal,
           dueAmount,
           paymentType: autoPaymentType,
+          paymentMethod: form.paymentFrom,
           date: new Date().toISOString().slice(0, 10),
         }),
       });
@@ -204,11 +258,11 @@ export default function PurchasePage() {
 
       setSaved(true);
       setForm(initialForm);
+      setSupplierSuggestions([]);
 
       fetchPurchases();
-      fetchSuppliers();
     } catch (error) {
-      console.error(error);
+      console.error("PURCHASE_SAVE_ERROR:", error);
       alert("Purchase save failed");
     } finally {
       setSaving(false);
@@ -300,39 +354,54 @@ Due: ৳ ${money(dueAmount)}`;
           />
 
           <div className="space-y-1 relative">
-            <p className="text-xs text-gray-500">Supplier Name</p>
+            <p className="text-xs text-gray-500">Supplier Name *</p>
 
             <input
               type="text"
               value={form.supplierName}
-              onChange={(e) => {
-                setForm({ ...form, supplierName: e.target.value });
-                setShowSupplierDropdown(true);
+              onChange={(e) => searchSuppliers(e.target.value)}
+              onFocus={() => {
+                if (supplierSuggestions.length > 0) {
+                  setShowSupplierDropdown(true);
+                }
               }}
-              onFocus={() => setShowSupplierDropdown(true)}
-              placeholder="Search supplier..."
+              placeholder="Search supplier name / phone / company"
               className="w-full border rounded-2xl px-3 py-3 outline-none text-sm focus:ring-2 focus:ring-blue-400"
             />
 
-            {showSupplierDropdown &&
-              form.supplierName &&
-              filteredSuppliers.length > 0 && (
-                <div className="absolute z-50 mt-1 w-full bg-white border rounded-2xl shadow-xl overflow-hidden max-h-64 overflow-y-auto">
-                  {filteredSuppliers.map((supplier) => (
-                    <button
-                      key={supplier._id}
-                      type="button"
-                      onClick={() => selectSupplier(supplier)}
-                      className="w-full text-left px-4 py-3 hover:bg-blue-50 border-b last:border-none"
-                    >
-                      <p className="font-medium">{supplier.name}</p>
-                      <p className="text-xs text-gray-500">
-                        {supplier.phone || "No phone"}
+            {supplierLoading && (
+              <p className="absolute right-3 top-9 text-xs text-blue-500">
+                Searching...
+              </p>
+            )}
+
+            {showSupplierDropdown && supplierSuggestions.length > 0 && (
+              <div className="absolute z-[9999] mt-1 w-full bg-white border rounded-2xl shadow-2xl overflow-hidden max-h-72 overflow-y-auto">
+                {supplierSuggestions.map((supplier) => (
+                  <button
+                    key={supplier._id}
+                    type="button"
+                    onClick={() => selectSupplier(supplier)}
+                    className="w-full text-left px-4 py-3 hover:bg-blue-50 border-b last:border-none"
+                  >
+                    <p className="font-semibold text-gray-800">
+                      {supplier.name}
+                    </p>
+
+                    <p className="text-xs text-gray-500">
+                      {supplier.phone || "No phone"}
+                      {supplier.companyName ? ` • ${supplier.companyName}` : ""}
+                    </p>
+
+                    {supplier.address && (
+                      <p className="text-xs text-gray-400 mt-1">
+                        {supplier.address}
                       </p>
-                    </button>
-                  ))}
-                </div>
-              )}
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           <Input
@@ -411,6 +480,7 @@ Due: ৳ ${money(dueAmount)}`;
             options={[
               { label: "Stock Purchase", value: "stock" },
               { label: "Direct Purchase", value: "direct" },
+              { label: "Raw Material", value: "raw_material" },
             ]}
             onChange={(v) => setForm({ ...form, purchaseType: v })}
           />
@@ -422,8 +492,31 @@ Due: ৳ ${money(dueAmount)}`;
               { label: "Cash", value: "cash" },
               { label: "Bank", value: "bank" },
             ]}
-            onChange={(v) => setForm({ ...form, paymentFrom: v })}
+            onChange={(v) =>
+              setForm({
+                ...form,
+                paymentFrom: v,
+                bankId: v === "bank" ? form.bankId : "",
+              })
+            }
           />
+
+          {form.paymentFrom === "bank" && (
+            <Select
+              label="Bank Account"
+              value={form.bankId}
+              options={[
+                { label: "Select Bank", value: "" },
+                ...banks.map((bank) => ({
+                  label: `${bank.bankName || bank.accountName || "Bank"} - ${
+                    bank.accountNo || bank.accountNumber || ""
+                  }`,
+                  value: bank._id,
+                })),
+              ]}
+              onChange={(v) => setForm({ ...form, bankId: v })}
+            />
+          )}
         </div>
 
         <div>
@@ -573,7 +666,10 @@ Due: ৳ ${money(dueAmount)}`;
 
                     <td className="p-4 text-center print:hidden">
                       <button
-                        onClick={() => openEditPurchase(item)}
+                        onClick={() => {
+                          setSelectedPurchase(item);
+                          setEditOpen(true);
+                        }}
                         className="inline-flex items-center gap-1 px-3 py-2 rounded-xl border hover:bg-blue-50 hover:text-blue-600"
                       >
                         <Pencil size={14} />
@@ -590,7 +686,10 @@ Due: ৳ ${money(dueAmount)}`;
 
       <EditPurchaseModal
         open={editOpen}
-        onClose={closeEditPurchase}
+        onClose={() => {
+          setEditOpen(false);
+          setSelectedPurchase(null);
+        }}
         purchase={selectedPurchase}
         onUpdated={fetchPurchases}
       />

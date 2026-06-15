@@ -7,6 +7,7 @@ import AdvanceSalary from "@/models/AdvanceSalary";
 import EmployeeLoan from "@/models/EmployeeLoan";
 import EmployeeLoanInstallment from "@/models/EmployeeLoanInstallment";
 import { getTenant } from "@/lib/tenant";
+import { requireActiveSubscription } from "@/lib/subscription";
 
 function getMonthRange(month) {
   const [year, m] = month.split("-").map(Number);
@@ -43,6 +44,19 @@ export async function POST(req) {
         { status: 401 }
       );
     }
+
+    const sub = await requireActiveSubscription(tenant);
+
+if (!sub.ok) {
+  return NextResponse.json(
+    {
+      success: false,
+      subscriptionExpired: true,
+      message: sub.message,
+    },
+    { status: sub.status }
+  );
+}
 
     const body = await req.json();
 

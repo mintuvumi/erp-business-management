@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import connectDB from "@/lib/db";
 import AccountCategory from "@/models/AccountCategory";
+import { getTenant } from "@/lib/tenant";
+import { requireActiveSubscription } from "@/lib/subscription";
 
 function makeSlug(text = "") {
   return text
@@ -14,10 +16,48 @@ function makeSlug(text = "") {
     .replace(/-+$/, "");
 }
 
+async function checkSubscription(req) {
+  const tenant = getTenant(req);
+
+  if (!tenant.companyId) {
+    return {
+      ok: false,
+      tenant,
+      response: NextResponse.json(
+        { success: false, message: "Unauthorized" },
+        { status: 401 }
+      ),
+    };
+  }
+
+  const sub = await requireActiveSubscription(tenant);
+
+  if (!sub.ok) {
+    return {
+      ok: false,
+      tenant,
+      response: NextResponse.json(
+        {
+          success: false,
+          subscriptionExpired: true,
+          message: sub.message,
+        },
+        { status: sub.status }
+      ),
+    };
+  }
+
+  return { ok: true, tenant };
+}
+
 export async function GET(req) {
   try {
     await connectDB();
 
+    const access = await checkSubscription(req);
+    if (!access.ok) return access.response;
+
+    const tenant = access.tenant;
     const { searchParams } = new URL(req.url);
 
     const search = searchParams.get("search") || "";
@@ -25,7 +65,10 @@ export async function GET(req) {
     const transactionType = searchParams.get("transactionType") || "";
     const direction = searchParams.get("direction") || "";
 
-    const query = { isActive: true };
+    const query = {
+      companyId: tenant.companyId,
+      isActive: true,
+    };
 
     if (type) query.type = type;
     if (transactionType) query.transactionType = transactionType;
@@ -64,6 +107,10 @@ export async function POST(req) {
   try {
     await connectDB();
 
+    const access = await checkSubscription(req);
+    if (!access.ok) return access.response;
+
+    const tenant = access.tenant;
     const body = await req.json();
 
     const name = body.name?.trim();
@@ -84,6 +131,7 @@ export async function POST(req) {
     const slug = body.slug ? makeSlug(body.slug) : makeSlug(name);
 
     const exists = await AccountCategory.findOne({
+      companyId: tenant.companyId,
       slug,
       type,
       isActive: true,
@@ -100,6 +148,10 @@ export async function POST(req) {
     }
 
     const category = await AccountCategory.create({
+      companyId: tenant.companyId,
+      createdByUserId: tenant.user?.id || null,
+      createdBy: tenant.user?.name || body.createdBy || "",
+
       name,
       slug,
       type,
@@ -111,7 +163,6 @@ export async function POST(req) {
       isSystem: false,
       isActive: true,
       sortOrder: body.sortOrder || 0,
-      createdBy: body.createdBy || "",
     });
 
     return NextResponse.json({
@@ -136,6 +187,10 @@ export async function PATCH(req) {
   try {
     await connectDB();
 
+    const access = await checkSubscription(req);
+    if (!access.ok) return access.response;
+
+    const tenant = access.tenant;
     const body = await req.json();
 
     if (!body._id) {
@@ -148,7 +203,10 @@ export async function PATCH(req) {
       );
     }
 
-    const category = await AccountCategory.findById(body._id);
+    const category = await AccountCategory.findOne({
+      _id: body._id,
+      companyId: tenant.companyId,
+    });
 
     if (!category) {
       return NextResponse.json(
@@ -172,6 +230,8 @@ export async function PATCH(req) {
 
     if (body.delete) {
       category.isActive = false;
+      category.updatedByUserId = tenant.user?.id || null;
+      category.updatedBy = tenant.user?.name || "";
       await category.save();
 
       return NextResponse.json({
@@ -195,7 +255,9 @@ export async function PATCH(req) {
     if (body.color) category.color = body.color;
     if (body.description !== undefined) category.description = body.description;
     if (body.sortOrder !== undefined) category.sortOrder = body.sortOrder;
-    if (body.updatedBy !== undefined) category.updatedBy = body.updatedBy;
+
+    category.updatedByUserId = tenant.user?.id || null;
+    category.updatedBy = tenant.user?.name || body.updatedBy || "";
 
     await category.save();
 

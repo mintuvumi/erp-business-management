@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import connectDB from "@/lib/db";
+import Cash from "@/models/Cash";
 import CashTransaction from "@/models/CashTransaction";
 import BankAccount from "@/models/BankAccount";
 import { getTenant } from "@/lib/tenant";
@@ -144,6 +145,56 @@ function transactionDTO(txn, runningBalance = 0) {
   };
 }
 
+async function getOrCreateCash(companyId) {
+  let cash = await Cash.findOne({ companyId });
+
+  if (!cash) {
+    cash = await Cash.create({
+      companyId,
+      openingBalance: 0,
+      currentBalance: 0,
+      balance: 0,
+      status: "active",
+    });
+  }
+
+  return cash;
+}
+
+async function syncCashBalanceFromTransactions(companyId) {
+  const cash = await getOrCreateCash(companyId);
+
+  const transactions = await CashTransaction.find({
+    companyId,
+    status: { $ne: "cancelled" },
+  })
+    .sort({ date: 1, createdAt: 1 })
+    .lean();
+
+  const openingBalance = money(cash.openingBalance);
+  let runningBalance = openingBalance;
+
+  for (const txn of transactions) {
+    runningBalance += txn.type === "in" ? money(txn.amount) : -money(txn.amount);
+  }
+
+  cash.currentBalance = runningBalance;
+  cash.balance = runningBalance;
+  await cash.save();
+
+  return {
+    cash,
+    transactions,
+    openingBalance,
+    totalIn: transactions
+      .filter((t) => t.type === "in")
+      .reduce((sum, t) => sum + money(t.amount), 0),
+    totalOut: transactions
+      .filter((t) => t.type === "out")
+      .reduce((sum, t) => sum + money(t.amount), 0),
+  };
+}
+
 export async function POST(req) {
   try {
     await connectDB();
@@ -159,16 +210,16 @@ export async function POST(req) {
 
     const sub = await requireActiveSubscription(tenant);
 
-if (!sub.ok) {
-  return NextResponse.json(
-    {
-      success: false,
-      subscriptionExpired: true,
-      message: sub.message,
-    },
-    { status: sub.status }
-  );
-}
+    if (!sub.ok) {
+      return NextResponse.json(
+        {
+          success: false,
+          subscriptionExpired: true,
+          message: sub.message,
+        },
+        { status: sub.status }
+      );
+    }
 
     try {
       await requirePermission(tenant, "accounts");
@@ -209,20 +260,8 @@ if (!sub.ok) {
       );
     }
 
-    const allTransactions = await CashTransaction.find({
-      companyId: tenant.companyId,
-      status: { $ne: "cancelled" },
-    }).lean();
-
-    const totalIn = allTransactions
-      .filter((t) => t.type === "in")
-      .reduce((sum, t) => sum + money(t.amount), 0);
-
-    const totalOut = allTransactions
-      .filter((t) => t.type === "out")
-      .reduce((sum, t) => sum + money(t.amount), 0);
-
-    const currentCashBalance = totalIn - totalOut;
+    const cash = await getOrCreateCash(tenant.companyId);
+    const currentCashBalance = money(cash.currentBalance || cash.balance || 0);
 
     if (body.type === "out" && currentCashBalance < amount) {
       return NextResponse.json(
@@ -234,6 +273,7 @@ if (!sub.ok) {
       );
     }
 
+    const balanceBefore = currentCashBalance;
     const balanceAfter =
       body.type === "in"
         ? currentCashBalance + amount
@@ -281,9 +321,14 @@ if (!sub.ok) {
       refType: body.refType || "manual",
       refId: body.refId || "",
 
+      balanceBefore,
       balanceAfter,
       status: "active",
     });
+
+    cash.currentBalance = balanceAfter;
+    cash.balance = balanceAfter;
+    await cash.save();
 
     return NextResponse.json(
       {
@@ -321,16 +366,16 @@ export async function GET(req) {
 
     const sub = await requireActiveSubscription(tenant);
 
-if (!sub.ok) {
-  return NextResponse.json(
-    {
-      success: false,
-      subscriptionExpired: true,
-      message: sub.message,
-    },
-    { status: sub.status }
-  );
-}
+    if (!sub.ok) {
+      return NextResponse.json(
+        {
+          success: false,
+          subscriptionExpired: true,
+          message: sub.message,
+        },
+        { status: sub.status }
+      );
+    }
 
     try {
       await requirePermission(tenant, "accounts");
@@ -348,32 +393,25 @@ if (!sub.ok) {
     const limit = Number(searchParams.get("limit") || 500);
     const query = buildQuery({ tenant, searchParams });
 
-    const [transactions, allTransactions, bankAccounts] = await Promise.all([
+    const [transactions, bankAccounts, cashSync] = await Promise.all([
       CashTransaction.find(query)
         .sort({ date: -1, createdAt: -1 })
         .limit(limit)
         .lean(),
 
-      CashTransaction.find({
-        companyId: tenant.companyId,
-        status: { $ne: "cancelled" },
-      }).lean(),
-
       BankAccount.find({
         companyId: tenant.companyId,
         status: "active",
       }).lean(),
+
+      syncCashBalanceFromTransactions(tenant.companyId),
     ]);
 
-    const totalIn = allTransactions
-      .filter((t) => t.type === "in")
-      .reduce((sum, t) => sum + money(t.amount), 0);
-
-    const totalOut = allTransactions
-      .filter((t) => t.type === "out")
-      .reduce((sum, t) => sum + money(t.amount), 0);
-
-    const cashInHand = totalIn - totalOut;
+    const allTransactions = cashSync.transactions;
+    const openingBalance = cashSync.openingBalance;
+    const totalIn = cashSync.totalIn;
+    const totalOut = cashSync.totalOut;
+    const cashInHand = money(cashSync.cash.currentBalance);
 
     const totalBankBalance = bankAccounts.reduce(
       (sum, b) => sum + money(b.currentBalance),
@@ -429,7 +467,7 @@ if (!sub.ok) {
       .filter((t) => t.type === "out" && t.category === "expense")
       .reduce((sum, t) => sum + money(t.amount), 0);
 
-    let runningBalance = 0;
+    let runningBalance = openingBalance;
 
     const statementRowsAsc = [...allTransactions]
       .sort(
@@ -500,6 +538,7 @@ if (!sub.ok) {
     return NextResponse.json({
       success: true,
       data: {
+        openingBalance,
         cashInHand,
         totalBankBalance,
         cashAndBankBalance,

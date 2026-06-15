@@ -5,6 +5,7 @@ import SalaryPayment from "@/models/SalaryPayment";
 import AdvanceSalary from "@/models/AdvanceSalary";
 import { getTenant } from "@/lib/tenant";
 import { requirePermission } from "@/lib/checkPermission";
+import { requireActiveSubscription } from "@/lib/subscription";
 
 async function checkEmployeeAccess(tenant) {
   try {
@@ -33,6 +34,19 @@ export async function POST(req) {
         { status: 401 }
       );
     }
+
+    const sub = await requireActiveSubscription(tenant);
+
+if (!sub.ok) {
+  return NextResponse.json(
+    {
+      success: false,
+      subscriptionExpired: true,
+      message: sub.message,
+    },
+    { status: sub.status }
+  );
+}
 
     const denied = await checkEmployeeAccess(tenant);
     if (denied) return denied;
@@ -140,6 +154,19 @@ export async function GET(req) {
         { status: 401 }
       );
     }
+
+    const sub = await requireActiveSubscription(tenant);
+
+if (!sub.ok) {
+  return NextResponse.json(
+    {
+      success: false,
+      subscriptionExpired: true,
+      message: sub.message,
+    },
+    { status: sub.status }
+  );
+}
 
     const denied = await checkEmployeeAccess(tenant);
     if (denied) return denied;

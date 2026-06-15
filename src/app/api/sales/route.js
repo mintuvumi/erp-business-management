@@ -3,15 +3,16 @@ import Sale from "@/models/Sale";
 import Stock from "@/models/Stock";
 import Customer from "@/models/Customer";
 import CompanySetting from "@/models/CompanySetting";
+import Cash from "@/models/Cash";
 import CashTransaction from "@/models/CashTransaction";
 import BankTransaction from "@/models/BankTransaction";
 import BankAccount from "@/models/BankAccount";
 import MarketingOfficer from "@/models/MarketingOfficer";
 import MarketingOfficerLedger from "@/models/MarketingOfficerLedger";
+import Notification from "@/models/Notification";
 import connectDB from "@/lib/db";
 import generateBillNo from "@/utils/generateBillNo";
 import { getTenant } from "@/lib/tenant";
-import Notification from "@/models/Notification";
 import { requireActiveSubscription } from "@/lib/subscription";
 
 function today() {
@@ -26,6 +27,10 @@ function toNumber(value) {
   return Number(value || 0) || 0;
 }
 
+function escapeRegex(value = "") {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function calculateTax({ salesAmount, vatPercent, aitPercent, amountType }) {
   const amount = toNumber(salesAmount);
   const vatRate = toNumber(vatPercent);
@@ -33,18 +38,20 @@ function calculateTax({ salesAmount, vatPercent, aitPercent, amountType }) {
 
   let baseSalesAmount = 0;
   let vatAmount = 0;
+  let invoiceTotal = 0;
 
   if (amountType === "inclusive") {
     baseSalesAmount = vatRate > 0 ? (amount * 100) / (100 + vatRate) : amount;
     vatAmount = amount - baseSalesAmount;
+    invoiceTotal = amount;
   } else {
     baseSalesAmount = amount;
     vatAmount = (baseSalesAmount * vatRate) / 100;
+    invoiceTotal = baseSalesAmount + vatAmount;
   }
 
   const aitAmount = (baseSalesAmount * aitRate) / 100;
-  const invoiceTotal = baseSalesAmount + vatAmount;
-  const netReceivable = baseSalesAmount - vatAmount - aitAmount;
+  const netReceivable = invoiceTotal - aitAmount;
 
   return {
     baseSalesAmount,
@@ -68,9 +75,11 @@ function getPaymentType({ paidAmount, targetAmount }) {
 }
 
 async function getCustomerPreviousDue(customerName, companyId) {
+  const safeName = escapeRegex(customerName);
+
   const sales = await Sale.find({
     companyId,
-    customerName: { $regex: `^${customerName}$`, $options: "i" },
+    customerName: { $regex: `^${safeName}$`, $options: "i" },
     status: { $ne: "cancelled" },
   });
 
@@ -82,10 +91,11 @@ async function getCustomerPreviousDue(customerName, companyId) {
 
 async function getOrCreateCustomer(body, tenant) {
   const customerName = cleanString(body.customerName);
+  const safeName = escapeRegex(customerName);
 
   let customer = await Customer.findOne({
     companyId: tenant.companyId,
-    name: { $regex: `^${customerName}$`, $options: "i" },
+    name: { $regex: `^${safeName}$`, $options: "i" },
   });
 
   if (!customer) {
@@ -132,17 +142,39 @@ async function addBankBalance({ bankId, amount, companyId }) {
     status: { $ne: "inactive" },
   });
 
-  if (!bank) {
-    throw new Error("Bank account not found");
-  }
+  if (!bank) throw new Error("Bank account not found");
 
   const balanceBefore = toNumber(bank.currentBalance);
   const balanceAfter = balanceBefore + toNumber(amount);
 
   bank.currentBalance = balanceAfter;
+  bank.balance = balanceAfter;
   await bank.save();
 
   return { bank, balanceBefore, balanceAfter };
+}
+
+async function addCashBalance({ amount, companyId }) {
+  if (toNumber(amount) <= 0) return null;
+
+  let cash = await Cash.findOne({ companyId });
+
+  if (!cash) {
+    cash = await Cash.create({
+      companyId,
+      currentBalance: 0,
+      balance: 0,
+    });
+  }
+
+  const balanceBefore = toNumber(cash.currentBalance || cash.balance);
+  const balanceAfter = balanceBefore + toNumber(amount);
+
+  cash.currentBalance = balanceAfter;
+  cash.balance = balanceAfter;
+  await cash.save();
+
+  return { cash, balanceBefore, balanceAfter };
 }
 
 function stockQueryForItem(item, tenant, name) {
@@ -179,30 +211,18 @@ async function buildSaleItems({ bodyItems, tenant }) {
     if (sourceType === "stock" || sourceType === "finished_goods") {
       stock = await Stock.findOne(stockQueryForItem(item, tenant, name));
 
-      if (!stock) {
-        throw new Error(`Stock not found for ${name}`);
-      }
+      if (!stock) throw new Error(`Stock not found for ${name}`);
+      if (toNumber(stock.qty) < qty) throw new Error(`Not enough stock for ${name}`);
 
-      if (toNumber(stock.qty) < qty) {
-        throw new Error(`Not enough stock for ${name}`);
-      }
-
-      if (
-        stock.productType === "finished_goods" ||
-        sourceType === "finished_goods"
-      ) {
+      if (stock.productType === "finished_goods" || sourceType === "finished_goods") {
         displayPurchasePrice = toNumber(
           stock.lastProductionCost || stock.avgProductionCost || stock.avgCost
         );
-
         profitCost = toNumber(
           stock.avgProductionCost || stock.lastProductionCost || stock.avgCost
         );
       } else {
-        displayPurchasePrice = toNumber(
-          stock.lastPurchasePrice || stock.avgCost
-        );
-
+        displayPurchasePrice = toNumber(stock.lastPurchasePrice || stock.avgCost);
         profitCost = toNumber(stock.avgCost || stock.lastPurchasePrice);
       }
     }
@@ -238,12 +258,9 @@ async function buildSaleItems({ bodyItems, tenant }) {
 
 async function reduceStockAfterSale({ items, tenant }) {
   for (const item of items) {
-    if (item.sourceType !== "stock" && item.sourceType !== "finished_goods") {
-      continue;
-    }
+    if (item.sourceType !== "stock" && item.sourceType !== "finished_goods") continue;
 
     const stock = await Stock.findOne(stockQueryForItem(item, tenant, item.name));
-
     if (!stock) continue;
 
     stock.qty = Math.max(toNumber(stock.qty) - toNumber(item.qty), 0);
@@ -306,9 +323,7 @@ function buildDueSchedule({
         body.totalInstallments ||
         installmentMonths
     ),
-    completedInstallments: toNumber(
-      body.dueSchedule?.completedInstallments
-    ),
+    completedInstallments: toNumber(body.dueSchedule?.completedInstallments),
     reminderNote:
       body.dueSchedule?.reminderNote ||
       body.reminderNote ||
@@ -317,6 +332,7 @@ function buildDueSchedule({
     isClosed: toNumber(dueAmount) <= 0,
   };
 }
+
 export async function POST(req) {
   try {
     await connectDB();
@@ -342,8 +358,6 @@ export async function POST(req) {
         { status: sub.status }
       );
     }
-
-    
 
     const body = await req.json();
 
@@ -387,7 +401,11 @@ export async function POST(req) {
     if (manualBillNo) {
       const exists = await Sale.findOne({
         companyId: tenant.companyId,
-        billNo: manualBillNo,
+        $or: [
+          { billNo: manualBillNo },
+          { manualBillNo },
+          { invoiceNo: manualBillNo },
+        ],
       });
 
       if (exists) {
@@ -428,7 +446,6 @@ export async function POST(req) {
 
     const subTotal = items.reduce((sum, i) => sum + toNumber(i.total), 0);
     const totalCost = items.reduce((sum, i) => sum + toNumber(i.costTotal), 0);
-
     const discount = toNumber(body.discount);
 
     if (discount < 0) {
@@ -443,7 +460,8 @@ export async function POST(req) {
 
     const afterDiscount = Math.max(subTotal - discount, 0);
     const amountType = body.amountType || "exclusive";
-    const salesAmount = toNumber(body.salesAmount) > 0 ? toNumber(body.salesAmount) : afterDiscount;
+    const salesAmount =
+      toNumber(body.salesAmount) > 0 ? toNumber(body.salesAmount) : afterDiscount;
 
     const vatPercent = toNumber(body.vatPercent);
     const aitPercent = toNumber(body.aitPercent);
@@ -487,12 +505,7 @@ export async function POST(req) {
     });
 
     const customer = await getOrCreateCustomer(body, tenant);
-
-    const previousDue = await getCustomerPreviousDue(
-      customerName,
-      tenant.companyId
-    );
-
+    const previousDue = await getCustomerPreviousDue(customerName, tenant.companyId);
     const totalDueAfterSale = previousDue + statementDueAmount;
 
     const creditApprovalRequired =
@@ -533,10 +546,7 @@ export async function POST(req) {
       }
     }
 
-    const count = await Sale.countDocuments({
-      companyId: tenant.companyId,
-    });
-
+    const count = await Sale.countDocuments({ companyId: tenant.companyId });
     const autoBillNo = generateBillNo(count);
     const billNo = manualBillNo || autoBillNo;
 
@@ -566,6 +576,7 @@ export async function POST(req) {
     });
 
     let bankInfo = null;
+    let cashInfo = null;
 
     if (paidAmount > 0 && body.paymentTo === "bank") {
       if (!body.bankId) {
@@ -577,6 +588,13 @@ export async function POST(req) {
 
       bankInfo = await addBankBalance({
         bankId: body.bankId,
+        amount: paidAmount,
+        companyId: tenant.companyId,
+      });
+    }
+
+    if (paidAmount > 0 && body.paymentTo !== "bank") {
+      cashInfo = await addCashBalance({
         amount: paidAmount,
         companyId: tenant.companyId,
       });
@@ -672,60 +690,46 @@ export async function POST(req) {
 
     await reduceStockAfterSale({ items, tenant });
 
-
     await MarketingOfficerLedger.create({
       companyId: tenant.companyId,
-
       marketingOfficerId: marketingOfficer._id,
       marketingOfficerName: marketingOfficer.name,
-
       date,
       type: "sale",
-
       referenceType: "sale",
       referenceId: sale._id,
       invoiceNo: billNo,
-
       customerId: customer?._id || null,
       customerName,
-
       totalSales: tax.invoiceTotal,
       cashSales: paidAmount,
       dueSales: statementDueAmount,
       collectionAmount: paidAmount,
       dueAmount: statementDueAmount,
       profitAmount: totalProfit,
-
       nextCollectionDate,
       collectionComment,
-
       note: body.note || "",
       createdByUserId: tenant.user?.id || null,
       createdBy: tenant.user?.name || "",
     });
 
     if (sale.nextCollectionDate && Number(sale.dueAmount || 0) > 0) {
-  await Notification.create({
-    companyId: tenant.companyId,
-
-    type: "warning",
-    title: "Customer Due Reminder",
-
-    message: `${sale.customerName} এর due collection date ${sale.nextCollectionDate}. Due ৳ ${Number(
-      sale.dueAmount || 0
-    ).toFixed(2)}`,
-
-    refType: "sale_due",
-    refId: sale._id,
-
-    path: "/customers/statement?dueToday=true",
-
-    read: false,
-
-    createdByUserId: tenant.user?.id || null,
-    createdBy: tenant.user?.name || "",
-  });
-}
+      await Notification.create({
+        companyId: tenant.companyId,
+        type: "warning",
+        title: "Customer Due Reminder",
+        message: `${sale.customerName} এর due collection date ${
+          sale.nextCollectionDate
+        }. Due ৳ ${Number(sale.dueAmount || 0).toFixed(2)}`,
+        refType: "sale_due",
+        refId: sale._id,
+        path: "/customers/statement?dueToday=true",
+        read: false,
+        createdByUserId: tenant.user?.id || null,
+        createdBy: tenant.user?.name || "",
+      });
+    }
 
     if (paidAmount > 0 && body.paymentTo === "bank") {
       await BankTransaction.create({
@@ -775,6 +779,10 @@ export async function POST(req) {
         category: paymentType === "cash" ? "cash_sale" : "due_collection",
         title: `Cash received from sale ${billNo}`,
         amount: paidAmount,
+
+        balanceBefore: cashInfo?.balanceBefore || 0,
+        balanceAfter: cashInfo?.balanceAfter || 0,
+
         date,
         note: body.note || "",
         refType: "sale",
@@ -836,16 +844,16 @@ export async function GET(req) {
 
     const sub = await requireActiveSubscription(tenant);
 
-if (!sub.ok) {
-  return NextResponse.json(
-    {
-      success: false,
-      subscriptionExpired: true,
-      message: sub.message,
-    },
-    { status: sub.status }
-  );
-}
+    if (!sub.ok) {
+      return NextResponse.json(
+        {
+          success: false,
+          subscriptionExpired: true,
+          message: sub.message,
+        },
+        { status: sub.status }
+      );
+    }
 
     const { searchParams } = new URL(req.url);
 
@@ -865,7 +873,7 @@ if (!sub.ok) {
     };
 
     if (search) {
-      const regex = { $regex: search, $options: "i" };
+      const regex = { $regex: escapeRegex(search), $options: "i" };
 
       query.$or = [
         { billNo: regex },

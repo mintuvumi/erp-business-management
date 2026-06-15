@@ -4,20 +4,20 @@ import Attendance from "@/models/Attendance";
 import Employee from "@/models/Employee";
 import { getTenant } from "@/lib/tenant";
 import { requirePermission } from "@/lib/checkPermission";
+import { requireActiveSubscription } from "@/lib/subscription";
 
 function getMonthRange(month) {
   const [year, m] = month.split("-").map(Number);
 
   const start = `${year}-${String(m).padStart(2, "0")}-01`;
-
   const lastDate = new Date(year, m, 0).getDate();
+
   const end = `${year}-${String(m).padStart(2, "0")}-${String(
     lastDate
   ).padStart(2, "0")}`;
 
   return { start, end, totalDays: lastDate };
 }
-
 
 export async function GET(req) {
   try {
@@ -32,6 +32,19 @@ export async function GET(req) {
       );
     }
 
+    const sub = await requireActiveSubscription(tenant);
+
+    if (!sub.ok) {
+      return NextResponse.json(
+        {
+          success: false,
+          subscriptionExpired: true,
+          message: sub.message,
+        },
+        { status: sub.status }
+      );
+    }
+
     try {
       await requirePermission(tenant, "attendance");
     } catch (error) {
@@ -40,8 +53,6 @@ export async function GET(req) {
         { status: 403 }
       );
     }
-
-
 
     const { searchParams } = new URL(req.url);
 
@@ -109,7 +120,8 @@ export async function GET(req) {
       const workedDays =
         presentDays + lateDays + leaveDays + halfDays * 0.5 + holidayDays;
 
-      const absentDays = Math.max(totalDays - workedDays - absentManual, 0) + absentManual;
+      const absentDays =
+        Math.max(totalDays - workedDays - absentManual, 0) + absentManual;
 
       const lateMinutes = onlyInRecords.reduce(
         (sum, r) => sum + Number(r.lateMinutes || 0),
@@ -123,7 +135,8 @@ export async function GET(req) {
 
       const basicSalary = Number(emp.basicSalary || 0);
       const perDaySalary = totalDays > 0 ? basicSalary / totalDays : 0;
-      const perHourOvertime = Number(emp.overtimeSalary || 0) || perDaySalary / 8;
+      const perHourOvertime =
+        Number(emp.overtimeSalary || 0) || perDaySalary / 8;
 
       const absentDeduction = absentDays * perDaySalary;
       const lateDeduction = Math.floor(lateMinutes / 60) * (perDaySalary / 8);

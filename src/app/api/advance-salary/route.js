@@ -7,6 +7,7 @@ import BankTransaction from "@/models/BankTransaction";
 import BankAccount from "@/models/BankAccount";
 import { getTenant } from "@/lib/tenant";
 import { requirePermission } from "@/lib/checkPermission";
+import { requireActiveSubscription } from "@/lib/subscription";
 
 function toNumber(value) {
   return Number(value || 0) || 0;
@@ -40,6 +41,19 @@ export async function GET(req) {
         { status: 401 }
       );
     }
+
+    const sub = await requireActiveSubscription(tenant);
+
+if (!sub.ok) {
+  return NextResponse.json(
+    {
+      success: false,
+      subscriptionExpired: true,
+      message: sub.message,
+    },
+    { status: sub.status }
+  );
+}
 
     const denied = await checkAccess(tenant);
     if (denied) return denied;
@@ -153,6 +167,19 @@ export async function POST(req) {
         { status: 401 }
       );
     }
+
+    const sub = await requireActiveSubscription(tenant);
+
+if (!sub.ok) {
+  return NextResponse.json(
+    {
+      success: false,
+      subscriptionExpired: true,
+      message: sub.message,
+    },
+    { status: sub.status }
+  );
+}
 
     const denied = await checkAccess(tenant);
     if (denied) return denied;

@@ -109,7 +109,11 @@ if (!sub.ok) {
 
     const exists = await Customer.findOne({
       companyId: tenant.companyId,
-      name: { $regex: `^${name}$`, $options: "i" },
+name: {
+  $regex: `^${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`,
+  $options: "i",
+},
+
       phone: body.phone || "",
       status: "active",
     });

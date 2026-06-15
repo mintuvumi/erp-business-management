@@ -17,47 +17,41 @@ const CashTransactionSchema = new mongoose.Schema(
     },
 
     category: {
-  type: String,
-  enum: [
-    // SALES
-    "cash_sale",
-    "due_collection",
-    "customer_collection",
-    "installment_collection",
+      type: String,
+      enum: [
+        "cash_sale",
+        "due_collection",
+        "customer_collection",
+        "installment_collection",
 
-    // INCOME
-    "other_income",
-    "refund_received",
+        "other_income",
+        "refund_received",
 
-    // BANK
-    "bank_withdraw",
-    "bank_deposit",
+        "bank_withdraw",
+        "bank_deposit",
 
-    // PURCHASE & EXPENSE
-    "cash_purchase",
-    "expense",
-    "supplier_payment",
-    "refund_paid",
+        "cash_purchase",
+        "expense",
+        "supplier_payment",
+        "refund_paid",
 
-    // HR & PAYROLL
-    "salary_payment",
-    "advance_salary",
-    "employee_loan",
-    "employee_bonus",
-    "employee_overtime",
+        "salary_payment",
+        "advance_salary",
+        "employee_loan",
+        "employee_bonus",
+        "employee_overtime",
 
-    // MARKETING OFFICER
-    "marketing_officer_expense",
-    "marketing_officer_salary",
-    "marketing_officer_commission",
+        "marketing_officer_expense",
+        "marketing_officer_salary",
+        "marketing_officer_commission",
 
-    // ADJUSTMENT
-    "opening_balance",
-    "closing_adjustment",
-  ],
-  required: true,
-  index: true,
-},
+        "opening_balance",
+        "closing_adjustment",
+      ],
+      required: true,
+      index: true,
+    },
+
     title: {
       type: String,
       required: true,
@@ -70,6 +64,11 @@ const CashTransactionSchema = new mongoose.Schema(
       required: true,
       default: 0,
       min: 0,
+    },
+
+    balanceBefore: {
+      type: Number,
+      default: 0,
     },
 
     balanceAfter: {
@@ -227,6 +226,18 @@ const CashTransactionSchema = new mongoose.Schema(
       index: true,
     },
 
+    transactionNo: {
+      type: String,
+      default: "",
+      trim: true,
+      index: true,
+    },
+
+    transactionDateTime: {
+      type: Date,
+      default: Date.now,
+    },
+
     cancelledAt: {
       type: Date,
       default: null,
@@ -290,6 +301,15 @@ CashTransactionSchema.pre("save", function () {
     this.voucherNo =
       "CV-" + Math.random().toString(36).substring(2, 8).toUpperCase();
   }
+
+  if (!this.transactionNo) {
+    this.transactionNo =
+      "CTX-" + Math.random().toString(36).substring(2, 10).toUpperCase();
+  }
+
+  if (!this.transactionDateTime) {
+    this.transactionDateTime = new Date();
+  }
 });
 
 CashTransactionSchema.index({ companyId: 1, date: -1 });
@@ -302,6 +322,7 @@ CashTransactionSchema.index({ companyId: 1, saleId: 1 });
 CashTransactionSchema.index({ companyId: 1, purchaseId: 1 });
 CashTransactionSchema.index({ companyId: 1, marketingOfficerId: 1 });
 CashTransactionSchema.index({ companyId: 1, voucherNo: 1 });
+CashTransactionSchema.index({ companyId: 1, transactionNo: 1 });
 
 export default mongoose.models.CashTransaction ||
   mongoose.model("CashTransaction", CashTransactionSchema);

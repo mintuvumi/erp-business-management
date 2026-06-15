@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import connectDB from "@/lib/db";
 import Purchase from "@/models/Purchase";
 import Stock from "@/models/Stock";
+import Cash from "@/models/Cash";
 import CashTransaction from "@/models/CashTransaction";
 import BankAccount from "@/models/BankAccount";
 import BankTransaction from "@/models/BankTransaction";
@@ -80,6 +81,31 @@ async function reduceBankBalance({ bankId, amount, companyId }) {
   return { bank, balanceBefore, balanceAfter };
 }
 
+async function reduceCashBalance({ amount, companyId }) {
+  if (Number(amount || 0) <= 0) return null;
+
+  const cash = await Cash.findOne({ companyId });
+
+  if (!cash) {
+    throw new Error("Cash account not found");
+  }
+
+  const balanceBefore = Number(cash.currentBalance || cash.balance || 0);
+
+  if (balanceBefore < Number(amount || 0)) {
+    throw new Error("Not enough cash balance");
+  }
+
+  const balanceAfter = balanceBefore - Number(amount || 0);
+
+  cash.currentBalance = balanceAfter;
+  cash.balance = balanceAfter;
+
+  await cash.save();
+
+  return { cash, balanceBefore, balanceAfter };
+}
+
 async function updateStockFromPurchase({
   items,
   purchase,
@@ -138,6 +164,7 @@ async function updateStockFromPurchase({
 
         createdByUserId: user?.id || null,
         createdBy: user?.name || "",
+        status: "active",
       });
     } else {
       const oldQty = Number(stock.qty || 0);
@@ -172,43 +199,85 @@ async function updateStockFromPurchase({
   }
 }
 
+async function restoreStockFromPurchase({ purchase, user }) {
+  if (
+    purchase.purchaseType !== "stock" &&
+    purchase.purchaseType !== "raw_material"
+  ) {
+    return;
+  }
+
+  const items = Array.isArray(purchase.items) ? purchase.items : [];
+
+  for (const item of items) {
+    const itemName = String(item.itemName || item.name || item.productName || "")
+      .trim();
+
+    const qty = Number(item.qty || item.quantity || 0);
+
+    if (!itemName || qty <= 0) continue;
+
+    const stock = await Stock.findOne({
+      companyId: purchase.companyId,
+      itemName,
+      status: "active",
+    });
+
+    if (!stock) continue;
+
+    const oldQty = Number(stock.qty || 0);
+    const newQty = Math.max(oldQty - qty, 0);
+
+    const cost = Number(stock.avgCost || stock.lastPurchasePrice || 0);
+
+    stock.qty = newQty;
+    stock.quantity = newQty;
+    stock.availableQty = Math.max(newQty - Number(stock.reservedQty || 0), 0);
+    stock.totalValue = newQty * cost;
+    stock.updatedByUserId = user?.id || null;
+    stock.updatedBy = user?.name || "";
+
+    await stock.save();
+  }
+}
+
 export async function POST(req) {
   try {
     await connectDB();
 
     const tenant = getTenant(req);
 
-if (!tenant.companyId) {
-  return NextResponse.json(
-    { success: false, message: "Unauthorized" },
-    { status: 401 }
-  );
-}
+    if (!tenant.companyId) {
+      return NextResponse.json(
+        { success: false, message: "Unauthorized" },
+        { status: 401 }
+      );
+    }
 
-const sub = await requireActiveSubscription(tenant);
+    const sub = await requireActiveSubscription(tenant);
 
-if (!sub.ok) {
-  return NextResponse.json(
-    {
-      success: false,
-      subscriptionExpired: true,
-      message: sub.message,
-    },
-    { status: sub.status }
-  );
-}
+    if (!sub.ok) {
+      return NextResponse.json(
+        {
+          success: false,
+          subscriptionExpired: true,
+          message: sub.message,
+        },
+        { status: sub.status }
+      );
+    }
 
-try {
-  await requirePermission(tenant, "purchase");
-} catch (error) {
-  return NextResponse.json(
-    {
-      success: false,
-      message: error.message || "Access denied",
-    },
-    { status: 403 }
-  );
-}
+    try {
+      await requirePermission(tenant, "purchase");
+    } catch (error) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: error.message || "Access denied",
+        },
+        { status: 403 }
+      );
+    }
 
     const body = await req.json();
 
@@ -270,6 +339,7 @@ try {
     const date = body.date || today();
 
     let bankInfo = null;
+    let cashInfo = null;
 
     if (paidAmount > 0 && body.paymentFrom === "bank") {
       bankInfo = await reduceBankBalance({
@@ -279,7 +349,15 @@ try {
       });
     }
 
+    if (paidAmount > 0 && body.paymentFrom !== "bank") {
+      cashInfo = await reduceCashBalance({
+        amount: paidAmount,
+        companyId: tenant.companyId,
+      });
+    }
+
     const totalQty = items.reduce((sum, item) => sum + Number(item.qty || 0), 0);
+
     const extraCostPerUnit =
       totalQty > 0 ? (transportCost + otherCost - discount) / totalQty : 0;
 
@@ -388,8 +466,13 @@ try {
         category: "cash_purchase",
         title: `Purchase payment - ${purchase.supplierName}`,
         amount: paidAmount,
+
+        balanceBefore: cashInfo?.balanceBefore || 0,
+        balanceAfter: cashInfo?.balanceAfter || 0,
+
         date,
         note: body.note || "",
+
         refType: "purchase",
         refId: purchase._id.toString(),
       });
@@ -431,16 +514,16 @@ export async function GET(req) {
 
     const sub = await requireActiveSubscription(tenant);
 
-if (!sub.ok) {
-  return NextResponse.json(
-    {
-      success: false,
-      subscriptionExpired: true,
-      message: sub.message,
-    },
-    { status: sub.status }
-  );
-}
+    if (!sub.ok) {
+      return NextResponse.json(
+        {
+          success: false,
+          subscriptionExpired: true,
+          message: sub.message,
+        },
+        { status: sub.status }
+      );
+    }
 
     const { searchParams } = new URL(req.url);
 
@@ -542,16 +625,16 @@ export async function PATCH(req) {
 
     const sub = await requireActiveSubscription(tenant);
 
-if (!sub.ok) {
-  return NextResponse.json(
-    {
-      success: false,
-      subscriptionExpired: true,
-      message: sub.message,
-    },
-    { status: sub.status }
-  );
-}
+    if (!sub.ok) {
+      return NextResponse.json(
+        {
+          success: false,
+          subscriptionExpired: true,
+          message: sub.message,
+        },
+        { status: sub.status }
+      );
+    }
 
     const body = await req.json();
 
@@ -575,10 +658,17 @@ if (!sub.ok) {
     }
 
     if (body.cancel === true) {
-      purchase.status = "cancelled";
-      purchase.updatedByUserId = tenant.user?.id || null;
-      purchase.updatedBy = tenant.user?.name || "";
-      await purchase.save();
+      if (purchase.status !== "cancelled") {
+        await restoreStockFromPurchase({
+          purchase,
+          user: tenant.user,
+        });
+
+        purchase.status = "cancelled";
+        purchase.updatedByUserId = tenant.user?.id || null;
+        purchase.updatedBy = tenant.user?.name || "";
+        await purchase.save();
+      }
 
       return NextResponse.json({
         success: true,
