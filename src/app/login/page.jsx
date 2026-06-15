@@ -23,9 +23,7 @@ export default function LoginPage() {
     }
 
     const user = localStorage.getItem("user");
-    if (user) {
-      window.location.href = "/dashboard";
-    }
+    if (user) window.location.href = "/dashboard";
   }, []);
 
   const clearOldERPData = () => {
@@ -51,14 +49,8 @@ export default function LoginPage() {
 
       const res = await axios.post(
         "/api/auth/login",
-        {
-          identifier: cleanIdentifier,
-          password,
-        },
-        {
-          withCredentials: true,
-          validateStatus: () => true,
-        }
+        { identifier: cleanIdentifier, password },
+        { withCredentials: true, validateStatus: () => true }
       );
 
       const data = res.data;
@@ -111,37 +103,39 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen relative overflow-hidden bg-gradient-to-br from-red-950 via-red-700 to-orange-500 flex items-center justify-center px-4">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.25),transparent_35%),radial-gradient(circle_at_bottom_right,rgba(0,0,0,0.25),transparent_40%)]" />
+    <div className="min-h-screen relative overflow-hidden bg-gradient-to-br from-blue-950 via-blue-700 to-sky-400 flex items-center justify-center px-4 py-8">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.28),transparent_34%),radial-gradient(circle_at_bottom_right,rgba(0,0,0,0.25),transparent_42%)]" />
 
       <div className="relative w-full max-w-5xl grid grid-cols-1 lg:grid-cols-2 bg-white/95 backdrop-blur-2xl rounded-[34px] overflow-hidden shadow-2xl border border-white/40">
-        <div className="hidden lg:flex flex-col justify-between p-10 bg-gradient-to-br from-red-700 to-red-950 text-white">
+        <div className="hidden lg:flex flex-col justify-between p-10 bg-gradient-to-br from-blue-700 via-blue-800 to-blue-950 text-white">
           <div>
-            <div className="flex items-center gap-3">
-              <div className="h-14 w-14 rounded-2xl bg-white/15 border border-white/20 flex items-center justify-center">
+            <div className="flex items-center gap-4">
+              <div className="h-24 w-24 rounded-full bg-white shadow-2xl flex items-center justify-center p-3">
                 <Image
-                  src="/logo/icon-1.png"
+                  src="/logo/logo-white.png"
                   alt="SeeERP"
-                  width={42}
-                  height={42}
+                  width={78}
+                  height={78}
                   className="object-contain"
                   priority
                 />
               </div>
 
               <div>
-                <h1 className="text-2xl font-black">SeeERP</h1>
-                <p className="text-white/75 text-sm">
+                <h1 className="text-4xl font-black leading-none">
+                  See<span className="text-sky-300">ERP</span>
+                </h1>
+                <p className="text-white/85 text-base mt-2">
                   Business Management Software
                 </p>
               </div>
             </div>
 
-            <div className="mt-16">
+            <div className="mt-14">
               <h2 className="text-4xl font-black leading-tight">
                 Manage your business smarter, faster and safer.
               </h2>
-              <p className="mt-5 text-white/80 leading-7">
+              <p className="mt-5 text-white/85 leading-7">
                 Sales, purchase, stock, accounts, HR, payroll and subscription
                 control in one secure ERP platform.
               </p>
@@ -165,17 +159,24 @@ export default function LoginPage() {
         </div>
 
         <div className="p-6 sm:p-10">
-          <div className="lg:hidden flex justify-center mb-6">
-            <div className="h-20 w-20 rounded-3xl bg-red-700 flex items-center justify-center shadow-lg">
+          <div className="lg:hidden flex flex-col items-center mb-7">
+            <div className="h-28 w-28 rounded-full bg-white shadow-2xl border border-blue-100 flex items-center justify-center p-3">
               <Image
                 src="/logo/logo-white.png"
                 alt="SeeERP"
-                width={62}
-                height={62}
+                width={92}
+                height={92}
                 className="object-contain"
                 priority
               />
             </div>
+
+            <h1 className="mt-4 text-4xl font-black text-gray-900 leading-none">
+              See<span className="text-blue-600">ERP</span>
+            </h1>
+            <p className="mt-2 text-sm font-medium text-gray-500">
+              Business Management Software
+            </p>
           </div>
 
           <div className="text-center mb-8">
@@ -192,7 +193,7 @@ export default function LoginPage() {
             name="erp_identifier"
             placeholder="Email or Phone"
             value={identifier}
-            className="w-full mb-4 p-4 rounded-2xl border outline-none focus:ring-2 focus:ring-red-500"
+            className="w-full mb-4 p-4 rounded-2xl border bg-blue-50/70 outline-none focus:ring-2 focus:ring-blue-500"
             onChange={(e) => setIdentifier(e.target.value)}
           />
 
@@ -203,7 +204,7 @@ export default function LoginPage() {
               type={showPassword ? "text" : "password"}
               placeholder="Password"
               value={password}
-              className="w-full p-4 pr-16 rounded-2xl border outline-none focus:ring-2 focus:ring-red-500"
+              className="w-full p-4 pr-20 rounded-2xl border bg-blue-50/70 outline-none focus:ring-2 focus:ring-blue-500"
               onChange={(e) => setPassword(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !loading) handleLogin();
@@ -213,7 +214,7 @@ export default function LoginPage() {
             <button
               type="button"
               onClick={() => setShowPassword(!showPassword)}
-              className="absolute right-4 top-1/2 -translate-y-1/2 text-sm font-semibold text-red-600"
+              className="absolute right-3 top-1/2 -translate-y-1/2 h-11 min-w-14 px-3 rounded-xl bg-white shadow-sm border text-sm font-bold text-blue-600 hover:bg-blue-50"
             >
               {showPassword ? "Hide" : "Show"}
             </button>
@@ -225,6 +226,7 @@ export default function LoginPage() {
                 type="checkbox"
                 checked={rememberMe}
                 onChange={(e) => setRememberMe(e.target.checked)}
+                className="accent-blue-600"
               />
               Remember email/phone
             </label>
@@ -232,7 +234,7 @@ export default function LoginPage() {
             <button
               type="button"
               onClick={() => (window.location.href = "/forgot-password")}
-              className="text-red-600 font-semibold"
+              className="text-blue-600 font-semibold"
             >
               Forgot Password?
             </button>
@@ -241,7 +243,7 @@ export default function LoginPage() {
           <button
             onClick={handleLogin}
             disabled={loading}
-            className="w-full bg-red-700 hover:bg-red-800 text-white py-4 rounded-2xl disabled:opacity-60 font-bold transition"
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-2xl disabled:opacity-60 font-bold transition shadow-lg shadow-blue-200"
           >
             {loading ? "Logging in..." : "Login"}
           </button>
@@ -261,7 +263,7 @@ export default function LoginPage() {
               onClick={() => {
                 window.location.href = "/register";
               }}
-              className="text-red-600 font-bold"
+              className="text-blue-600 font-bold"
             >
               Register now
             </button>
