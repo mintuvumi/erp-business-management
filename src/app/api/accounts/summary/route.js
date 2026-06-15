@@ -9,6 +9,7 @@ import Loan from "@/models/Loan";
 import AccountTransaction from "@/models/AccountTransaction";
 
 import { getTenant } from "@/lib/tenant";
+import { requireActiveSubscription } from "@/lib/subscription";
 
 export async function GET(req) {
   try {
@@ -25,6 +26,19 @@ export async function GET(req) {
         { status: 401 }
       );
     }
+
+    const sub = await requireActiveSubscription(tenant);
+
+if (!sub.ok) {
+  return NextResponse.json(
+    {
+      success: false,
+      subscriptionExpired: true,
+      message: sub.message,
+    },
+    { status: sub.status }
+  );
+}
 
     const companyFilter = {
       companyId: tenant.companyId,

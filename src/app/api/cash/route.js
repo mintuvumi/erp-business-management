@@ -4,6 +4,7 @@ import CashTransaction from "@/models/CashTransaction";
 import BankAccount from "@/models/BankAccount";
 import { getTenant } from "@/lib/tenant";
 import { requirePermission } from "@/lib/checkPermission";
+import { requireActiveSubscription } from "@/lib/subscription";
 
 function today() {
   return new Date().toISOString().slice(0, 10);
@@ -156,6 +157,19 @@ export async function POST(req) {
       );
     }
 
+    const sub = await requireActiveSubscription(tenant);
+
+if (!sub.ok) {
+  return NextResponse.json(
+    {
+      success: false,
+      subscriptionExpired: true,
+      message: sub.message,
+    },
+    { status: sub.status }
+  );
+}
+
     try {
       await requirePermission(tenant, "accounts");
     } catch (error) {
@@ -304,6 +318,19 @@ export async function GET(req) {
         { status: 401 }
       );
     }
+
+    const sub = await requireActiveSubscription(tenant);
+
+if (!sub.ok) {
+  return NextResponse.json(
+    {
+      success: false,
+      subscriptionExpired: true,
+      message: sub.message,
+    },
+    { status: sub.status }
+  );
+}
 
     try {
       await requirePermission(tenant, "accounts");

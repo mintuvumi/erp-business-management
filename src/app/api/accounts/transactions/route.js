@@ -6,6 +6,7 @@ import AccountTransaction from "@/models/AccountTransaction";
 import AccountCategory from "@/models/AccountCategory";
 import BankAccount from "@/models/BankAccount";
 import { getTenant } from "@/lib/tenant";
+import { requireActiveSubscription } from "@/lib/subscription";
 
 function isValidAmount(amount) {
   return Number(amount) > 0;
@@ -115,6 +116,20 @@ export async function GET(req) {
       );
     }
 
+    const sub = await requireActiveSubscription(tenant);
+
+if (!sub.ok) {
+  return NextResponse.json(
+    {
+      success: false,
+      subscriptionExpired: true,
+      message: sub.message,
+    },
+    { status: sub.status }
+  );
+}
+
+
     const { searchParams } = new URL(req.url);
 
     const search = searchParams.get("search") || "";
@@ -196,6 +211,19 @@ export async function POST(req) {
         { status: 401 }
       );
     }
+
+    const sub = await requireActiveSubscription(tenant);
+
+if (!sub.ok) {
+  return NextResponse.json(
+    {
+      success: false,
+      subscriptionExpired: true,
+      message: sub.message,
+    },
+    { status: sub.status }
+  );
+}
 
     const body = await req.json();
 
@@ -599,6 +627,19 @@ export async function PATCH(req) {
         { status: 401 }
       );
     }
+
+    const sub = await requireActiveSubscription(tenant);
+
+if (!sub.ok) {
+  return NextResponse.json(
+    {
+      success: false,
+      subscriptionExpired: true,
+      message: sub.message,
+    },
+    { status: sub.status }
+  );
+}
 
     const body = await req.json();
 
