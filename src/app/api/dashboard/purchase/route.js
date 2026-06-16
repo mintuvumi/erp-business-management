@@ -2,8 +2,6 @@ import { NextResponse } from "next/server";
 import connectDB from "@/lib/db";
 import Purchase from "@/models/Purchase";
 import User from "@/models/User";
-import Supplier from "@/models/Supplier";
-import BankAccount from "@/models/BankAccount";
 import { getTenant } from "@/lib/tenant";
 import { requirePermission } from "@/lib/checkPermission";
 
@@ -12,8 +10,13 @@ function normalizeDate(date) {
   return String(date).slice(0, 10);
 }
 
+function escapeRegex(value = "") {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function isSameMonth(dateString, now = new Date()) {
   if (!dateString) return false;
+
   const date = new Date(dateString);
 
   return (
@@ -24,6 +27,7 @@ function isSameMonth(dateString, now = new Date()) {
 
 function isSameYear(dateString, now = new Date()) {
   if (!dateString) return false;
+
   const date = new Date(dateString);
   return date.getFullYear() === now.getFullYear();
 }
@@ -109,7 +113,7 @@ export async function GET(req) {
 
     const { searchParams } = new URL(req.url);
 
-    const search = searchParams.get("search") || "";
+    const search = String(searchParams.get("search") || "").trim();
     const date = searchParams.get("date") || "";
     const fromDate = searchParams.get("fromDate") || "";
     const toDate = searchParams.get("toDate") || "";
@@ -126,7 +130,7 @@ export async function GET(req) {
     };
 
     if (search) {
-      const regex = { $regex: search, $options: "i" };
+      const regex = { $regex: escapeRegex(search), $options: "i" };
 
       query.$or = [
         { purchaseNo: regex },

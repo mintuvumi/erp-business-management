@@ -1,133 +1,177 @@
-import React, { useEffect, useState } from "react";
+"use client";
+
+import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
-import { useCompany } from "../context/CompanyContext";
+import { RefreshCcw, Printer, Download, Share2 } from "lucide-react";
+
+function money(value) {
+  return Number(value || 0).toFixed(2);
+}
 
 const Financial = () => {
-  const { activeCompany } = useCompany();
-
   const [isClient, setIsClient] = useState(false);
-
-  const [sales, setSales] = useState([]);
-  const [expenses, setExpenses] = useState([]);
-  const [banks, setBanks] = useState([]);
+  const [data, setData] = useState({});
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     setIsClient(true);
   }, []);
 
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+
+      const res = await fetch("/api/financial-position", {
+        credentials: "include",
+        cache: "no-store",
+      });
+
+      const json = await res.json();
+
+      if (!res.ok || !json.success) {
+        throw new Error(json.message || "Financial position load failed");
+      }
+
+      setData(json.data || {});
+    } catch (error) {
+      console.error(error);
+      alert(error.message || "Financial position load failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    if (!isClient || !activeCompany) return;
+    if (isClient) fetchData();
+  }, [isClient]);
 
-    const savedSales =
-      JSON.parse(localStorage.getItem(`sales_${activeCompany.id}`)) || [];
+  if (!isClient) return null;
 
-    const savedExpenses =
-      JSON.parse(localStorage.getItem(`expenses_${activeCompany.id}`)) || [];
-
-    const savedBanks =
-      JSON.parse(localStorage.getItem(`banks_${activeCompany.id}`)) || [];
-
-    setSales(savedSales);
-    setExpenses(savedExpenses);
-    setBanks(savedBanks);
-  }, [isClient, activeCompany]);
-
-  if (!isClient) {
-    return null;
-  }
-
-  if (!activeCompany) {
-    return <h1 className="p-6">Please select a company first</h1>;
-  }
-
-  const totalSales = sales.reduce((sum, s) => sum + s.total, 0);
-  const totalPaid = sales.reduce((sum, s) => sum + s.paid, 0);
-  const totalDue = sales.reduce((sum, s) => sum + s.due, 0);
-
-  const totalExpense = expenses.reduce((sum, e) => sum + e.amount, 0);
-  const bankTotal = banks.reduce((sum, b) => sum + b.balance, 0);
-
-  const cash = sales
-    .filter((s) => s.paymentMethod === "cash")
-    .reduce((sum, s) => sum + s.paid, 0);
-
-  const bank =
-    bankTotal +
-    sales
-      .filter((s) => s.paymentMethod === "bank")
-      .reduce((sum, s) => sum + s.paid, 0);
-
-  const stock = 50000;
-  const payable = 0;
-
-  const assets = cash + bank + stock + totalDue;
-  const liabilities = payable + totalExpense;
-
-  const financialPosition = assets - liabilities;
+  const totalAsset = Number(data.totalAsset || 0);
+  const totalLiability = Number(data.totalLiability || 0);
+  const netFinancialPosition = Number(data.netFinancialPosition || 0);
 
   return (
     <div className="p-6 bg-[#f5f7fb] min-h-screen">
-      <h1 className="text-2xl font-bold mb-6 text-gray-700">
-        Financial Position ({activeCompany.name})
-      </h1>
+      <div className="bg-white rounded-[28px] border shadow-sm overflow-hidden">
+        <div className="p-6 border-b flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-800">
+              Financial Position
+            </h1>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <div className="bg-white p-4 rounded-xl shadow">
-          <p className="text-sm text-gray-500">Cash</p>
-          <h2 className="font-bold text-lg">৳ {cash}</h2>
+            <p className="text-sm text-gray-500 mt-1">
+              {data.companyName || "Company Name"} •{" "}
+              {data.companyAddress || "Company Address"} •{" "}
+              {data.companyPhone || "Phone Number"}
+            </p>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={fetchData}
+              className="px-4 py-2 rounded-xl border flex items-center gap-2 hover:bg-gray-50"
+            >
+              <RefreshCcw
+                size={16}
+                className={loading ? "animate-spin" : ""}
+              />
+              Refresh
+            </button>
+
+            <button
+              onClick={() => window.print()}
+              className="px-4 py-2 rounded-xl border flex items-center gap-2 hover:bg-gray-50"
+            >
+              <Printer size={16} />
+              Print
+            </button>
+
+            <button className="px-4 py-2 rounded-xl border flex items-center gap-2 hover:bg-gray-50">
+              <Download size={16} />
+              PDF
+            </button>
+
+            <button className="px-4 py-2 rounded-xl border flex items-center gap-2 hover:bg-gray-50">
+              <Share2 size={16} />
+              Share
+            </button>
+          </div>
         </div>
 
-        <div className="bg-white p-4 rounded-xl shadow">
-          <p className="text-sm text-gray-500">Bank</p>
-          <h2 className="font-bold text-lg">৳ {bank}</h2>
+        <div className="p-6 space-y-5">
+          <div
+            className={`rounded-[28px] p-5 border ${
+              netFinancialPosition >= 0
+                ? "bg-blue-50 text-blue-700 border-blue-100"
+                : "bg-red-50 text-red-700 border-red-100"
+            }`}
+          >
+            <h2 className="text-lg font-bold">
+              {data.message ||
+                "Assets থেকে liabilities বাদ দিয়ে company position হিসাব করা হয়েছে।"}
+            </h2>
+
+            <p className="text-sm mt-2">
+              Account Receivable + Stock + Cash + Bank = Total Asset. Supplier
+              Payable + Loan = Total Liability.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <Card title="Account Receivable" value={data.totalAccountReceivable} />
+            <Card title="Stock Value" value={data.totalStockValue} />
+            <Card title="Cash In Hand" value={data.cashInHand} />
+            <Card title="Bank Balance" value={data.totalBankBalance} />
+
+            <Card title="Total Asset" value={totalAsset} highlight />
+            <Card title="Account Payable" value={data.totalAccountPayable} danger />
+            <Card title="Bank + Personal Loan" value={data.totalLoan} danger />
+            <Card title="Total Liability" value={totalLiability} danger />
+          </div>
+
+          <div
+            className={`rounded-[30px] p-7 text-center ${
+              netFinancialPosition >= 0
+                ? "bg-blue-500 text-white"
+                : "bg-red-500 text-white"
+            }`}
+          >
+            <p className="text-sm opacity-90">Net Financial Position</p>
+
+            <h2 className="text-4xl font-bold mt-3">
+              ৳ {money(netFinancialPosition)}
+            </h2>
+
+            <p className="text-sm opacity-90 mt-2">
+              {netFinancialPosition >= 0 ? "Positive Position" : "Negative Position"}
+            </p>
+          </div>
         </div>
-
-        <div className="bg-white p-4 rounded-xl shadow">
-          <p className="text-sm text-gray-500">Stock Value</p>
-          <h2 className="font-bold text-lg">৳ {stock}</h2>
-        </div>
-
-        <div className="bg-white p-4 rounded-xl shadow">
-          <p className="text-sm text-gray-500">Due Receivable</p>
-          <h2 className="font-bold text-lg text-red-500">৳ {totalDue}</h2>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
-        <div className="bg-white p-4 rounded-xl shadow">
-          <p className="text-sm text-gray-500">Total Sales</p>
-          <h2 className="font-bold text-blue-600">৳ {totalSales}</h2>
-        </div>
-
-        <div className="bg-white p-4 rounded-xl shadow">
-          <p className="text-sm text-gray-500">Total Expense</p>
-          <h2 className="font-bold text-red-500">৳ {totalExpense}</h2>
-        </div>
-
-        <div className="bg-white p-4 rounded-xl shadow">
-          <p className="text-sm text-gray-500">Received</p>
-          <h2 className="font-bold text-green-600">৳ {totalPaid}</h2>
-        </div>
-      </div>
-
-      <div className="bg-white p-6 rounded-2xl shadow text-center">
-        <h2 className="text-lg text-gray-500">Total Financial Position</h2>
-
-        <p
-          className={`text-3xl font-bold mt-2 ${
-            financialPosition >= 0 ? "text-green-600" : "text-red-500"
-          }`}
-        >
-          ৳ {financialPosition}
-        </p>
-
-        <p className="text-sm text-gray-400 mt-2">
-          {financialPosition >= 0 ? "Profit" : "Loss"}
-        </p>
       </div>
     </div>
   );
 };
+
+function Card({ title, value, highlight, danger }) {
+  return (
+    <div
+      className={`rounded-2xl border p-4 shadow-sm ${
+        highlight
+          ? "bg-blue-500 text-white"
+          : danger
+          ? "bg-red-50 text-red-600"
+          : "bg-white"
+      }`}
+    >
+      <p className={`text-sm ${highlight ? "text-blue-50" : "text-gray-500"}`}>
+        {title}
+      </p>
+
+      <h2 className="font-bold text-lg mt-3">৳ {money(value)}</h2>
+    </div>
+  );
+}
 
 export default dynamic(() => Promise.resolve(Financial), {
   ssr: false,

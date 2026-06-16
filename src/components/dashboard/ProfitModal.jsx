@@ -17,6 +17,7 @@ export default function ProfitModal({ open, onClose }) {
   const [data, setData] = useState({});
   const [owners, setOwners] = useState([]);
   const [date, setDate] = useState("");
+  const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(false);
 
   const [newOwner, setNewOwner] = useState({
@@ -30,14 +31,22 @@ export default function ProfitModal({ open, onClose }) {
 
       const params = new URLSearchParams();
       if (date) params.set("date", date);
+      if (search.trim()) params.set("search", search.trim());
 
-      const res = await fetch(`/api/dashboard/profit?${params.toString()}`);
+      const res = await fetch(`/api/dashboard/profit?${params.toString()}`, {
+        cache: "no-store",
+      });
+
       const json = await res.json();
 
-      if (json.success) setData(json.data);
+      if (!res.ok || !json.success) {
+        throw new Error(json.message || "Profit data load failed");
+      }
+
+      setData(json.data || {});
     } catch (error) {
       console.error(error);
-      alert("Profit data load failed");
+      alert(error.message || "Profit data load failed");
     } finally {
       setLoading(false);
     }
@@ -45,7 +54,7 @@ export default function ProfitModal({ open, onClose }) {
 
   const fetchOwners = async () => {
     try {
-      const res = await fetch("/api/owners");
+      const res = await fetch("/api/owners", { cache: "no-store" });
       const json = await res.json();
 
       if (json.success) setOwners(json.data || []);
@@ -150,7 +159,9 @@ export default function ProfitModal({ open, onClose }) {
           <div>
             <h2 className="text-xl md:text-2xl font-bold">Profit Analysis</h2>
             <p className="text-sm text-gray-500 mt-1">
-              Company Name • Company Address • Phone Number
+              {data.companyName || "Company Name"} •{" "}
+              {data.companyAddress || "Company Address"} •{" "}
+              {data.companyPhone || "Phone Number"}
             </p>
           </div>
 
@@ -190,7 +201,12 @@ export default function ProfitModal({ open, onClose }) {
             <div className="flex items-center gap-2 border rounded-2xl px-4 py-3 bg-white shadow-sm">
               <Search size={18} className="text-gray-400" />
               <input
-                placeholder="Search profit statement..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") fetchProfit();
+                }}
+                placeholder="Search product, customer, bill no, officer..."
                 className="w-full outline-none text-sm bg-transparent"
               />
             </div>
@@ -220,15 +236,15 @@ export default function ProfitModal({ open, onClose }) {
             <ProfitCard title="Net Profit" value={data.netProfit} highlight />
             <ProfitCard title="Sales Profit" value={data.salesProfit} />
             <ProfitCard title="Total Expense" value={data.totalExpense} danger />
+            <ProfitCard title="Monthly Expense" value={data.monthlyExpense} danger />
+            <ProfitCard title="Yearly Expense" value={data.yearlyExpense} danger />
+            <ProfitCard title="Gross Sales" value={data.grossSales} />
+            <ProfitCard title="Total Cost" value={data.totalCost} danger />
+            <ProfitCard title="Net Loss" value={data.netLoss} danger />
             <ProfitCard
-              title="Monthly Expense"
-              value={data.monthlyExpense}
-              danger
-            />
-            <ProfitCard
-              title="Yearly Expense"
-              value={data.yearlyExpense}
-              danger
+              title="Profit Margin"
+              value={Number(data.profitMargin || 0)}
+              suffix="%"
             />
           </div>
 
@@ -313,19 +329,14 @@ export default function ProfitModal({ open, onClose }) {
                         (netProfit * Number(owner.sharePercent || 0)) / 100;
 
                       return (
-                        <tr
-                          key={owner._id}
-                          className="border-t hover:bg-blue-50/40"
-                        >
+                        <tr key={owner._id} className="border-t hover:bg-blue-50/40">
                           <td className="p-3 font-medium">{owner.name}</td>
                           <td className="p-3 text-right">
                             {Number(owner.sharePercent || 0).toFixed(2)}%
                           </td>
                           <td
                             className={`p-3 text-right font-bold ${
-                              shareAmount >= 0
-                                ? "text-green-600"
-                                : "text-red-500"
+                              shareAmount >= 0 ? "text-green-600" : "text-red-500"
                             }`}
                           >
                             ৳ {money(shareAmount)}
@@ -355,31 +366,24 @@ export default function ProfitModal({ open, onClose }) {
                     <th className="p-3 text-right">Qty</th>
                     <th className="p-3 text-right">Sales</th>
                     <th className="p-3 text-right">Cost</th>
-                    <th className="p-3 text-right">Profit</th>
+                    <th className="p-3 text-right">Profit / Loss</th>
                   </tr>
                 </thead>
 
                 <tbody>
-                  {data.productWiseProfit?.length === 0 ? (
+                  {!data.productWiseProfit?.length ? (
                     <tr>
                       <td colSpan="5" className="p-5 text-center text-gray-500">
                         No profit data found
                       </td>
                     </tr>
                   ) : (
-                    data.productWiseProfit?.map((item) => (
-                      <tr
-                        key={item.name}
-                        className="border-t hover:bg-blue-50/40"
-                      >
+                    data.productWiseProfit.map((item) => (
+                      <tr key={item.name} className="border-t hover:bg-blue-50/40">
                         <td className="p-3">{item.name}</td>
                         <td className="p-3 text-right">{item.qty}</td>
-                        <td className="p-3 text-right">
-                          ৳ {money(item.sales)}
-                        </td>
-                        <td className="p-3 text-right">
-                          ৳ {money(item.cost)}
-                        </td>
+                        <td className="p-3 text-right">৳ {money(item.sales)}</td>
+                        <td className="p-3 text-right">৳ {money(item.cost)}</td>
                         <td
                           className={`p-3 text-right font-bold ${
                             Number(item.profit) >= 0
@@ -388,6 +392,45 @@ export default function ProfitModal({ open, onClose }) {
                           }`}
                         >
                           ৳ {money(item.profit)}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className="bg-white border rounded-3xl overflow-hidden">
+            <div className="p-4 border-b flex justify-between">
+              <h3 className="font-semibold">Expense Category Analysis</h3>
+              <span className="text-xs text-gray-500">
+                {data.expenseCategoryAnalysis?.length || 0} categories
+              </span>
+            </div>
+
+            <div className="overflow-x-auto max-h-[260px]">
+              <table className="w-full min-w-[520px] text-sm">
+                <thead className="bg-gray-50 sticky top-0">
+                  <tr>
+                    <th className="p-3 text-left">Category</th>
+                    <th className="p-3 text-right">Amount</th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {!data.expenseCategoryAnalysis?.length ? (
+                    <tr>
+                      <td colSpan="2" className="p-5 text-center text-gray-500">
+                        No expense data found
+                      </td>
+                    </tr>
+                  ) : (
+                    data.expenseCategoryAnalysis.map((item) => (
+                      <tr key={item.category} className="border-t hover:bg-blue-50/40">
+                        <td className="p-3">{item.category}</td>
+                        <td className="p-3 text-right font-bold text-red-500">
+                          ৳ {money(item.amount)}
                         </td>
                       </tr>
                     ))
@@ -419,7 +462,7 @@ export default function ProfitModal({ open, onClose }) {
   );
 }
 
-function ProfitCard({ title, value, highlight, danger }) {
+function ProfitCard({ title, value, highlight, danger, suffix = "" }) {
   const isLoss = Number(value || 0) < 0;
 
   return (
@@ -442,7 +485,9 @@ function ProfitCard({ title, value, highlight, danger }) {
         {title}
       </p>
 
-      <h3 className="text-xl md:text-2xl font-bold mt-3">৳ {money(value)}</h3>
+      <h3 className="text-xl md:text-2xl font-bold mt-3">
+        {suffix === "%" ? `${money(value)}%` : `৳ ${money(value)}`}
+      </h3>
     </div>
   );
 }

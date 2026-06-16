@@ -3,6 +3,7 @@ import connectDB from "@/lib/db";
 import Stock from "@/models/Stock";
 import Purchase from "@/models/Purchase";
 import Sale from "@/models/Sale";
+import CompanySetting from "@/models/CompanySetting";
 import { getTenant } from "@/lib/tenant";
 import { requirePermission } from "@/lib/checkPermission";
 import { requireActiveSubscription } from "@/lib/subscription";
@@ -36,6 +37,10 @@ function isThisYear(dateString, now = new Date()) {
   return date.getFullYear() === now.getFullYear();
 }
 
+function escapeRegex(value = "") {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function itemKey(value) {
   return String(value || "").trim().toLowerCase();
 }
@@ -54,15 +59,95 @@ function stockCost(stock) {
 
 function stockValue(stock) {
   const qty = stockQty(stock);
-  const value = Number(stock.totalValue || 0);
+  const savedValue = Number(stock.totalValue || 0);
 
-  if (value > 0) return value;
+  if (savedValue > 0) return savedValue;
 
   return qty * stockCost(stock);
 }
 
 function purchaseAmount(p) {
   return Number(p.grandTotal || p.total || p.subTotal || 0);
+}
+
+function buildStockItemFromPurchase(p) {
+  const purchaseDate = p.date || p.createdAt || "";
+  const purchaseNo =
+    p.purchaseNo || p.supplierBillNo || p.supplierInvoiceNo || "";
+
+  if (Array.isArray(p.items) && p.items.length > 0) {
+    return p.items.map((item) => ({
+      productId: item.productId ? String(item.productId) : "",
+      itemName:
+        item.name || item.itemName || item.productName || p.itemName || "",
+      qty: Number(item.qty || item.quantity || 0),
+      unit: item.unit || p.unit || "pcs",
+      price: Number(item.price || item.rate || 0),
+      landedCostPerUnit: Number(item.landedCostPerUnit || item.price || 0),
+      total: Number(item.total || item.amount || 0),
+      supplierName: p.supplierName || "",
+      supplierPhone: p.supplierPhone || "",
+      billNo: purchaseNo,
+      purchaseType: p.purchaseType || "stock",
+      date: purchaseDate,
+    }));
+  }
+
+  return [
+    {
+      productId: p.productId ? String(p.productId) : "",
+      itemName: p.itemName || p.productName || "",
+      qty: Number(p.qty || p.quantity || 0),
+      unit: p.unit || "pcs",
+      price: Number(p.price || p.rate || 0),
+      landedCostPerUnit: Number(p.price || p.rate || 0),
+      total: purchaseAmount(p),
+      supplierName: p.supplierName || "",
+      supplierPhone: p.supplierPhone || "",
+      billNo: purchaseNo,
+      purchaseType: p.purchaseType || "stock",
+      date: purchaseDate,
+    },
+  ];
+}
+
+function buildSoldItemsFromSale(sale) {
+  return (sale.items || [])
+    .filter(
+      (item) =>
+        item &&
+        ["stock", "Stock", "finished_goods", undefined, ""].includes(
+          item.sourceType
+        )
+    )
+    .map((item) => ({
+      productId: item.productId ? String(item.productId) : "",
+      itemName: item.name || item.itemName || item.productName || item.title || "",
+      qty: Number(item.qty || item.quantity || 0),
+      unit: item.unit || "pcs",
+      price: Number(item.price || item.rate || 0),
+      total: Number(item.total || item.amount || 0),
+      costTotal: Number(item.costTotal || 0),
+      profit: Number(item.profit || 0),
+      customerName: sale.customerName || "",
+      customerPhone: sale.customerPhone || "",
+      customerAddress: sale.customerAddress || "",
+      invoiceNo: sale.billNo || sale.invoiceNo || "",
+      date: sale.date || sale.createdAt || "",
+    }));
+}
+
+function dateRangeFilter(items, fromDate, toDate) {
+  if (!fromDate && !toDate) return items;
+
+  return items.filter((item) => {
+    const d = normalizeDate(item.date);
+
+    if (fromDate && d < fromDate) return false;
+    if (toDate && d > toDate) return false;
+
+    return true;
+  });
 }
 
 export async function GET(req) {
@@ -80,29 +165,29 @@ export async function GET(req) {
 
     const sub = await requireActiveSubscription(tenant);
 
-if (!sub.ok) {
-  return NextResponse.json(
-    {
-      success: false,
-      subscriptionExpired: true,
-      message: sub.message,
-    },
-    { status: sub.status }
-  );
-}
+    if (!sub.ok) {
+      return NextResponse.json(
+        {
+          success: false,
+          subscriptionExpired: true,
+          message: sub.message,
+        },
+        { status: sub.status }
+      );
+    }
 
     try {
-  await requirePermission(tenant, "inventory");
-} catch (error) {
-  return NextResponse.json(
-    { success: false, message: error.message || "Access denied" },
-    { status: 403 }
-  );
-}
+      await requirePermission(tenant, "inventory");
+    } catch (error) {
+      return NextResponse.json(
+        { success: false, message: error.message || "Access denied" },
+        { status: 403 }
+      );
+    }
 
     const { searchParams } = new URL(req.url);
 
-    const search = searchParams.get("search") || "";
+    const search = String(searchParams.get("search") || "").trim();
     const date = searchParams.get("date") || "";
     const fromDate = searchParams.get("fromDate") || "";
     const toDate = searchParams.get("toDate") || "";
@@ -116,7 +201,7 @@ if (!sub.ok) {
     };
 
     if (search) {
-      const regex = { $regex: search, $options: "i" };
+      const regex = { $regex: escapeRegex(search), $options: "i" };
 
       stockQuery.$or = [
         { itemName: regex },
@@ -137,7 +222,9 @@ if (!sub.ok) {
     if (category) stockQuery.category = category;
     if (productType) stockQuery.productType = productType;
 
-    const [stocks, purchases, sales] = await Promise.all([
+    const [settings, stocks, purchases, sales] = await Promise.all([
+      CompanySetting.findOne({ companyId: tenant.companyId }).lean(),
+
       Stock.find(stockQuery).sort({ itemName: 1 }).lean(),
 
       Purchase.find({
@@ -153,100 +240,22 @@ if (!sub.ok) {
         .lean(),
     ]);
 
+    const defaultLowStockLimit = Number(settings?.lowStockLimit || 5);
+
     const stockPurchases = purchases.filter((p) =>
       ["stock", "inventory", "raw_material"].includes(p.purchaseType)
     );
 
-    const purchasedItems = stockPurchases.flatMap((p) => {
-      const purchaseDate = p.date || p.createdAt || "";
-      const purchaseNo =
-        p.purchaseNo || p.supplierBillNo || p.supplierInvoiceNo || "";
+    const purchasedItems = stockPurchases.flatMap(buildStockItemFromPurchase);
+    const soldItems = sales.flatMap(buildSoldItemsFromSale);
 
-      if (Array.isArray(p.items) && p.items.length > 0) {
-        return p.items.map((item) => ({
-          productId: item.productId ? String(item.productId) : "",
-          itemName:
-            item.name ||
-            item.itemName ||
-            item.productName ||
-            p.itemName ||
-            "",
-          qty: Number(item.qty || item.quantity || 0),
-          unit: item.unit || p.unit || "pcs",
-          price: Number(item.price || item.rate || 0),
-          landedCostPerUnit: Number(item.landedCostPerUnit || item.price || 0),
-          total: Number(item.total || item.amount || 0),
-          supplierName: p.supplierName || "",
-          supplierPhone: p.supplierPhone || "",
-          billNo: purchaseNo,
-          purchaseType: p.purchaseType || "stock",
-          date: purchaseDate,
-        }));
-      }
-
-      return [
-        {
-          productId: p.productId ? String(p.productId) : "",
-          itemName: p.itemName || p.productName || "",
-          qty: Number(p.qty || p.quantity || 0),
-          unit: p.unit || "pcs",
-          price: Number(p.price || p.rate || 0),
-          landedCostPerUnit: Number(p.price || p.rate || 0),
-          total: purchaseAmount(p),
-          supplierName: p.supplierName || "",
-          supplierPhone: p.supplierPhone || "",
-          billNo: purchaseNo,
-          purchaseType: p.purchaseType || "stock",
-          date: purchaseDate,
-        },
-      ];
-    });
-
-    const soldItems = sales.flatMap((sale) =>
-      (sale.items || [])
-        .filter(
-          (item) =>
-            item &&
-            ["stock", "Stock", "finished_goods", undefined, ""].includes(
-              item.sourceType
-            )
-        )
-        .map((item) => ({
-          productId: item.productId ? String(item.productId) : "",
-          itemName:
-            item.name || item.itemName || item.productName || item.title || "",
-          qty: Number(item.qty || item.quantity || 0),
-          unit: item.unit || "pcs",
-          price: Number(item.price || item.rate || 0),
-          total: Number(item.total || item.amount || 0),
-          costTotal: Number(item.costTotal || 0),
-          profit: Number(item.profit || 0),
-          customerName: sale.customerName || "",
-          customerPhone: sale.customerPhone || "",
-          customerAddress: sale.customerAddress || "",
-          invoiceNo: sale.billNo || sale.invoiceNo || "",
-          date: sale.date || sale.createdAt || "",
-        }))
+    const filteredPurchasedItems = dateRangeFilter(
+      purchasedItems,
+      fromDate,
+      toDate
     );
 
-    let filteredPurchasedItems = purchasedItems;
-    let filteredSoldItems = soldItems;
-
-    if (fromDate || toDate) {
-      filteredPurchasedItems = filteredPurchasedItems.filter((p) => {
-        const d = normalizeDate(p.date);
-        if (fromDate && d < fromDate) return false;
-        if (toDate && d > toDate) return false;
-        return true;
-      });
-
-      filteredSoldItems = filteredSoldItems.filter((s) => {
-        const d = normalizeDate(s.date);
-        if (fromDate && d < fromDate) return false;
-        if (toDate && d > toDate) return false;
-        return true;
-      });
-    }
+    const filteredSoldItems = dateRangeFilter(soldItems, fromDate, toDate);
 
     const todayStockIn = purchasedItems
       .filter((p) => isToday(p.date))
@@ -319,7 +328,7 @@ if (!sub.ok) {
       const qty = stockQty(stock);
       const value = stockValue(stock);
       const cost = stockCost(stock);
-      const lowStockLimit = Number(stock.lowStockLimit || 5);
+      const lowStockLimit = Number(stock.lowStockLimit || defaultLowStockLimit);
       const isLowStock = qty <= lowStockLimit;
 
       return {
@@ -329,10 +338,12 @@ if (!sub.ok) {
         qty,
         quantity: qty,
         availableQty: Number(stock.availableQty || qty),
+
         avgCost: Number(stock.avgCost || 0),
         lastPurchasePrice: Number(stock.lastPurchasePrice || 0),
         avgProductionCost: Number(stock.avgProductionCost || 0),
         lastProductionCost: Number(stock.lastProductionCost || 0),
+
         cost,
         totalValue: value,
 
@@ -347,6 +358,7 @@ if (!sub.ok) {
         totalPurchasedQty,
         totalPurchasedAmount,
 
+        lowStockLimit,
         isLowStock,
       };
     });
@@ -457,6 +469,8 @@ if (!sub.ok) {
         ),
 
         lowStock,
+        lowStockCount: lowStock.length,
+
         categoryWise,
         typeWise,
         stocks: enrichedStocks,

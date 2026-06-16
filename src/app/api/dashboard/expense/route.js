@@ -40,6 +40,14 @@ function isSameYear(dateString, now) {
   return date.getFullYear() === now.getFullYear();
 }
 
+function money(value) {
+  return Number(value || 0).toFixed(2);
+}
+
+function includesText(value, q) {
+  return String(value || "").toLowerCase().includes(q);
+}
+
 function expenseDTO(e, source = "cash") {
   const bank = e.bankId || null;
 
@@ -66,7 +74,8 @@ function expenseDTO(e, source = "cash") {
     marketingOfficerId: e.marketingOfficerId || null,
     marketingOfficerName: e.marketingOfficerName || "",
 
-    paymentType: source === "bank" ? e.paymentMethod || "Bank" : e.paymentType || "Cash",
+    paymentType:
+      source === "bank" ? e.paymentMethod || "Bank" : e.paymentType || "Cash",
 
     amount: Number(e.amount || 0),
     note: e.note || "",
@@ -74,9 +83,85 @@ function expenseDTO(e, source = "cash") {
 
     refType: e.refType || "",
     refId: e.refId || "",
-    voucherNo: source === "bank" ? e.transactionNo || e.voucherNo || "" : e.voucherNo || "",
+    voucherNo:
+      source === "bank" ? e.transactionNo || e.voucherNo || "" : e.voucherNo || "",
 
     createdAt: e.createdAt,
+  };
+}
+
+function filterRows(rows, { search, dateFilter, sourceFilter }) {
+  let result = rows;
+
+  if (sourceFilter) {
+    result = result.filter((r) => r.source === sourceFilter);
+  }
+
+  if (dateFilter) {
+    result = result.filter((r) => normalizeDate(r.date) === dateFilter);
+  }
+
+  if (search) {
+    const q = search.toLowerCase();
+
+    result = result.filter(
+      (r) =>
+        includesText(r.title, q) ||
+        includesText(r.category, q) ||
+        includesText(r.note, q) ||
+        includesText(r.comment, q) ||
+        includesText(r.source, q) ||
+        includesText(r.sourceName, q) ||
+        includesText(r.head, q) ||
+        includesText(r.employeeName, q) ||
+        includesText(r.customerName, q) ||
+        includesText(r.supplierName, q) ||
+        includesText(r.marketingOfficerName, q) ||
+        includesText(r.paymentType, q) ||
+        includesText(r.refType, q) ||
+        includesText(r.refId, q) ||
+        includesText(r.voucherNo, q)
+    );
+  }
+
+  return result;
+}
+
+function buildAnalysis(rows) {
+  const categoryMap = {};
+  const sourceMap = {};
+
+  rows.forEach((e) => {
+    const categoryKey = e.head || e.category || "others";
+
+    if (!categoryMap[categoryKey]) {
+      categoryMap[categoryKey] = {
+        category: categoryKey,
+        amount: 0,
+        count: 0,
+      };
+    }
+
+    categoryMap[categoryKey].amount += Number(e.amount || 0);
+    categoryMap[categoryKey].count += 1;
+
+    const sourceKey = e.sourceName || e.source || "Other";
+
+    if (!sourceMap[sourceKey]) {
+      sourceMap[sourceKey] = {
+        source: sourceKey,
+        amount: 0,
+        count: 0,
+      };
+    }
+
+    sourceMap[sourceKey].amount += Number(e.amount || 0);
+    sourceMap[sourceKey].count += 1;
+  });
+
+  return {
+    categoryWise: Object.values(categoryMap).sort((a, b) => b.amount - a.amount),
+    sourceWise: Object.values(sourceMap).sort((a, b) => b.amount - a.amount),
   };
 }
 
@@ -94,20 +179,20 @@ export async function GET(req) {
     }
 
     try {
-  await requirePermission(tenant, "accounts");
-} catch (error) {
-  return NextResponse.json(
-    {
-      success: false,
-      message: error.message || "Access denied",
-    },
-    { status: 403 }
-  );
-}
+      await requirePermission(tenant, "accounts");
+    } catch (error) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: error.message || "Access denied",
+        },
+        { status: 403 }
+      );
+    }
 
     const { searchParams } = new URL(req.url);
 
-    const search = searchParams.get("search") || "";
+    const search = String(searchParams.get("search") || "").trim();
     const dateFilter = searchParams.get("date") || "";
     const sourceFilter = searchParams.get("source") || "";
     const fromDate = searchParams.get("fromDate") || "";
@@ -133,7 +218,7 @@ export async function GET(req) {
       CashTransaction.find(baseQuery).sort({ createdAt: -1 }).lean(),
 
       BankTransaction.find(baseQuery)
-        .populate("bankId")
+        .populate("bankId", "bankName accountNo accountNumber")
         .sort({ createdAt: -1 })
         .lean(),
     ]);
@@ -147,38 +232,11 @@ export async function GET(req) {
         new Date(a.createdAt || a.date).getTime()
     );
 
-    let rows = allExpenses;
-
-    if (sourceFilter) {
-      rows = rows.filter((r) => r.source === sourceFilter);
-    }
-
-    if (search) {
-      const q = search.toLowerCase();
-
-      rows = rows.filter(
-        (r) =>
-          String(r.title || "").toLowerCase().includes(q) ||
-          String(r.category || "").toLowerCase().includes(q) ||
-          String(r.note || "").toLowerCase().includes(q) ||
-          String(r.comment || "").toLowerCase().includes(q) ||
-          String(r.source || "").toLowerCase().includes(q) ||
-          String(r.sourceName || "").toLowerCase().includes(q) ||
-          String(r.head || "").toLowerCase().includes(q) ||
-          String(r.employeeName || "").toLowerCase().includes(q) ||
-          String(r.customerName || "").toLowerCase().includes(q) ||
-          String(r.supplierName || "").toLowerCase().includes(q) ||
-          String(r.marketingOfficerName || "").toLowerCase().includes(q) ||
-          String(r.paymentType || "").toLowerCase().includes(q) ||
-          String(r.refType || "").toLowerCase().includes(q) ||
-          String(r.refId || "").toLowerCase().includes(q) ||
-          String(r.voucherNo || "").toLowerCase().includes(q)
-      );
-    }
-
-    if (dateFilter) {
-      rows = rows.filter((r) => normalizeDate(r.date) === dateFilter);
-    }
+    const rows = filterRows(allExpenses, {
+      search,
+      dateFilter,
+      sourceFilter,
+    });
 
     const todayExpense = allExpenses
       .filter((e) => isSameDate(e.date, today))
@@ -197,55 +255,25 @@ export async function GET(req) {
       0
     );
 
-    const categoryMap = {};
-    const sourceMap = {};
-
-    allExpenses.forEach((e) => {
-      const categoryKey = e.head || e.category || "others";
-
-      if (!categoryMap[categoryKey]) {
-        categoryMap[categoryKey] = {
-          category: categoryKey,
-          amount: 0,
-          count: 0,
-        };
-      }
-
-      categoryMap[categoryKey].amount += Number(e.amount || 0);
-      categoryMap[categoryKey].count += 1;
-
-      const sourceKey = e.sourceName || e.source || "Other";
-
-      if (!sourceMap[sourceKey]) {
-        sourceMap[sourceKey] = {
-          source: sourceKey,
-          amount: 0,
-          count: 0,
-        };
-      }
-
-      sourceMap[sourceKey].amount += Number(e.amount || 0);
-      sourceMap[sourceKey].count += 1;
-    });
-
-    const categoryWise = Object.values(categoryMap).sort(
-      (a, b) => b.amount - a.amount
+    const filteredTotalExpense = rows.reduce(
+      (sum, e) => sum + Number(e.amount || 0),
+      0
     );
 
-    const sourceWise = Object.values(sourceMap).sort(
-      (a, b) => b.amount - a.amount
-    );
+    const { categoryWise, sourceWise } = buildAnalysis(rows);
 
     return NextResponse.json({
       success: true,
       data: {
         cardTitle: "Expense",
-        cardValue: `৳ ${Number(totalExpense || 0).toFixed(2)}`,
+        cardValue: `৳ ${money(totalExpense)}`,
 
         todayExpense,
         monthlyExpense,
         yearlyExpense,
         totalExpense,
+
+        filteredTotalExpense,
 
         categoryWise,
         sourceWise,

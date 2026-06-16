@@ -3,53 +3,124 @@ import connectDB from "@/lib/db";
 import Sale from "@/models/Sale";
 import Purchase from "@/models/Purchase";
 import Stock from "@/models/Stock";
-import CashTransaction from "@/models/CashTransaction";
+import Cash from "@/models/Cash";
 import BankAccount from "@/models/BankAccount";
 import Loan from "@/models/Loan";
+import CompanySetting from "@/models/CompanySetting";
+import { getTenant } from "@/lib/tenant";
+import { requirePermission } from "@/lib/checkPermission";
 
-export async function GET() {
+function n(value) {
+  return Number(value || 0) || 0;
+}
+
+function stockQty(stock) {
+  return n(stock.qty || stock.quantity);
+}
+
+function stockCost(stock) {
+  if (stock.productType === "finished_goods") {
+    return n(stock.avgProductionCost || stock.lastProductionCost);
+  }
+
+  return n(stock.avgCost || stock.lastPurchasePrice);
+}
+
+function stockValue(stock) {
+  const saved = n(stock.totalValue);
+  if (saved > 0) return saved;
+
+  return stockQty(stock) * stockCost(stock);
+}
+
+export async function GET(req) {
   try {
     await connectDB();
 
-    const sales = await Sale.find();
-    const purchases = await Purchase.find();
-    const stocks = await Stock.find();
-    const cashTransactions = await CashTransaction.find();
-    const banks = await BankAccount.find();
-    const loans = await Loan.find();
+    const tenant = getTenant(req);
+
+    if (!tenant?.companyId) {
+      return NextResponse.json(
+        { success: false, message: "Unauthorized" },
+        { status: 401 }
+      );
+    }
+
+    try {
+      await requirePermission(tenant, "accounts");
+    } catch (error) {
+      return NextResponse.json(
+        { success: false, message: error.message || "Access denied" },
+        { status: 403 }
+      );
+    }
+
+    const companyId = tenant.companyId;
+
+    const [settings, sales, purchases, stocks, cash, banks, loans] =
+      await Promise.all([
+        CompanySetting.findOne({ companyId }).lean(),
+
+        Sale.find({
+          companyId,
+          status: { $ne: "cancelled" },
+        }).lean(),
+
+        Purchase.find({
+          companyId,
+          status: { $ne: "cancelled" },
+        }).lean(),
+
+        Stock.find({
+          companyId,
+          status: "active",
+        }).lean(),
+
+        Cash.findOne({ companyId }).lean(),
+
+        BankAccount.find({
+          companyId,
+          status: { $ne: "inactive" },
+        }).lean(),
+
+        Loan.find({
+          companyId,
+          status: { $ne: "cancelled" },
+        }).lean(),
+      ]);
 
     const totalAccountReceivable = sales.reduce(
-      (sum, s) => sum + Number(s.dueAmount || 0),
+      (sum, s) => sum + n(s.statementDueAmount || s.dueAmount),
       0
     );
 
     const totalStockValue = stocks.reduce(
-      (sum, s) => sum + Number(s.totalValue || 0),
+      (sum, s) => sum + stockValue(s),
       0
     );
 
-    const totalCashIn = cashTransactions
-      .filter((t) => t.type === "in")
-      .reduce((sum, t) => sum + Number(t.amount || 0), 0);
-
-    const totalCashOut = cashTransactions
-      .filter((t) => t.type === "out")
-      .reduce((sum, t) => sum + Number(t.amount || 0), 0);
-
-    const cashInHand = totalCashIn - totalCashOut;
+    const cashInHand = n(cash?.currentBalance || cash?.balance);
 
     const totalBankBalance = banks.reduce(
-      (sum, b) => sum + Number(b.currentBalance || 0),
+      (sum, b) => sum + n(b.currentBalance || b.balance),
       0
     );
 
     const totalAccountPayable = purchases.reduce(
-      (sum, p) => sum + Number(p.dueAmount || 0),
+      (sum, p) => sum + n(p.dueAmount || p.purchaseDueAmount),
       0
     );
 
     const totalLoan = loans.reduce(
-      (sum, l) => sum + Number(l.dueAmount || l.amount || 0),
+      (sum, l) =>
+        sum +
+        n(
+          l.remainingAmount ||
+            l.dueAmount ||
+            l.balanceAmount ||
+            l.outstandingAmount ||
+            l.amount
+        ),
       0
     );
 
@@ -68,16 +139,24 @@ export async function GET() {
     return NextResponse.json({
       success: true,
       data: {
+        companyName: settings?.companyName || "Company Name",
+        companyAddress: settings?.companyAddress || "Company Address",
+        companyPhone: settings?.companyPhone || "Phone Number",
+
         totalAccountReceivable,
         totalStockValue,
         cashInHand,
         totalBankBalance,
+
         totalAsset,
+
         totalAccountPayable,
         totalLoan,
         totalLiability,
+
         netFinancialPosition,
         message,
+
         banks,
         loans,
       },
@@ -86,7 +165,7 @@ export async function GET() {
     console.error("FINANCIAL_POSITION_ERROR:", error);
 
     return NextResponse.json(
-      { success: false, message: "Failed to load financial position" },
+      { success: false, message: error.message || "Failed to load financial position" },
       { status: 500 }
     );
   }

@@ -9,6 +9,9 @@ import {
   RefreshCcw,
   Wallet,
   X,
+  Pencil,
+  Ban,
+  Trash2,
 } from "lucide-react";
 
 import CompanyHeader from "@/components/common/CompanyHeader";
@@ -42,7 +45,11 @@ export default function CustomerStatementPage() {
       if (from) params.set("from", from);
       if (to) params.set("to", to);
 
-      const res = await fetch(`/api/customers/statement?${params.toString()}`);
+      const res = await fetch(`/api/customers/statement?${params.toString()}`, {
+        cache: "no-store",
+        credentials: "include",
+      });
+
       const data = await res.json();
 
       if (data.success) {
@@ -79,9 +86,8 @@ export default function CustomerStatementPage() {
 
       const res = await fetch("/api/customers/payment", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
           saleId: selectedSale._id,
           amount: Number(paymentAmount),
@@ -103,6 +109,47 @@ export default function CustomerStatementPage() {
       alert(error.message || "Payment failed");
     } finally {
       setSavingPayment(false);
+    }
+  };
+
+  const handleEdit = (row) => {
+    window.location.href = `/sales?id=${row._id}`;
+  };
+
+  const handleSaleAction = async (row, action) => {
+    const ownerPin = prompt("Owner PIN দিন");
+    if (!ownerPin) return;
+
+    const ok = confirm(
+      action === "delete"
+        ? "আপনি কি নিশ্চিত এই sale delete/cancel করতে চান?"
+        : "আপনি কি নিশ্চিত এই sale cancel করতে চান?"
+    );
+
+    if (!ok) return;
+
+    try {
+      const res = await fetch("/api/customers/statement/action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          saleId: row._id,
+          action,
+          ownerPin,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        throw new Error(data.message || "Action failed");
+      }
+
+      alert(data.message || "Action completed");
+      fetchStatement();
+    } catch (error) {
+      alert(error.message || "Action failed");
     }
   };
 
@@ -156,6 +203,9 @@ export default function CustomerStatementPage() {
             <input
               value={customer}
               onChange={(e) => setCustomer(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") fetchStatement();
+              }}
               placeholder="Search customer name..."
               className="w-full outline-none text-sm"
             />
@@ -220,7 +270,7 @@ export default function CustomerStatementPage() {
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1450px] text-sm">
+            <table className="w-full min-w-[1680px] text-sm">
               <thead className="bg-gray-50">
                 <tr>
                   <th className="p-3 text-left">Date</th>
@@ -249,12 +299,15 @@ export default function CustomerStatementPage() {
                   rows.map((row) => (
                     <tr key={row._id} className="border-t hover:bg-gray-50">
                       <td className="p-3 whitespace-nowrap">{row.date}</td>
+
                       <td className="p-3 min-w-[220px]">
                         {row.description || row.note || "-"}
                       </td>
+
                       <td className="p-3 font-semibold whitespace-nowrap">
                         {row.billNo}
                       </td>
+
                       <td className="p-3 whitespace-nowrap">
                         <div className="font-medium">{row.customerName}</div>
                         {row.customerPhone && (
@@ -273,19 +326,45 @@ export default function CustomerStatementPage() {
                       <td className="p-3 text-right font-bold">৳ {money(row.balance)}</td>
 
                       <td className="p-3 text-center print:hidden">
-                        {Number(row.currentDue || row.dueAmount || 0) > 0 ? (
+                        <div className="flex flex-wrap justify-center gap-2">
+                          {Number(row.currentDue || row.dueAmount || 0) > 0 ? (
+                            <button
+                              onClick={() => openPayment(row)}
+                              className="px-3 py-2 rounded-xl bg-blue-600 text-white inline-flex items-center gap-2 hover:bg-blue-700"
+                            >
+                              <Wallet size={15} />
+                              Collect
+                            </button>
+                          ) : (
+                            <span className="px-3 py-2 rounded-xl bg-green-50 text-green-600 text-xs font-semibold">
+                              Paid
+                            </span>
+                          )}
+
                           <button
-                            onClick={() => openPayment(row)}
-                            className="px-3 py-2 rounded-xl bg-blue-600 text-white inline-flex items-center gap-2 hover:bg-blue-700"
+                            onClick={() => handleEdit(row)}
+                            className="px-3 py-2 rounded-xl border text-blue-600 inline-flex items-center gap-1 hover:bg-blue-50"
                           >
-                            <Wallet size={15} />
-                            Collect
+                            <Pencil size={14} />
+                            Edit
                           </button>
-                        ) : (
-                          <span className="text-xs text-green-600 font-semibold">
-                            Paid
-                          </span>
-                        )}
+
+                          <button
+                            onClick={() => handleSaleAction(row, "cancel")}
+                            className="px-3 py-2 rounded-xl border text-orange-600 inline-flex items-center gap-1 hover:bg-orange-50"
+                          >
+                            <Ban size={14} />
+                            Cancel
+                          </button>
+
+                          <button
+                            onClick={() => handleSaleAction(row, "delete")}
+                            className="px-3 py-2 rounded-xl border text-red-600 inline-flex items-center gap-1 hover:bg-red-50"
+                          >
+                            <Trash2 size={14} />
+                            Delete
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))

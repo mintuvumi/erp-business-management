@@ -7,6 +7,10 @@ import { getTenant } from "@/lib/tenant";
 import { requirePermission } from "@/lib/checkPermission";
 import { requireActiveSubscription } from "@/lib/subscription";
 
+function escapeRegex(value = "") {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 async function checkEmployeeAccess(tenant) {
   try {
     await requirePermission(tenant, "employees");
@@ -20,6 +24,14 @@ async function checkEmployeeAccess(tenant) {
       { status: 403 }
     );
   }
+}
+
+function clean(value) {
+  return String(value || "").trim();
+}
+
+function num(value) {
+  return Number(value || 0) || 0;
 }
 
 export async function POST(req) {
@@ -37,23 +49,24 @@ export async function POST(req) {
 
     const sub = await requireActiveSubscription(tenant);
 
-if (!sub.ok) {
-  return NextResponse.json(
-    {
-      success: false,
-      subscriptionExpired: true,
-      message: sub.message,
-    },
-    { status: sub.status }
-  );
-}
+    if (!sub.ok) {
+      return NextResponse.json(
+        {
+          success: false,
+          subscriptionExpired: true,
+          message: sub.message,
+        },
+        { status: sub.status }
+      );
+    }
 
     const denied = await checkEmployeeAccess(tenant);
     if (denied) return denied;
 
     const body = await req.json();
+    const name = clean(body.name);
 
-    if (!body.name || !String(body.name).trim()) {
+    if (!name) {
       return NextResponse.json(
         { success: false, message: "Employee name required" },
         { status: 400 }
@@ -62,7 +75,7 @@ if (!sub.ok) {
 
     const exists = await Employee.findOne({
       companyId: tenant.companyId,
-      name: String(body.name).trim(),
+      name,
       phone: body.phone || "",
       status: "active",
     });
@@ -81,7 +94,7 @@ if (!sub.ok) {
       createdByUserId: tenant.user?.id || null,
       createdBy: tenant.user?.name || "",
 
-      name: String(body.name).trim(),
+      name,
       phone: body.phone || "",
       email: body.email || "",
       address: body.address || "",
@@ -95,9 +108,9 @@ if (!sub.ok) {
       department: body.department || "",
       joiningDate: body.joiningDate || new Date().toISOString().slice(0, 10),
 
-      basicSalary: Number(body.basicSalary) || 0,
-      bonusSalary: Number(body.bonusSalary) || 0,
-      overtimeSalary: Number(body.overtimeSalary) || 0,
+      basicSalary: num(body.basicSalary),
+      bonusSalary: num(body.bonusSalary),
+      overtimeSalary: num(body.overtimeSalary),
 
       paymentMethod: body.paymentMethod || "cash",
       bankName: body.bankName || "",
@@ -112,8 +125,8 @@ if (!sub.ok) {
       presentToday:
         typeof body.presentToday === "boolean" ? body.presentToday : true,
 
-      monthlyLeave: Number(body.monthlyLeave) || 0,
-      yearlyLeave: Number(body.yearlyLeave) || 0,
+      monthlyLeave: num(body.monthlyLeave),
+      yearlyLeave: num(body.yearlyLeave),
 
       workProgress: body.workProgress || "good",
       role: body.role || "staff",
@@ -157,24 +170,22 @@ export async function GET(req) {
 
     const sub = await requireActiveSubscription(tenant);
 
-if (!sub.ok) {
-  return NextResponse.json(
-    {
-      success: false,
-      subscriptionExpired: true,
-      message: sub.message,
-    },
-    { status: sub.status }
-  );
-}
+    if (!sub.ok) {
+      return NextResponse.json(
+        {
+          success: false,
+          subscriptionExpired: true,
+          message: sub.message,
+        },
+        { status: sub.status }
+      );
+    }
 
     const denied = await checkEmployeeAccess(tenant);
     if (denied) return denied;
 
     const { searchParams } = new URL(req.url);
-    const search = String(
-      searchParams.get("search") || searchParams.get("q") || ""
-    ).trim();
+    const search = clean(searchParams.get("search") || searchParams.get("q"));
 
     const query = {
       companyId: tenant.companyId,
@@ -182,55 +193,71 @@ if (!sub.ok) {
     };
 
     if (search) {
+      const regex = { $regex: escapeRegex(search), $options: "i" };
+
       query.$or = [
-        { employeeCode: { $regex: search, $options: "i" } },
-        { name: { $regex: search, $options: "i" } },
-        { phone: { $regex: search, $options: "i" } },
-        { email: { $regex: search, $options: "i" } },
-        { designation: { $regex: search, $options: "i" } },
-        { department: { $regex: search, $options: "i" } },
-        { deviceUserId: { $regex: search, $options: "i" } },
-        { rfidCardNo: { $regex: search, $options: "i" } },
+        { employeeCode: regex },
+        { name: regex },
+        { phone: regex },
+        { email: regex },
+        { designation: regex },
+        { department: regex },
+        { deviceUserId: regex },
+        { rfidCardNo: regex },
       ];
     }
 
-    const employees = await Employee.find(query).sort({ createdAt: -1 });
+    const [employees, allActiveEmployees, salaryPayments, advances] =
+      await Promise.all([
+        Employee.find(query).sort({ createdAt: -1 }).lean(),
 
-    const salaryPayments = await SalaryPayment.find({
-      companyId: tenant.companyId,
-    }).sort({ createdAt: -1 });
+        Employee.find({
+          companyId: tenant.companyId,
+          status: "active",
+        }).lean(),
 
-    const advances = await AdvanceSalary.find({
-      companyId: tenant.companyId,
-    }).sort({ createdAt: -1 });
+        SalaryPayment.find({
+          companyId: tenant.companyId,
+          status: { $ne: "cancelled" },
+        })
+          .sort({ createdAt: -1 })
+          .lean(),
 
-    const totalEmployee = employees.length;
-    const presentEmployee = employees.filter((e) => e.presentToday).length;
-    const absentEmployee = employees.filter((e) => !e.presentToday).length;
+        AdvanceSalary.find({
+          companyId: tenant.companyId,
+          status: { $ne: "cancelled" },
+        })
+          .sort({ createdAt: -1 })
+          .lean(),
+      ]);
 
-    const totalMonthlyLeave = employees.reduce(
-      (sum, e) => sum + Number(e.monthlyLeave || 0),
+    const totalEmployee = allActiveEmployees.length;
+    const presentEmployee = allActiveEmployees.filter((e) => e.presentToday).length;
+    const absentEmployee = allActiveEmployees.filter((e) => !e.presentToday).length;
+
+    const totalMonthlyLeave = allActiveEmployees.reduce(
+      (sum, e) => sum + num(e.monthlyLeave),
       0
     );
 
-    const totalYearlyLeave = employees.reduce(
-      (sum, e) => sum + Number(e.yearlyLeave || 0),
+    const totalYearlyLeave = allActiveEmployees.reduce(
+      (sum, e) => sum + num(e.yearlyLeave),
       0
     );
 
     const salaryPaid = salaryPayments.reduce(
-      (sum, s) => sum + Number(s.paidAmount || 0),
+      (sum, s) => sum + num(s.paidAmount),
       0
     );
 
     const salaryDue = salaryPayments.reduce(
-      (sum, s) => sum + Number(s.dueAmount || 0),
+      (sum, s) => sum + num(s.dueAmount),
       0
     );
 
     const advanceOpen = advances
       .filter((a) => a.status === "open")
-      .reduce((sum, a) => sum + Number(a.remainingAmount || 0), 0);
+      .reduce((sum, a) => sum + num(a.remainingAmount), 0);
 
     return NextResponse.json({
       success: true,
@@ -240,9 +267,11 @@ if (!sub.ok) {
         absentEmployee,
         totalMonthlyLeave,
         totalYearlyLeave,
+
         salaryPaid,
         salaryDue,
         advanceOpen,
+
         employees,
         salaryPayments,
         advances,
