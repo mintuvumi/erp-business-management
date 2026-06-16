@@ -176,6 +176,7 @@ export default function Navbar({ setOpen }) {
 
         if (aiRes.ok) {
           const aiData = await aiRes.json();
+          
 
           if (aiData.success && aiData.data) {
             const aiNotifications = [
@@ -308,20 +309,17 @@ export default function Navbar({ setOpen }) {
 
         const headers = companyId ? { "x-company-id": companyId } : {};
 
-        const [searchRes, aiRes, geminiRes] = await Promise.all([
-          fetch(`/api/global-search?q=${encodeURIComponent(searchText)}`, {
-            credentials: "include",
-            headers,
-          }),
-          fetch(`/api/ai-search?q=${encodeURIComponent(searchText)}`, {
-            credentials: "include",
-            headers,
-          }),
-          fetch(`/api/gemini-search?q=${encodeURIComponent(searchText)}`, {
-            credentials: "include",
-            headers,
-          }).catch(() => null),
-        ]);
+
+        const [searchRes, aiRes] = await Promise.all([
+  fetch(`/api/global-search?q=${encodeURIComponent(searchText)}`, {
+    credentials: "include",
+    headers,
+  }),
+  fetch(`/api/ai-search?q=${encodeURIComponent(searchText)}`, {
+    credentials: "include",
+    headers,
+  }),
+]);
 
         let apiResults = [];
 
@@ -353,30 +351,9 @@ export default function Navbar({ setOpen }) {
           finalAiAnswer = aiData?.data || null;
         }
 
-        if (geminiRes?.ok) {
-          const geminiData = await geminiRes.json();
 
-          if (geminiData?.data) {
-            finalAiAnswer = {
-              ...(finalAiAnswer || {}),
-              title:
-                finalAiAnswer?.title ||
-                geminiData.data.title ||
-                "AI Business Assistant",
-              answer: finalAiAnswer?.answer || geminiData.data.answer,
-              suggestions: [
-                ...(finalAiAnswer?.suggestions || []),
-                ...(geminiData.data.suggestions || []),
-              ],
-              path:
-                finalAiAnswer?.path ||
-                geminiData.data.path ||
-                (isMarketingOfficer
-                  ? "/customers/statement?dueOnly=true"
-                  : "/dashboard"),
-            };
-          }
-        }
+
+
 
         setAiAnswer(finalAiAnswer);
         localStorage.setItem("searchHistory", searchText);
@@ -502,7 +479,8 @@ export default function Navbar({ setOpen }) {
     }
 
     fetchNotifications();
-    window.location.reload();
+    window.dispatchEvent(new Event("companyChanged"));
+router.refresh();
   };
 
   const handlePhotoUpload = async (e) => {

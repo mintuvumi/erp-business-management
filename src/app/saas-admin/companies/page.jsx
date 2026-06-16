@@ -1,15 +1,24 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Building2,
   Search,
   RefreshCcw,
-  ShieldCheck,
   AlertTriangle,
   Lock,
   CheckCircle,
 } from "lucide-react";
+
+function normalizeCompanies(payload) {
+  if (Array.isArray(payload)) return payload;
+
+  if (Array.isArray(payload?.data)) return payload.data;
+  if (Array.isArray(payload?.data?.companies)) return payload.data.companies;
+  if (Array.isArray(payload?.companies)) return payload.companies;
+
+  return [];
+}
 
 export default function SaasCompaniesPage() {
   const [companies, setCompanies] = useState([]);
@@ -22,15 +31,19 @@ export default function SaasCompaniesPage() {
 
       const res = await fetch("/api/saas/admin/companies", {
         credentials: "include",
+        cache: "no-store",
       });
 
       const data = await res.json();
 
       if (data.success) {
-        setCompanies(data.data || []);
+        setCompanies(normalizeCompanies(data));
+      } else {
+        setCompanies([]);
       }
     } catch (error) {
-      console.error(error);
+      console.error("SAAS_COMPANY_LOAD_ERROR:", error);
+      setCompanies([]);
     } finally {
       setLoading(false);
     }
@@ -40,31 +53,31 @@ export default function SaasCompaniesPage() {
     loadCompanies();
   }, []);
 
-  const filtered = companies.filter((c) =>
-    [
-      c.name,
-      c.companyCode,
-      c.ownerName,
-      c.email,
-      c.phone,
-    ]
-      .join(" ")
-      .toLowerCase()
-      .includes(search.toLowerCase())
-  );
+  const filtered = useMemo(() => {
+    const list = Array.isArray(companies) ? companies : [];
+    const q = search.toLowerCase();
+
+    return list.filter((c) =>
+      [
+        c?.name,
+        c?.companyCode,
+        c?.ownerName,
+        c?.email,
+        c?.phone,
+      ]
+        .join(" ")
+        .toLowerCase()
+        .includes(q)
+    );
+  }, [companies, search]);
 
   return (
     <div className="space-y-5">
       <div className="bg-white rounded-3xl border p-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-black">
-              Company Control
-            </h1>
-
-            <p className="text-gray-500 mt-1">
-              Manage all SaaS companies
-            </p>
+            <h1 className="text-3xl font-black">Company Control</h1>
+            <p className="text-gray-500 mt-1">Manage all SaaS companies</p>
           </div>
 
           <button
@@ -112,61 +125,47 @@ export default function SaasCompaniesPage() {
 
             <tbody>
               {filtered.map((company) => (
-                <tr
-                  key={company._id}
-                  className="border-t"
-                >
+                <tr key={company._id || company.id} className="border-t">
                   <td className="p-4">
                     <div>
-                      <p className="font-bold">
-                        {company.name}
-                      </p>
-
+                      <p className="font-bold">{company.name}</p>
                       <p className="text-xs text-gray-500">
-                        {company.companyCode}
+                        {company.companyCode || "-"}
                       </p>
                     </div>
                   </td>
 
-                  <td className="p-4">
-                    {company.ownerName || "-"}
-                  </td>
+                  <td className="p-4">{company.ownerName || "-"}</td>
 
                   <td className="p-4 capitalize">
-                    {company.subscriptionPlan ||
-                      "free"}
+                    {company.subscriptionPlan || "free"}
                   </td>
 
-                  <td className="p-4">
-                    ৳ {company.monthlyFee || 0}
-                  </td>
+                  <td className="p-4">৳ {company.monthlyFee || 0}</td>
 
                   <td className="p-4">
                     <span
                       className={`px-3 py-1 rounded-full text-xs font-bold ${
-                        company.paymentStatus ===
-                        "paid"
+                        company.paymentStatus === "paid"
                           ? "bg-green-100 text-green-700"
                           : "bg-red-100 text-red-700"
                       }`}
                     >
-                      {company.paymentStatus}
+                      {company.paymentStatus || "unpaid"}
                     </span>
                   </td>
 
                   <td className="p-4">
                     <span
                       className={`px-3 py-1 rounded-full text-xs font-bold ${
-                        company.subscriptionStatus ===
-                        "active"
+                        company.subscriptionStatus === "active"
                           ? "bg-green-100 text-green-700"
-                          : company.subscriptionStatus ===
-                            "warning"
+                          : company.subscriptionStatus === "warning"
                           ? "bg-yellow-100 text-yellow-700"
                           : "bg-red-100 text-red-700"
                       }`}
                     >
-                      {company.subscriptionStatus}
+                      {company.subscriptionStatus || "inactive"}
                     </span>
                   </td>
 
@@ -180,10 +179,7 @@ export default function SaasCompaniesPage() {
                     )}
                   </td>
 
-                  <td className="p-4">
-                    {company.nextBillingDate ||
-                      "-"}
-                  </td>
+                  <td className="p-4">{company.nextBillingDate || "-"}</td>
 
                   <td className="p-4">
                     <div className="flex justify-center gap-2 flex-wrap">
@@ -212,13 +208,10 @@ export default function SaasCompaniesPage() {
 
               {!filtered.length && (
                 <tr>
-                  <td
-                    colSpan={9}
-                    className="text-center p-10 text-gray-500"
-                  >
+                  <td colSpan={9} className="text-center p-10 text-gray-500">
                     <div className="flex flex-col items-center gap-2">
                       <Building2 size={40} />
-                      No companies found
+                      {loading ? "Loading..." : "No companies found"}
                     </div>
                   </td>
                 </tr>
@@ -227,12 +220,6 @@ export default function SaasCompaniesPage() {
           </table>
         </div>
       </div>
-
-      {loading && (
-        <div className="text-center text-gray-500">
-          Loading...
-        </div>
-      )}
     </div>
   );
 }

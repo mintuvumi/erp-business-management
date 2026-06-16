@@ -28,6 +28,7 @@ const CashSchema = new mongoose.Schema(
     note: {
       type: String,
       default: "",
+      trim: true,
     },
 
     status: {
@@ -40,16 +41,16 @@ const CashSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-CashSchema.pre("save", function (next) {
-  if (this.currentBalance === undefined || this.currentBalance === null) {
-    this.currentBalance = Number(this.balance || this.openingBalance || 0);
-  }
+CashSchema.pre("save", function () {
+  this.openingBalance = Number(this.openingBalance || 0);
 
-  if (this.balance === undefined || this.balance === null) {
-    this.balance = Number(this.currentBalance || this.openingBalance || 0);
-  }
+  this.currentBalance = Number(
+    this.currentBalance ?? this.balance ?? this.openingBalance ?? 0
+  );
 
-  next();
+  this.balance = Number(
+    this.balance ?? this.currentBalance ?? this.openingBalance ?? 0
+  );
 });
 
 const Cash = mongoose.models.Cash || mongoose.model("Cash", CashSchema);

@@ -155,6 +155,8 @@ export default function Sidebar({ open, setOpen }) {
     };
   }, []);
 
+
+  
   const features = useMemo(
     () => getFeatures(businessType, role),
     [businessType, role]
@@ -181,12 +183,7 @@ export default function Sidebar({ open, setOpen }) {
         path: "/saas-admin/companies",
       },
 
-      {
-        name: "Subscriptions",
-        bn: "সাবস্ক্রিপশন",
-        icon: WalletCards,
-        path: "/subscription",
-      },
+   
 
       {
         name: "Payments",
@@ -194,6 +191,8 @@ export default function Sidebar({ open, setOpen }) {
         icon: DollarSign,
         path: "/saas-admin/payments",
       },
+
+      
 
       {
         name: "Login Logs",
@@ -205,18 +204,25 @@ export default function Sidebar({ open, setOpen }) {
   },
 
     !isMarketingOfficer && {
-      key: "main",
-      name: "Main",
-      bn: "মেইন",
-      items: [
-        features.dashboard && {
-          name: "Dashboard",
-          bn: "ড্যাশবোর্ড",
-          icon: LayoutDashboard,
-          path: "/dashboard",
-        },
-      ].filter(Boolean),
+  key: "main",
+  name: "Main",
+  bn: "মেইন",
+  items: [
+    features.dashboard && {
+      name: "Dashboard",
+      bn: "ড্যাশবোর্ড",
+      icon: LayoutDashboard,
+      path: "/dashboard",
     },
+
+    {
+      name: "Subscription",
+      bn: "সাবস্ক্রিপশন",
+      icon: WalletCards,
+      path: "/subscription",
+    },
+  ].filter(Boolean),
+},
 
     !isMarketingOfficer && {
       key: "hr",
@@ -486,7 +492,8 @@ export default function Sidebar({ open, setOpen }) {
       ].filter(Boolean),
     },
   ]
-    .filter(Boolean)
+  .filter(Boolean)
+
     .filter((g) => g.items.length > 0);
 
   const isItemActive = (path) => {

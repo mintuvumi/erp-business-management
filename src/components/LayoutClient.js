@@ -6,13 +6,12 @@ import Sidebar from "@/components/ui/Sidebar";
 import Navbar from "@/components/ui/Navbar";
 
 const PUBLIC_PATHS = [
-  "/",
   "/login",
   "/register",
   "/forgot-password",
   "/reset-password",
   "/verify-otp",
-  "/subscription",
+  
 ];
 
 const MARKETING_ALLOWED_PATHS = [
@@ -26,8 +25,7 @@ const MARKETING_ALLOWED_PATHS = [
 ];
 
 function isPublicPath(pathname) {
-  if (PUBLIC_PATHS.includes(pathname)) return true;
-  return false;
+  return PUBLIC_PATHS.includes(pathname);
 }
 
 export default function LayoutClient({ children }) {

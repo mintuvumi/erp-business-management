@@ -247,7 +247,7 @@ CompanySettingSchema.index(
   }
 );
 
-CompanySettingSchema.index({ businessType: 1 });
+
 CompanySettingSchema.index({ companyName: 1 });
 
 const CompanySetting =
