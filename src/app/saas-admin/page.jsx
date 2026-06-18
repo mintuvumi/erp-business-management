@@ -1,14 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   RefreshCcw,
   Search,
   Lock,
   Unlock,
   CheckCircle,
-  Clock,
-  ShieldAlert,
   Archive,
   RotateCcw,
 } from "lucide-react";
@@ -18,6 +17,8 @@ function money(value) {
 }
 
 export default function SaasAdminPage() {
+  const router = useRouter();
+
   const [companies, setCompanies] = useState([]);
   const [summary, setSummary] = useState({});
   const [recentLogins, setRecentLogins] = useState([]);
@@ -26,7 +27,6 @@ export default function SaasAdminPage() {
   const [q, setQ] = useState("");
   const [status, setStatus] = useState("");
   const [showArchived, setShowArchived] = useState(false);
-  const [selected, setSelected] = useState(null);
 
   const loadCompanies = async () => {
     try {
@@ -39,11 +39,14 @@ export default function SaasAdminPage() {
 
       const res = await fetch(`/api/saas/admin/companies?${params}`, {
         credentials: "include",
+        cache: "no-store",
       });
 
       const data = await res.json();
 
-      if (!data.success) throw new Error(data.message);
+      if (!res.ok || !data.success) {
+        throw new Error(data.message || "Failed to load SaaS admin");
+      }
 
       setCompanies(data.data?.companies || []);
       setSummary(data.data?.summary || {});
@@ -98,14 +101,22 @@ export default function SaasAdminPage() {
 
       const data = await res.json();
 
-      if (!data.success) throw new Error(data.message);
+      if (!res.ok || !data.success) {
+        throw new Error(data.message || "Update failed");
+      }
 
-      alert("Updated successfully");
-      setSelected(null);
+      alert(data.message || "Updated successfully");
       await loadCompanies();
     } catch (error) {
       alert(error.message || "Update failed");
     }
+  };
+
+  const goManage = (company) => {
+    const id = company?._id || company?.id;
+    if (!id) return alert("Company ID not found");
+
+    router.push(`/saas-admin/companies/${id}`);
   };
 
   return (
@@ -113,10 +124,9 @@ export default function SaasAdminPage() {
       <div className="bg-white border rounded-[28px] p-5 shadow-sm">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-black">SeeERP SaaS Admin</h1>
+            <h1 className="text-2xl font-black">SeeERP SaaS Dashboard</h1>
             <p className="text-sm text-gray-500 mt-1">
-              Company subscription, payment, grace, lock/unlock, archive and
-              login monitoring.
+              Summary, company list, quick payment, lock/unlock and archive.
             </p>
           </div>
 
@@ -180,7 +190,6 @@ export default function SaasAdminPage() {
                     key={c._id}
                     onClick={() => {
                       setQ(c.name);
-                      setSelected(c);
                     }}
                     className="w-full text-left p-3 hover:bg-blue-50 border-b last:border-b-0"
                   >
@@ -245,7 +254,7 @@ export default function SaasAdminPage() {
                 <th className="p-3 text-left">Status</th>
                 <th className="p-3 text-left">Grace</th>
                 <th className="p-3 text-left">Next Bill</th>
-                <th className="p-3 text-center">Actions</th>
+                <th className="p-3 text-center">Quick Actions</th>
               </tr>
             </thead>
 
@@ -314,7 +323,7 @@ export default function SaasAdminPage() {
                     <td className="p-3">
                       <div className="flex justify-center gap-2 flex-wrap">
                         <button
-                          onClick={() => setSelected(c)}
+                          onClick={() => goManage(c)}
                           className="border px-3 py-2 rounded-xl hover:bg-gray-50"
                         >
                           Manage
@@ -428,222 +437,6 @@ export default function SaasAdminPage() {
           )}
         </div>
       </div>
-
-      {selected && (
-        <ManageModal
-          company={selected}
-          onClose={() => setSelected(null)}
-          onUpdate={updateCompany}
-        />
-      )}
-    </div>
-  );
-}
-
-function ManageModal({ company, onClose, onUpdate }) {
-  const [form, setForm] = useState({
-    monthlyFee: company.monthlyFee || "",
-    subscriptionPlan: company.subscriptionPlan || "free",
-    nextBillingDate: company.nextBillingDate || "",
-    billingDay: company.billingDay || 30,
-    graceUntil: company.graceUntil || "",
-    promisePaymentDate: company.promisePaymentDate || "",
-    adminGraceNote: company.adminGraceNote || "",
-    transactionId: "",
-    paymentMethod: "manual",
-  });
-
-  return (
-    <div className="fixed inset-0 z-[99999] bg-black/50 p-4 flex items-center justify-center">
-      <div className="bg-white rounded-[28px] w-full max-w-2xl max-h-[92vh] overflow-auto">
-        <div className="p-5 border-b flex items-center justify-between">
-          <div>
-            <h2 className="text-xl font-black">{company.name}</h2>
-            <p className="text-sm text-gray-500">
-              {company.companyCode} • {company.subscriptionStatus}{" "}
-              {company.isDeleted ? "• Archived" : ""}
-            </p>
-          </div>
-
-          <button onClick={onClose} className="w-10 h-10 rounded-full border">
-            ✕
-          </button>
-        </div>
-
-        <div className="p-5 space-y-4">
-          <div className="grid grid-cols-2 gap-3">
-            <Input
-              label="Monthly Fee"
-              value={form.monthlyFee}
-              onChange={(v) => setForm((p) => ({ ...p, monthlyFee: v }))}
-            />
-
-            <div>
-              <label className="text-xs font-semibold text-gray-500 mb-1 block">
-                Plan
-              </label>
-              <select
-                value={form.subscriptionPlan}
-                onChange={(e) =>
-                  setForm((p) => ({ ...p, subscriptionPlan: e.target.value }))
-                }
-                className="border p-3 rounded-xl w-full bg-white"
-              >
-                <option value="free">Free</option>
-                <option value="starter">Starter</option>
-                <option value="business">Business</option>
-                <option value="enterprise">Enterprise</option>
-              </select>
-            </div>
-
-            <Input
-              type="date"
-              label="Next Billing Date"
-              value={form.nextBillingDate}
-              onChange={(v) => setForm((p) => ({ ...p, nextBillingDate: v }))}
-            />
-
-            <Input
-              label="Billing Day"
-              value={form.billingDay}
-              onChange={(v) => setForm((p) => ({ ...p, billingDay: v }))}
-            />
-
-            <Input
-              type="date"
-              label="Grace Until"
-              value={form.graceUntil}
-              onChange={(v) => setForm((p) => ({ ...p, graceUntil: v }))}
-            />
-
-            <Input
-              type="date"
-              label="Promise Payment Date"
-              value={form.promisePaymentDate}
-              onChange={(v) =>
-                setForm((p) => ({ ...p, promisePaymentDate: v }))
-              }
-            />
-          </div>
-
-          <textarea
-            value={form.adminGraceNote}
-            onChange={(e) =>
-              setForm((p) => ({ ...p, adminGraceNote: e.target.value }))
-            }
-            placeholder="Admin grace note"
-            className="border p-3 rounded-xl w-full min-h-[90px]"
-          />
-
-          <div className="grid grid-cols-2 gap-3">
-            <button
-              onClick={() =>
-                onUpdate({
-                  companyId: company._id,
-                  action: "update_plan",
-                  subscriptionPlan: form.subscriptionPlan,
-                  monthlyFee: Number(form.monthlyFee || 0),
-                  nextBillingDate: form.nextBillingDate,
-                  billingDay: Number(form.billingDay || 30),
-                })
-              }
-              className="border rounded-xl py-3 font-semibold flex items-center justify-center gap-2"
-            >
-              <CheckCircle size={16} />
-              Update Plan
-            </button>
-
-            <button
-              onClick={() =>
-                onUpdate({
-                  companyId: company._id,
-                  action: "grace",
-                  graceUntil: form.graceUntil,
-                  promisePaymentDate:
-                    form.promisePaymentDate || form.graceUntil,
-                  adminGraceNote: form.adminGraceNote,
-                })
-              }
-              className="bg-yellow-500 text-white rounded-xl py-3 font-semibold flex items-center justify-center gap-2"
-            >
-              <Clock size={16} />
-              Give Grace
-            </button>
-
-            <button
-              onClick={() =>
-                onUpdate({
-                  companyId: company._id,
-                  action: "mark_paid",
-                  amount: Number(form.monthlyFee || company.monthlyFee || 0),
-                  paidAmount: Number(form.monthlyFee || company.monthlyFee || 0),
-                  paymentMethod: form.paymentMethod,
-                  transactionId: form.transactionId,
-                })
-              }
-              className="bg-green-600 text-white rounded-xl py-3 font-semibold flex items-center justify-center gap-2"
-            >
-              <Unlock size={16} />
-              Mark Paid
-            </button>
-
-            {company.isDeleted ? (
-              <button
-                onClick={() =>
-                  onUpdate({
-                    companyId: company._id,
-                    action: "restore",
-                  })
-                }
-                className="bg-emerald-600 text-white rounded-xl py-3 font-semibold flex items-center justify-center gap-2"
-              >
-                <RotateCcw size={16} />
-                Restore Company
-              </button>
-            ) : (
-              <button
-                onClick={() =>
-                  onUpdate({
-                    companyId: company._id,
-                    action: "lock",
-                    lockReason:
-                      "Subscription expired. Please pay your bill to continue service.",
-                  })
-                }
-                className="bg-red-600 text-white rounded-xl py-3 font-semibold flex items-center justify-center gap-2"
-              >
-                <Lock size={16} />
-                Lock Service
-              </button>
-            )}
-          </div>
-
-          {!company.isDeleted && (
-            <button
-              onClick={() => {
-                if (confirm(`Archive ${company.name}? Data will remain safe.`)) {
-                  onUpdate({
-                    companyId: company._id,
-                    action: "archive",
-                  });
-                }
-              }}
-              className="w-full bg-slate-800 text-white rounded-xl py-3 font-semibold flex items-center justify-center gap-2"
-            >
-              <Archive size={16} />
-              Archive Company
-            </button>
-          )}
-
-          <div className="bg-blue-50 border border-blue-100 rounded-2xl p-4 text-sm text-blue-700 flex gap-2">
-            <ShieldAlert size={18} />
-            <p>
-              Grace দিলে customer date পর্যন্ত software ব্যবহার করতে পারবে। Date
-              পার হলে auto lock হবে।
-            </p>
-          </div>
-        </div>
-      </div>
     </div>
   );
 }
@@ -675,23 +468,6 @@ function Card({ title, value, success, warning, danger }) {
       >
         {value}
       </h3>
-    </div>
-  );
-}
-
-function Input({ label, value, onChange, type = "text" }) {
-  return (
-    <div>
-      <label className="text-xs font-semibold text-gray-500 mb-1 block">
-        {label}
-      </label>
-      <input
-        type={type}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={label}
-        className="border p-3 rounded-xl w-full outline-none focus:ring-4 focus:ring-blue-100"
-      />
     </div>
   );
 }

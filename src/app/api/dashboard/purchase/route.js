@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import connectDB from "@/lib/db";
 import Purchase from "@/models/Purchase";
+import Supplier from "@/models/Supplier";
 import User from "@/models/User";
 import { getTenant } from "@/lib/tenant";
 import { requirePermission } from "@/lib/checkPermission";
@@ -16,7 +17,6 @@ function escapeRegex(value = "") {
 
 function isSameMonth(dateString, now = new Date()) {
   if (!dateString) return false;
-
   const date = new Date(dateString);
 
   return (
@@ -27,7 +27,6 @@ function isSameMonth(dateString, now = new Date()) {
 
 function isSameYear(dateString, now = new Date()) {
   if (!dateString) return false;
-
   const date = new Date(dateString);
   return date.getFullYear() === now.getFullYear();
 }
@@ -57,14 +56,25 @@ function paidOf(p) {
 }
 
 function purchaseDTO(p) {
+  const totalAmount = amountOf(p);
+  const paidAmount = paidOf(p);
+  const dueAmount = dueOf(p);
+
   return {
     ...p,
     _id: String(p._id),
     supplierId: p.supplierId?._id ? String(p.supplierId._id) : p.supplierId,
     bankId: p.bankId?._id ? String(p.bankId._id) : p.bankId,
-    totalAmount: amountOf(p),
-    paidAmount: paidOf(p),
-    dueAmount: dueOf(p),
+
+    totalAmount,
+    grandTotal: totalAmount,
+    total: totalAmount,
+
+    paidAmount,
+    cashPaidAmount: paidAmount,
+
+    dueAmount,
+
     date: normalizeDate(p.date || p.createdAt),
   };
 }
@@ -86,10 +96,7 @@ export async function GET(req) {
       await requirePermission(tenant, "purchase");
     } catch (error) {
       return NextResponse.json(
-        {
-          success: false,
-          message: error.message || "Access denied",
-        },
+        { success: false, message: error.message || "Access denied" },
         { status: 403 }
       );
     }
@@ -103,10 +110,7 @@ export async function GET(req) {
       user?.permissions?.purchase === false
     ) {
       return NextResponse.json(
-        {
-          success: false,
-          message: "Access denied",
-        },
+        { success: false, message: "Access denied" },
         { status: 403 }
       );
     }
@@ -140,6 +144,7 @@ export async function GET(req) {
         { supplierPhone: regex },
         { itemName: regex },
         { paymentType: regex },
+        { paymentFrom: regex },
         { purchaseType: regex },
         { note: regex },
         { "items.itemName": regex },
@@ -174,21 +179,6 @@ export async function GET(req) {
       }).lean(),
     ]);
 
-    const totalPurchase = allPurchases.reduce(
-      (sum, p) => sum + amountOf(p),
-      0
-    );
-
-    const totalPaidPurchase = allPurchases.reduce(
-      (sum, p) => sum + paidOf(p),
-      0
-    );
-
-    const totalDuePurchase = allPurchases.reduce(
-      (sum, p) => sum + dueOf(p),
-      0
-    );
-
     const todayPurchases = allPurchases.filter((p) =>
       isToday(p.date || p.createdAt)
     );
@@ -200,6 +190,18 @@ export async function GET(req) {
     const yearlyPurchases = allPurchases.filter((p) =>
       isSameYear(p.date || p.createdAt, now)
     );
+
+    const totalPurchase = allPurchases.reduce(
+      (sum, p) => sum + amountOf(p),
+      0
+    );
+
+    const totalPaidPurchase = allPurchases.reduce(
+      (sum, p) => sum + paidOf(p),
+      0
+    );
+
+    const totalDuePurchase = allPurchases.reduce((sum, p) => sum + dueOf(p), 0);
 
     const todayTotalPurchase = todayPurchases.reduce(
       (sum, p) => sum + amountOf(p),
@@ -247,14 +249,26 @@ export async function GET(req) {
     );
 
     const cashPurchase = allPurchases
-      .filter(
-        (p) =>
-          String(p.paymentFrom || "").toLowerCase() === "cash" ||
-          String(p.paymentType || "").toLowerCase() === "cash"
-      )
+      .filter((p) => String(p.paymentFrom || "").toLowerCase() === "cash")
+      .reduce((sum, p) => sum + paidOf(p), 0);
+
+    const todayCashPurchase = todayPurchases
+      .filter((p) => String(p.paymentFrom || "").toLowerCase() === "cash")
+      .reduce((sum, p) => sum + paidOf(p), 0);
+
+    const monthlyCashPurchase = monthlyPurchases
+      .filter((p) => String(p.paymentFrom || "").toLowerCase() === "cash")
       .reduce((sum, p) => sum + paidOf(p), 0);
 
     const bankPurchase = allPurchases
+      .filter((p) => String(p.paymentFrom || "").toLowerCase() === "bank")
+      .reduce((sum, p) => sum + paidOf(p), 0);
+
+    const todayBankPurchase = todayPurchases
+      .filter((p) => String(p.paymentFrom || "").toLowerCase() === "bank")
+      .reduce((sum, p) => sum + paidOf(p), 0);
+
+    const monthlyBankPurchase = monthlyPurchases
       .filter((p) => String(p.paymentFrom || "").toLowerCase() === "bank")
       .reduce((sum, p) => sum + paidOf(p), 0);
 
@@ -323,7 +337,12 @@ export async function GET(req) {
         yearlyDuePurchase,
 
         cashPurchase,
+        todayCashPurchase,
+        monthlyCashPurchase,
+
         bankPurchase,
+        todayBankPurchase,
+        monthlyBankPurchase,
 
         supplierWise,
         typeWise,

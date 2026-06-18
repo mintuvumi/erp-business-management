@@ -1,44 +1,41 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import {
-  Save,
-  Search,
-  Sparkles,
-  ShoppingCart,
-  Pencil,
-} from "lucide-react";
+import { Save, Search, Sparkles, ShoppingCart, Pencil } from "lucide-react";
 
 import PageHeader from "@/components/common/PageHeader";
 import EditPurchaseModal from "@/components/purchase/EditPurchaseModal";
 
+const blankForm = {
+  itemName: "",
+  qty: 1,
+  price: "",
+  purchaseType: "stock",
+
+  supplierId: "",
+  supplierName: "",
+  supplierPhone: "",
+  supplierAddress: "",
+
+  supplierBillNo: "",
+
+  paymentFrom: "cash",
+  paymentType: "cash",
+  bankId: "",
+
+  paidAmount: "",
+  discount: "",
+  transportCost: "",
+  otherCost: "",
+  note: "",
+};
+
+function n(value) {
+  return Number(value || 0) || 0;
+}
+
 export default function PurchasePage() {
-  const initialForm = {
-    itemName: "",
-    qty: 1,
-    price: 0,
-    purchaseType: "stock",
-
-    supplierId: "",
-    supplierName: "",
-    supplierPhone: "",
-    supplierAddress: "",
-
-    supplierBillNo: "",
-    supplierInvoiceNo: "",
-
-    paymentFrom: "cash",
-    paymentType: "cash",
-    bankId: "",
-
-    paidAmount: 0,
-    discount: 0,
-    transportCost: 0,
-    otherCost: 0,
-    note: "",
-  };
-
-  const [form, setForm] = useState(initialForm);
+  const [form, setForm] = useState(blankForm);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
@@ -46,27 +43,30 @@ export default function PurchasePage() {
   const [purchases, setPurchases] = useState([]);
   const [aiSearch, setAiSearch] = useState("");
 
+  const [productSuggestions, setProductSuggestions] = useState([]);
+  const [showProductDropdown, setShowProductDropdown] = useState(false);
+  const [productLoading, setProductLoading] = useState(false);
+  const [activeProductIndex, setActiveProductIndex] = useState(-1);
+
   const [supplierSuggestions, setSupplierSuggestions] = useState([]);
   const [showSupplierDropdown, setShowSupplierDropdown] = useState(false);
   const [supplierLoading, setSupplierLoading] = useState(false);
+  const [activeSupplierIndex, setActiveSupplierIndex] = useState(-1);
 
   const [banks, setBanks] = useState([]);
 
   const [editOpen, setEditOpen] = useState(false);
   const [selectedPurchase, setSelectedPurchase] = useState(null);
 
-  const qty = Number(form.qty || 0);
-  const price = Number(form.price || 0);
+  const qty = n(form.qty);
+  const price = n(form.price);
+  const discount = n(form.discount);
+  const paidAmount = n(form.paidAmount);
+  const transportCost = n(form.transportCost);
+  const otherCost = n(form.otherCost);
 
   const subTotal = qty * price;
-
-  const grandTotal =
-    subTotal -
-    Number(form.discount || 0) +
-    Number(form.transportCost || 0) +
-    Number(form.otherCost || 0);
-
-  const paidAmount = Number(form.paidAmount || 0);
+  const grandTotal = subTotal - discount + transportCost + otherCost;
   const dueAmount = Math.max(grandTotal - paidAmount, 0);
 
   const autoPaymentType =
@@ -79,13 +79,28 @@ export default function PurchasePage() {
 
       const res = await fetch(`/api/purchase?${query.toString()}`, {
         credentials: "include",
+        cache: "no-store",
       });
 
-      const data = await res.json();
+      const text = await res.text();
 
-      if (data.success) setPurchases(data.data || []);
+      if (!text) {
+        setPurchases([]);
+        return;
+      }
+
+      const data = JSON.parse(text);
+
+      if (!res.ok || !data.success) {
+        console.error("PURCHASE_API_ERROR:", data.message);
+        setPurchases([]);
+        return;
+      }
+
+      setPurchases(Array.isArray(data.data) ? data.data : []);
     } catch (error) {
       console.error("PURCHASE_FETCH_ERROR:", error);
+      setPurchases([]);
     }
   };
 
@@ -93,13 +108,124 @@ export default function PurchasePage() {
     try {
       const res = await fetch("/api/bank", {
         credentials: "include",
+        cache: "no-store",
       });
 
-      const data = await res.json();
+      const text = await res.text();
 
-      if (data.success) setBanks(data.data || []);
+      if (!text) {
+        setBanks([]);
+        return;
+      }
+
+      const data = JSON.parse(text);
+
+      const list = Array.isArray(data)
+        ? data
+        : Array.isArray(data.data)
+        ? data.data
+        : Array.isArray(data.banks)
+        ? data.banks
+        : Array.isArray(data.data?.banks)
+        ? data.data.banks
+        : [];
+
+      setBanks(list);
     } catch (error) {
       console.error("BANK_FETCH_ERROR:", error);
+      setBanks([]);
+    }
+  };
+
+  const searchProducts = async (value) => {
+    setForm((prev) => ({ ...prev, itemName: value }));
+
+    if (!value || value.trim().length < 1) {
+      setProductSuggestions([]);
+      setShowProductDropdown(false);
+      setActiveProductIndex(-1);
+      return;
+    }
+
+    try {
+      setProductLoading(true);
+
+      const res = await fetch(
+        `/api/dashboard/stock?search=${encodeURIComponent(value.trim())}`,
+        {
+          credentials: "include",
+          cache: "no-store",
+        }
+      );
+
+      const text = await res.text();
+      const data = text ? JSON.parse(text) : {};
+      const rows = Array.isArray(data?.data?.stocks)
+        ? data.data.stocks
+        : Array.isArray(data?.data)
+        ? data.data
+        : [];
+
+      setProductSuggestions(rows.slice(0, 10));
+      setShowProductDropdown(true);
+      setActiveProductIndex(rows.length ? 0 : -1);
+    } catch (error) {
+      console.error("PRODUCT_SEARCH_ERROR:", error);
+      setProductSuggestions([]);
+      setShowProductDropdown(false);
+    } finally {
+      setProductLoading(false);
+    }
+  };
+
+  const selectProduct = (product) => {
+    const name =
+      product.itemName ||
+      product.productName ||
+      product.name ||
+      product.title ||
+      "";
+
+    const lastPrice =
+      product.lastPurchasePrice ||
+      product.avgCost ||
+      product.cost ||
+      product.price ||
+      "";
+
+    setForm((prev) => ({
+      ...prev,
+      itemName: name,
+      price: prev.price || lastPrice || "",
+    }));
+
+    setProductSuggestions([]);
+    setShowProductDropdown(false);
+    setActiveProductIndex(-1);
+  };
+
+  const handleProductKeyDown = (e) => {
+    if (!showProductDropdown || productSuggestions.length === 0) return;
+
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setActiveProductIndex((prev) =>
+        prev + 1 >= productSuggestions.length ? 0 : prev + 1
+      );
+    }
+
+    if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setActiveProductIndex((prev) =>
+        prev <= 0 ? productSuggestions.length - 1 : prev - 1
+      );
+    }
+
+    if (e.key === "Enter") {
+      e.preventDefault();
+      const item =
+        productSuggestions[activeProductIndex] || productSuggestions[0];
+      if (item) selectProduct(item);
     }
   };
 
@@ -110,9 +236,10 @@ export default function PurchasePage() {
       supplierId: "",
     }));
 
-    if (!value || value.length < 2) {
+    if (!value || value.trim().length < 1) {
       setSupplierSuggestions([]);
       setShowSupplierDropdown(false);
+      setActiveSupplierIndex(-1);
       return;
     }
 
@@ -120,20 +247,30 @@ export default function PurchasePage() {
       setSupplierLoading(true);
 
       const res = await fetch(
-        `/api/suppliers?search=${encodeURIComponent(value)}`,
+        `/api/suppliers?search=${encodeURIComponent(value.trim())}`,
         {
           credentials: "include",
+          cache: "no-store",
         }
       );
 
-      const data = await res.json();
+      const text = await res.text();
+      const data = text ? JSON.parse(text) : {};
 
       if (data.success) {
-        setSupplierSuggestions(data.data || []);
+        const rows = Array.isArray(data.data) ? data.data : [];
+
+        setSupplierSuggestions(rows.slice(0, 10));
         setShowSupplierDropdown(true);
+        setActiveSupplierIndex(rows.length ? 0 : -1);
+      } else {
+        setSupplierSuggestions([]);
+        setShowSupplierDropdown(false);
       }
     } catch (error) {
       console.error("SUPPLIER_SEARCH_ERROR:", error);
+      setSupplierSuggestions([]);
+      setShowSupplierDropdown(false);
     } finally {
       setSupplierLoading(false);
     }
@@ -142,14 +279,40 @@ export default function PurchasePage() {
   const selectSupplier = (supplier) => {
     setForm((prev) => ({
       ...prev,
-      supplierId: supplier._id || "",
-      supplierName: supplier.name || "",
+      supplierId: supplier._id || supplier.id || "",
+      supplierName: supplier.name || supplier.companyName || "",
       supplierPhone: supplier.phone || "",
       supplierAddress: supplier.address || "",
     }));
 
     setSupplierSuggestions([]);
     setShowSupplierDropdown(false);
+    setActiveSupplierIndex(-1);
+  };
+
+  const handleSupplierKeyDown = (e) => {
+    if (!showSupplierDropdown || supplierSuggestions.length === 0) return;
+
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setActiveSupplierIndex((prev) =>
+        prev + 1 >= supplierSuggestions.length ? 0 : prev + 1
+      );
+    }
+
+    if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setActiveSupplierIndex((prev) =>
+        prev <= 0 ? supplierSuggestions.length - 1 : prev - 1
+      );
+    }
+
+    if (e.key === "Enter") {
+      e.preventDefault();
+      const item =
+        supplierSuggestions[activeSupplierIndex] || supplierSuggestions[0];
+      if (item) selectSupplier(item);
+    }
   };
 
   useEffect(() => {
@@ -165,40 +328,23 @@ export default function PurchasePage() {
     if (!text) return;
 
     if (text.includes("credit")) {
-      setForm((prev) => ({
-        ...prev,
-        paymentType: "credit",
-        paidAmount: 0,
-      }));
+      setForm((prev) => ({ ...prev, paymentType: "credit", paidAmount: "" }));
     }
 
     if (text.includes("cash")) {
-      setForm((prev) => ({
-        ...prev,
-        paymentFrom: "cash",
-        bankId: "",
-      }));
+      setForm((prev) => ({ ...prev, paymentFrom: "cash", bankId: "" }));
     }
 
     if (text.includes("bank")) {
-      setForm((prev) => ({
-        ...prev,
-        paymentFrom: "bank",
-      }));
+      setForm((prev) => ({ ...prev, paymentFrom: "bank" }));
     }
 
     if (text.includes("stock")) {
-      setForm((prev) => ({
-        ...prev,
-        purchaseType: "stock",
-      }));
+      setForm((prev) => ({ ...prev, purchaseType: "stock" }));
     }
 
     if (text.includes("direct")) {
-      setForm((prev) => ({
-        ...prev,
-        purchaseType: "direct",
-      }));
+      setForm((prev) => ({ ...prev, purchaseType: "direct" }));
     }
 
     setSearch(aiSearch);
@@ -211,6 +357,7 @@ export default function PurchasePage() {
       if (qty <= 0) return alert("Valid quantity required");
       if (price <= 0) return alert("Valid price required");
       if (grandTotal <= 0) return alert("Valid purchase total required");
+
       if (paidAmount > grandTotal) {
         return alert("Paid amount cannot exceed grand total");
       }
@@ -225,11 +372,15 @@ export default function PurchasePage() {
       const res = await fetch("/api/purchase", {
         method: "POST",
         credentials: "include",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...form,
+          qty,
+          price,
+          paidAmount,
+          discount,
+          transportCost,
+          otherCost,
           items: [
             {
               itemName: form.itemName,
@@ -249,17 +400,18 @@ export default function PurchasePage() {
         }),
       });
 
-      const data = await res.json();
+      const text = await res.text();
+      const data = text ? JSON.parse(text) : {};
 
-      if (!data.success) {
-        alert(data.message || "Failed");
+      if (!res.ok || !data.success) {
+        alert(data.message || "Purchase save failed");
         return;
       }
 
       setSaved(true);
-      setForm(initialForm);
+      setForm(blankForm);
       setSupplierSuggestions([]);
-
+      setProductSuggestions([]);
       fetchPurchases();
     } catch (error) {
       console.error("PURCHASE_SAVE_ERROR:", error);
@@ -278,7 +430,6 @@ export default function PurchasePage() {
       [
         item.purchaseNo,
         item.supplierBillNo,
-        item.supplierInvoiceNo,
         item.itemName,
         item.supplierName,
         item.supplierPhone,
@@ -296,14 +447,11 @@ export default function PurchasePage() {
 Item: ${form.itemName}
 Supplier: ${form.supplierName}
 Total: ৳ ${money(grandTotal)}
-Paid: ৳ ${money(form.paidAmount)}
+Paid: ৳ ${money(paidAmount)}
 Due: ৳ ${money(dueAmount)}`;
 
     if (navigator.share) {
-      await navigator.share({
-        title: "Purchase",
-        text,
-      });
+      await navigator.share({ title: "Purchase", text });
     } else {
       await navigator.clipboard.writeText(text);
       alert("Copied");
@@ -347,11 +495,54 @@ Due: ৳ ${money(dueAmount)}`;
 
       <div className="bg-white border rounded-[28px] p-5 shadow-sm space-y-5">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Input
-            label="Item Name"
-            value={form.itemName}
-            onChange={(v) => setForm({ ...form, itemName: v })}
-          />
+          <div className="space-y-1 relative">
+            <p className="text-xs text-gray-500">Item Name *</p>
+
+            <input
+              type="text"
+              value={form.itemName}
+              onChange={(e) => searchProducts(e.target.value)}
+              onKeyDown={handleProductKeyDown}
+              onFocus={() => {
+                if (productSuggestions.length > 0) setShowProductDropdown(true);
+              }}
+              placeholder="Type product name..."
+              className="w-full border rounded-2xl px-3 py-3 outline-none text-sm focus:ring-2 focus:ring-blue-400"
+            />
+
+            {productLoading && (
+              <p className="absolute right-3 top-9 text-xs text-blue-500">
+                Searching...
+              </p>
+            )}
+
+            {showProductDropdown && productSuggestions.length > 0 && (
+              <div className="absolute z-[9999] mt-1 w-full bg-white border rounded-2xl shadow-2xl overflow-hidden max-h-72 overflow-y-auto">
+                {productSuggestions.map((product, index) => (
+                  <button
+                    key={product._id || index}
+                    type="button"
+                    onClick={() => selectProduct(product)}
+                    className={`w-full text-left px-4 py-3 border-b last:border-none ${
+                      activeProductIndex === index
+                        ? "bg-blue-50"
+                        : "hover:bg-blue-50"
+                    }`}
+                  >
+                    <p className="font-semibold text-gray-800">
+                      {product.itemName || product.productName || product.name}
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      Stock: {product.qty || product.quantity || 0} pcs
+                      {product.lastPurchasePrice
+                        ? ` • Last Price: ৳ ${money(product.lastPurchasePrice)}`
+                        : ""}
+                    </p>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
 
           <div className="space-y-1 relative">
             <p className="text-xs text-gray-500">Supplier Name *</p>
@@ -360,12 +551,13 @@ Due: ৳ ${money(dueAmount)}`;
               type="text"
               value={form.supplierName}
               onChange={(e) => searchSuppliers(e.target.value)}
+              onKeyDown={handleSupplierKeyDown}
               onFocus={() => {
                 if (supplierSuggestions.length > 0) {
                   setShowSupplierDropdown(true);
                 }
               }}
-              placeholder="Search supplier name / phone / company"
+              placeholder="Type supplier name / phone..."
               className="w-full border rounded-2xl px-3 py-3 outline-none text-sm focus:ring-2 focus:ring-blue-400"
             />
 
@@ -377,12 +569,16 @@ Due: ৳ ${money(dueAmount)}`;
 
             {showSupplierDropdown && supplierSuggestions.length > 0 && (
               <div className="absolute z-[9999] mt-1 w-full bg-white border rounded-2xl shadow-2xl overflow-hidden max-h-72 overflow-y-auto">
-                {supplierSuggestions.map((supplier) => (
+                {supplierSuggestions.map((supplier, index) => (
                   <button
-                    key={supplier._id}
+                    key={supplier._id || index}
                     type="button"
                     onClick={() => selectSupplier(supplier)}
-                    className="w-full text-left px-4 py-3 hover:bg-blue-50 border-b last:border-none"
+                    className={`w-full text-left px-4 py-3 border-b last:border-none ${
+                      activeSupplierIndex === index
+                        ? "bg-blue-50"
+                        : "hover:bg-blue-50"
+                    }`}
                   >
                     <p className="font-semibold text-gray-800">
                       {supplier.name}
@@ -421,12 +617,6 @@ Due: ৳ ${money(dueAmount)}`;
             value={form.supplierBillNo}
             onChange={(v) => setForm({ ...form, supplierBillNo: v })}
           />
-
-          <Input
-            label="Supplier Invoice No"
-            value={form.supplierInvoiceNo}
-            onChange={(v) => setForm({ ...form, supplierInvoiceNo: v })}
-          />
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -434,28 +624,31 @@ Due: ৳ ${money(dueAmount)}`;
             label="Quantity"
             type="number"
             value={form.qty}
-            onChange={(v) => setForm({ ...form, qty: Number(v) })}
+            onChange={(v) => setForm({ ...form, qty: v })}
           />
 
           <Input
             label="Price"
             type="number"
             value={form.price}
-            onChange={(v) => setForm({ ...form, price: Number(v) })}
+            placeholder="Price"
+            onChange={(v) => setForm({ ...form, price: v })}
           />
 
           <Input
             label="Discount"
             type="number"
             value={form.discount}
-            onChange={(v) => setForm({ ...form, discount: Number(v) })}
+            placeholder="Discount"
+            onChange={(v) => setForm({ ...form, discount: v })}
           />
 
           <Input
             label="Paid Amount"
             type="number"
             value={form.paidAmount}
-            onChange={(v) => setForm({ ...form, paidAmount: Number(v) })}
+            placeholder="Paid Amount"
+            onChange={(v) => setForm({ ...form, paidAmount: v })}
           />
         </div>
 
@@ -464,14 +657,16 @@ Due: ৳ ${money(dueAmount)}`;
             label="Transport Cost"
             type="number"
             value={form.transportCost}
-            onChange={(v) => setForm({ ...form, transportCost: Number(v) })}
+            placeholder="Transport Cost"
+            onChange={(v) => setForm({ ...form, transportCost: v })}
           />
 
           <Input
             label="Other Cost"
             type="number"
             value={form.otherCost}
-            onChange={(v) => setForm({ ...form, otherCost: Number(v) })}
+            placeholder="Other Cost"
+            onChange={(v) => setForm({ ...form, otherCost: v })}
           />
 
           <Select
@@ -507,7 +702,7 @@ Due: ৳ ${money(dueAmount)}`;
               value={form.bankId}
               options={[
                 { label: "Select Bank", value: "" },
-                ...banks.map((bank) => ({
+                ...(Array.isArray(banks) ? banks : []).map((bank) => ({
                   label: `${bank.bankName || bank.accountName || "Bank"} - ${
                     bank.accountNo || bank.accountNumber || ""
                   }`,
@@ -521,7 +716,6 @@ Due: ৳ ${money(dueAmount)}`;
 
         <div>
           <p className="text-xs text-gray-500 mb-1">Note</p>
-
           <textarea
             rows={3}
             value={form.note}
@@ -533,7 +727,7 @@ Due: ৳ ${money(dueAmount)}`;
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
           <SummaryCard title="Sub Total" value={subTotal} />
           <SummaryCard title="Grand Total" value={grandTotal} />
-          <SummaryCard title="Paid" value={form.paidAmount} />
+          <SummaryCard title="Paid" value={paidAmount} />
           <SummaryCard title="Due" value={dueAmount} danger />
           <SummaryCard title="Payment" value={autoPaymentType} text />
         </div>
@@ -541,24 +735,16 @@ Due: ৳ ${money(dueAmount)}`;
         <button
           onClick={handleSave}
           disabled={saving}
-          className={`
-            w-full py-3 rounded-2xl flex items-center justify-center gap-2
-            transition-all duration-300 text-white font-medium
-            ${
-              saved
-                ? "bg-green-500"
-                : saving
-                ? "bg-blue-300"
-                : "bg-blue-600 hover:bg-blue-700 active:scale-[0.99]"
-            }
-          `}
+          className={`w-full py-3 rounded-2xl flex items-center justify-center gap-2 transition-all duration-300 text-white font-medium ${
+            saved
+              ? "bg-green-500"
+              : saving
+              ? "bg-blue-300"
+              : "bg-blue-600 hover:bg-blue-700 active:scale-[0.99]"
+          }`}
         >
           <Save size={17} />
-          {saving
-            ? "Saving..."
-            : saved
-            ? "Saved Successfully ✔"
-            : "Save Purchase"}
+          {saving ? "Saving..." : saved ? "Saved Successfully ✔" : "Save Purchase"}
         </button>
       </div>
 
@@ -587,7 +773,7 @@ Due: ৳ ${money(dueAmount)}`;
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1300px] text-sm">
+          <table className="w-full min-w-[1200px] text-sm">
             <thead className="bg-gray-50">
               <tr>
                 <th className="p-4 text-left">Date</th>
@@ -615,11 +801,7 @@ Due: ৳ ${money(dueAmount)}`;
                 filteredPurchases.map((item) => (
                   <tr key={item._id} className="border-t hover:bg-blue-50/40">
                     <td className="p-4">{formatDate(item.date)}</td>
-
-                    <td className="p-4 font-medium">
-                      {item.purchaseNo || "-"}
-                    </td>
-
+                    <td className="p-4 font-medium">{item.purchaseNo || "-"}</td>
                     <td className="p-4">{item.supplierBillNo || "-"}</td>
 
                     <td className="p-4">
@@ -632,7 +814,6 @@ Due: ৳ ${money(dueAmount)}`;
                     </td>
 
                     <td className="p-4">{item.itemName}</td>
-
                     <td className="p-4 text-right">{item.qty}</td>
 
                     <td className="p-4 text-right font-semibold">
@@ -649,16 +830,13 @@ Due: ৳ ${money(dueAmount)}`;
 
                     <td className="p-4 text-center">
                       <span
-                        className={`
-                          px-3 py-1 rounded-full text-xs font-semibold
-                          ${
-                            item.paymentType === "cash"
-                              ? "bg-green-50 text-green-600"
-                              : item.paymentType === "partial"
-                              ? "bg-orange-50 text-orange-600"
-                              : "bg-red-50 text-red-600"
-                          }
-                        `}
+                        className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                          item.paymentType === "cash"
+                            ? "bg-green-50 text-green-600"
+                            : item.paymentType === "partial"
+                            ? "bg-orange-50 text-orange-600"
+                            : "bg-red-50 text-red-600"
+                        }`}
                       >
                         {item.paymentType}
                       </span>
@@ -697,14 +875,18 @@ Due: ৳ ${money(dueAmount)}`;
   );
 }
 
-function Input({ label, value, onChange, type = "text" }) {
+function Input({ label, value, onChange, type = "text", placeholder = "" }) {
   return (
     <div className="space-y-1">
       <p className="text-xs text-gray-500">{label}</p>
-
       <input
         type={type}
-        value={value}
+        value={
+          value === 0 || value === "0" || value === null || value === undefined
+            ? ""
+            : value
+        }
+        placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
         className="w-full border rounded-2xl px-3 py-3 outline-none text-sm focus:ring-2 focus:ring-blue-400"
       />
@@ -716,13 +898,12 @@ function Select({ label, value, options, onChange }) {
   return (
     <div className="space-y-1">
       <p className="text-xs text-gray-500">{label}</p>
-
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
         className="w-full border rounded-2xl px-3 py-3 text-sm outline-none focus:ring-2 focus:ring-blue-400"
       >
-        {options.map((option, index) => (
+        {(Array.isArray(options) ? options : []).map((option, index) => (
           <option key={index} value={option.value}>
             {option.label}
           </option>
@@ -736,7 +917,6 @@ function SummaryCard({ title, value, danger, text }) {
   return (
     <div className="bg-gray-50 rounded-2xl p-4 border">
       <p className="text-xs text-gray-500">{title}</p>
-
       <h3 className={`text-lg font-bold mt-2 ${danger ? "text-red-500" : ""}`}>
         {text ? value : `৳ ${money(value)}`}
       </h3>

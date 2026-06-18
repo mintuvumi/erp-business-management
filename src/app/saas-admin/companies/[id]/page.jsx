@@ -113,6 +113,80 @@ export default function SaasCompanyDetailsPage() {
     }
   };
 
+  const resetPassword = async () => {
+  try {
+    const res = await fetch(
+      `/api/saas/admin/companies/${companyId}/reset-password`,
+      {
+        method: "POST",
+        credentials: "include",
+      }
+    );
+
+    const data = await res.json();
+
+    if (!res.ok || !data.success) {
+      throw new Error(data.message);
+    }
+
+    alert(
+      `Email: ${data.data?.ownerEmail || "-"}
+Phone: ${data.data?.ownerPhone || "-"}
+Password: 123456`
+    );
+  } catch (error) {
+    alert(error.message);
+  }
+};
+
+const loginAsCompany = async () => {
+  try {
+    const res = await fetch(
+      `/api/saas/admin/companies/${companyId}/login-as`,
+      {
+        method: "POST",
+        credentials: "include",
+      }
+    );
+
+    const data = await res.json();
+
+    if (!res.ok || !data.success) {
+      throw new Error(data.message);
+    }
+
+    localStorage.setItem(
+      "user",
+      JSON.stringify(data.data)
+    );
+
+    localStorage.setItem(
+      "companies",
+      JSON.stringify(data.data.companies || [])
+    );
+
+    localStorage.setItem(
+      "activeCompany",
+      JSON.stringify(data.data.company)
+    );
+
+    localStorage.setItem(
+      "selectedCompany",
+      JSON.stringify(data.data.company)
+    );
+
+    localStorage.setItem(
+      "selectedCompanyId",
+      data.data.companyId
+    );
+
+    window.location.href = "/dashboard";
+  } catch (error) {
+    alert(error.message);
+  }
+};
+
+
   const statusClass = useMemo(() => {
     const status = company?.subscriptionStatus;
     if (status === "active") return "bg-green-50 text-green-700";
@@ -279,7 +353,24 @@ export default function SaasCompanyDetailsPage() {
           </div>
         </div>
 
+
         <div className="flex flex-wrap gap-2 mt-5">
+
+               <button
+    onClick={loginAsCompany}
+    className="bg-purple-600 text-white px-4 py-2 rounded-xl"
+  >
+    Login As Company
+  </button>
+
+  <button
+    onClick={resetPassword}
+    className="bg-orange-500 text-white px-4 py-2 rounded-xl"
+  >
+    Reset Password
+  </button>
+
+
           <button
             onClick={() =>
               updateCompany("update_plan", {

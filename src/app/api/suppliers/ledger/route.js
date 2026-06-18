@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import connectDB from "@/lib/db";
 import Purchase from "@/models/Purchase";
+import Supplier from "@/models/Supplier";
+import CompanySetting from "@/models/CompanySetting";
 import CashTransaction from "@/models/CashTransaction";
 import BankTransaction from "@/models/BankTransaction";
 import { getTenant } from "@/lib/tenant";
@@ -56,7 +58,7 @@ export async function GET(req) {
     const { searchParams } = new URL(req.url);
 
     const supplier = String(searchParams.get("supplier") || "").trim();
-    const supplierId = searchParams.get("supplierId") || "";
+    const supplierId = String(searchParams.get("supplierId") || "").trim();
     const from = searchParams.get("from") || "";
     const to = searchParams.get("to") || "";
     const dueOnly = searchParams.get("dueOnly") || "";
@@ -96,27 +98,38 @@ export async function GET(req) {
       query.dueAmount = { $gt: 0 };
     }
 
-    const purchases = await Purchase.find(query)
-      .sort({ date: 1, createdAt: 1 })
-      .lean();
+    const [settings, suppliers, purchases] = await Promise.all([
+      CompanySetting.findOne({ companyId: tenant.companyId }).lean(),
+      Supplier.find({ companyId: tenant.companyId, status: "active" })
+        .sort({ name: 1 })
+        .lean(),
+      Purchase.find(query).sort({ date: 1, createdAt: 1 }).lean(),
+    ]);
 
     const purchaseIds = purchases.map((p) => p._id);
+    const purchaseIdStrings = purchaseIds.map((id) => String(id));
 
     const [cashPayments, bankPayments] = await Promise.all([
       CashTransaction.find({
         companyId: tenant.companyId,
-        purchaseId: { $in: purchaseIds },
-        category: { $in: ["supplier_payment", "cash_purchase"] },
         status: { $ne: "cancelled" },
+        category: { $in: ["supplier_payment", "cash_purchase"] },
+        $or: [
+          { purchaseId: { $in: purchaseIds } },
+          { refId: { $in: purchaseIdStrings } },
+        ],
       })
         .sort({ date: 1, createdAt: 1 })
         .lean(),
 
       BankTransaction.find({
         companyId: tenant.companyId,
-        purchaseId: { $in: purchaseIds },
-        category: { $in: ["supplier_payment", "bank_payment"] },
         status: { $ne: "cancelled" },
+        category: { $in: ["supplier_payment", "bank_payment", "bank_purchase"] },
+        $or: [
+          { purchaseId: { $in: purchaseIds } },
+          { refId: { $in: purchaseIdStrings } },
+        ],
       })
         .sort({ date: 1, createdAt: 1 })
         .lean(),
@@ -125,7 +138,7 @@ export async function GET(req) {
     const paymentMap = {};
 
     [...cashPayments, ...bankPayments].forEach((txn) => {
-      const key = String(txn.purchaseId || "");
+      const key = String(txn.purchaseId || txn.refId || "");
       if (!paymentMap[key]) paymentMap[key] = [];
 
       paymentMap[key].push({
@@ -151,33 +164,62 @@ export async function GET(req) {
       return {
         _id: String(purchase._id),
         date: normalizeDate(purchase.date || purchase.createdAt),
-
         purchaseNo: purchase.purchaseNo || "",
         supplierBillNo: purchase.supplierBillNo || "",
         supplierInvoiceNo: purchase.supplierInvoiceNo || "",
-
-        supplierId: purchase.supplierId || null,
+        supplierId: purchase.supplierId ? String(purchase.supplierId) : "",
         supplierName: purchase.supplierName || "Cash Supplier",
         supplierPhone: purchase.supplierPhone || "",
         supplierAddress: purchase.supplierAddress || "",
-
         itemName: purchase.itemName || purchase.items?.[0]?.itemName || "",
         items: purchase.items || [],
-
         purchaseType: purchase.purchaseType || "",
         paymentType: purchase.paymentType || "",
         paymentFrom: purchase.paymentFrom || "",
-
         total,
         paidAmount,
         dueAmount,
         balance,
-
         payments: paymentMap[String(purchase._id)] || [],
-
         note: purchase.note || "",
       };
     });
+
+    const supplierWiseObj = {};
+
+    rows.forEach((row) => {
+      const key = row.supplierId || row.supplierName || "Cash Supplier";
+
+      if (!supplierWiseObj[key]) {
+        supplierWiseObj[key] = {
+          supplierId: row.supplierId,
+          supplierName: row.supplierName,
+          supplierPhone: row.supplierPhone,
+          supplierAddress: row.supplierAddress,
+          totalPurchase: 0,
+          totalPaid: 0,
+          totalDue: 0,
+          closingBalance: 0,
+          totalEntry: 0,
+        };
+      }
+
+      supplierWiseObj[key].totalPurchase += n(row.total);
+      supplierWiseObj[key].totalPaid += n(row.paidAmount);
+      supplierWiseObj[key].totalDue += n(row.dueAmount);
+      supplierWiseObj[key].closingBalance += n(row.dueAmount);
+      supplierWiseObj[key].totalEntry += 1;
+    });
+
+    const supplierWise = Object.values(supplierWiseObj).sort(
+      (a, b) => b.totalDue - a.totalDue
+    );
+
+    const today = new Date().toISOString().slice(0, 10);
+    const thisMonth = today.slice(0, 7);
+
+    const todayRows = rows.filter((r) => r.date === today);
+    const monthRows = rows.filter((r) => r.date?.startsWith(thisMonth));
 
     const summary = {
       totalPurchase: rows.reduce((s, r) => s + n(r.total), 0),
@@ -185,11 +227,34 @@ export async function GET(req) {
       totalDue: rows.reduce((s, r) => s + n(r.dueAmount), 0),
       closingBalance: balance,
       totalEntry: rows.length,
+
+      todayPurchase: todayRows.reduce((s, r) => s + n(r.total), 0),
+      todayPaid: todayRows.reduce((s, r) => s + n(r.paidAmount), 0),
+      todayDue: todayRows.reduce((s, r) => s + n(r.dueAmount), 0),
+
+      thisMonthPurchase: monthRows.reduce((s, r) => s + n(r.total), 0),
+      thisMonthPaid: monthRows.reduce((s, r) => s + n(r.paidAmount), 0),
+      thisMonthDue: monthRows.reduce((s, r) => s + n(r.dueAmount), 0),
+
+      activeSuppliers: suppliers.length,
+      dueSuppliers: supplierWise.filter((s) => n(s.totalDue) > 0).length,
+      largestDueSupplier: supplierWise[0] || null,
     };
 
     return NextResponse.json({
       success: true,
       data: {
+        company: {
+          name: settings?.companyName || "SeeERP",
+          address: settings?.companyAddress || "",
+          phone: settings?.companyPhone || "",
+          email: settings?.companyEmail || "",
+          website: settings?.companyWebsite || "",
+          logo: settings?.logo || "",
+          currency: settings?.currency || "৳",
+        },
+        suppliers,
+        supplierWise,
         rows,
         summary,
       },
