@@ -7,18 +7,21 @@ export default function CompanyHeader({ title = "", rightContent = null }) {
   const [settings, setSettings] = useState(null);
 
   useEffect(() => {
-    const fetchSettings = async () => {
-      try {
-        const res = await fetch("/api/settings");
-        const data = await res.json();
-        if (data.success) setSettings(data.data);
-      } catch (error) {
-        console.error("HEADER_SETTINGS_ERROR:", error);
-      }
-    };
+  const fetchSettings = async () => {
+    try {
+      const res = await fetch("/api/company-settings");
+      const data = await res.json();
 
-    fetchSettings();
-  }, []);
+      if (data.success) {
+        setSettings(data.data);
+      }
+    } catch (error) {
+      console.error("HEADER_SETTINGS_ERROR:", error);
+    }
+  };
+
+  fetchSettings();
+}, []);
 
   if (!settings) return null;
 

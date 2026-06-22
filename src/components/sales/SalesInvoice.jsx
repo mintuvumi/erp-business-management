@@ -27,10 +27,11 @@ export default function SalesInvoice({ sale }) {
         let data = await res.json();
 
         if (!data.success) {
-          res = await fetch("/api/settings", { cache: "no-store" });
-          data = await res.json();
-        }
-
+  res = await fetch("/api/company-settings", {
+    cache: "no-store",
+  });
+  data = await res.json();
+}
         if (data.success) setSettings(data.data);
       } catch (error) {
         console.error(error);

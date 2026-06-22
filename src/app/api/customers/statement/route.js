@@ -19,14 +19,41 @@ function normalizeDate(date) {
 async function getLoggedInOfficer({ tenant, user }) {
   if (user.role !== "marketing_officer") return null;
 
-  const officer = await MarketingOfficer.findOne({
+  let officer = await MarketingOfficer.findOne({
     companyId: tenant.companyId,
     userId: tenant.user?.id,
     status: "active",
   });
 
   if (!officer) {
-    throw new Error("Marketing officer profile not found");
+    officer = await MarketingOfficer.findOne({
+      companyId: tenant.companyId,
+      $or: [
+        user.email ? { email: user.email } : null,
+        user.phone ? { phone: user.phone } : null,
+      ].filter(Boolean),
+      status: "active",
+    });
+  }
+
+  if (!officer) {
+    officer = await MarketingOfficer.create({
+      companyId: tenant.companyId,
+      userId: tenant.user?.id,
+      name: user.name || "Marketing Officer",
+      phone: user.phone || "",
+      email: user.email || "",
+      photo: user.photo || user.avatar || "",
+      designation: "Marketing Officer",
+      status: "active",
+      createdByUserId: tenant.user?.id || null,
+      createdBy: user.name || "",
+    });
+  }
+
+  if (!officer.userId) {
+    officer.userId = tenant.user?.id;
+    await officer.save();
   }
 
   return officer;
@@ -80,12 +107,14 @@ export async function GET(req) {
     }
 
     if (customer) {
-      saleQuery.customerName = { $regex: customer, $options: "i" };
+      saleQuery.$or = [
+        { customerName: { $regex: customer, $options: "i" } },
+        { customerPhone: { $regex: customer, $options: "i" } },
+        { billNo: { $regex: customer, $options: "i" } },
+      ];
     }
 
-    if (customerId) {
-      saleQuery.customerId = customerId;
-    }
+    if (customerId) saleQuery.customerId = customerId;
 
     if (from || to) {
       saleQuery.date = {};
@@ -94,14 +123,42 @@ export async function GET(req) {
     }
 
     if (dueOnly === "true") {
-      saleQuery.dueAmount = { $gt: 0 };
+      saleQuery.$or = [
+        ...(saleQuery.$or || []),
+        { dueAmount: { $gt: 0 } },
+        { statementDueAmount: { $gt: 0 } },
+      ];
     }
 
     if (dueToday === "true") {
-      saleQuery.dueAmount = { $gt: 0 };
-      saleQuery.nextCollectionDate = {
-        $lte: new Date().toISOString().slice(0, 10),
-      };
+      saleQuery.$or = [
+        ...(saleQuery.$or || []),
+        { dueAmount: { $gt: 0 } },
+        { statementDueAmount: { $gt: 0 } },
+      ];
+
+      saleQuery.$and = [
+        ...(saleQuery.$and || []),
+        {
+          $or: [
+            {
+              nextCollectionDate: {
+                $lte: new Date().toISOString().slice(0, 10),
+              },
+            },
+            {
+              "dueSchedule.nextDueDate": {
+                $lte: new Date().toISOString().slice(0, 10),
+              },
+            },
+            {
+              "dueSchedule.promiseDate": {
+                $lte: new Date().toISOString().slice(0, 10),
+              },
+            },
+          ],
+        },
+      ];
     }
 
     const sales = await Sale.find(saleQuery).sort({
@@ -115,14 +172,18 @@ export async function GET(req) {
       CashTransaction.find({
         companyId: tenant.companyId,
         saleId: { $in: saleIds },
-        category: "due_collection",
+        category: {
+          $in: ["due_collection", "customer_collection", "installment_collection"],
+        },
         status: { $ne: "cancelled" },
       }).sort({ date: 1, createdAt: 1 }),
 
       BankTransaction.find({
         companyId: tenant.companyId,
         saleId: { $in: saleIds },
-        category: "due_collection",
+        category: {
+          $in: ["due_collection", "customer_collection", "installment_collection"],
+        },
         status: { $ne: "cancelled" },
       }).sort({ date: 1, createdAt: 1 }),
     ]);
@@ -131,7 +192,6 @@ export async function GET(req) {
 
     [...cashCollections, ...bankCollections].forEach((txn) => {
       const key = String(txn.saleId || "");
-
       if (!collectionMap[key]) collectionMap[key] = [];
 
       collectionMap[key].push({
@@ -150,20 +210,23 @@ export async function GET(req) {
 
     sales.forEach((sale) => {
       const salesAmount = money(
-        sale.salesAmount || sale.afterDiscount || sale.baseSalesAmount
+        sale.salesAmount || sale.afterDiscount || sale.baseSalesAmount || sale.subTotal
       );
 
       const vatAmount = money(sale.vatAmount);
       const aitAmount = money(sale.aitAmount);
       const paidAmount = money(sale.paidAmount);
 
-      const netReceivable = money(
-        sale.netReceivable || salesAmount - vatAmount - aitAmount
+      const invoiceTotal = money(
+        sale.invoiceTotal || sale.netTotal || sale.total || sale.grandTotal
       );
 
-      const currentDue = money(sale.statementDueAmount || sale.dueAmount);
-      const invoiceTotal = money(
-        sale.invoiceTotal || sale.netTotal || sale.total
+      const netReceivable = money(
+        sale.netReceivable || salesAmount - vatAmount - aitAmount || invoiceTotal
+      );
+
+      const currentDue = money(
+        sale.statementDueAmount || sale.dueAmount || sale.invoiceDueAmount
       );
 
       balance += currentDue;
@@ -172,10 +235,11 @@ export async function GET(req) {
         _id: String(sale._id),
         type: "sale",
         date: sale.date,
-        billNo: sale.billNo,
+        billNo: sale.billNo || sale.invoiceNo || "",
         customerId: sale.customerId,
         customerName: sale.customerName,
         customerPhone: sale.customerPhone,
+        customerAddress: sale.customerAddress || "",
 
         marketingOfficerId: sale.marketingOfficerId,
         marketingOfficerName: sale.marketingOfficerName,
@@ -193,7 +257,12 @@ export async function GET(req) {
         dueAmount: currentDue,
         balance,
 
-        nextCollectionDate: sale.nextCollectionDate || "",
+        nextCollectionDate:
+          sale.nextCollectionDate ||
+          sale.dueSchedule?.nextDueDate ||
+          sale.dueSchedule?.promiseDate ||
+          "",
+
         collectionStatus: sale.collectionStatus || "",
         collectionComment: sale.collectionComment || "",
         lastCollectionComment: sale.lastCollectionComment || "",
@@ -229,9 +298,9 @@ export async function GET(req) {
       currentDueTotal: rows.reduce((s, r) => s + r.currentDue, 0),
       interestTotal: rows.reduce((s, r) => s + money(r.dueInterestAmount), 0),
       closingBalance: rows.length ? rows[rows.length - 1].balance : 0,
-
       grossTotal: rows.reduce((s, r) => s + r.salesAmount, 0),
       dueTotal: rows.reduce((s, r) => s + r.currentDue, 0),
+      totalRecords: rows.length,
     };
 
     return NextResponse.json({

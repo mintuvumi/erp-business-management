@@ -202,9 +202,10 @@ export async function GET(req) {
     const finalIds = selectedIds.length > 0 ? selectedIds : allowedIds;
 
     const companies = await Company.find({
-      _id: { $in: finalIds },
-      isActive: true,
-    }).sort({ createdAt: 1 });
+  _id: { $in: finalIds },
+  isActive: true,
+  isDeleted: { $ne: true },
+}).sort({ createdAt: 1 });
 
     return NextResponse.json({
       success: true,

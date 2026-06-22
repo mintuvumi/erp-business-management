@@ -6,9 +6,14 @@ const DueScheduleSchema = new mongoose.Schema(
 
     reminderType: {
       type: String,
-      enum: ["none", "one_time", "weekly", "monthly"],
+      enum: ["none", "weekly", "monthly", "custom"],
       default: "none",
       index: true,
+    },
+
+    customDays: {
+      type: Number,
+      default: 0,
     },
 
     nextDueDate: {
@@ -249,6 +254,13 @@ const SaleSchema = new mongoose.Schema(
       index: true,
     },
 
+    collectionPriority: {
+      type: String,
+      enum: ["normal", "today", "urgent", "overdue"],
+      default: "normal",
+      index: true,
+    },
+
     lastCollectionComment: {
       type: String,
       default: "",
@@ -311,6 +323,18 @@ SaleSchema.pre("save", function () {
     this.lastCollectionComment = this.collectionComment;
   }
 
+  if (
+    this.dueSchedule?.reminderType === "custom" &&
+    Number(this.dueSchedule?.customDays || 0) > 0 &&
+    this.dueSchedule?.promiseDate
+  ) {
+    const nextDate = new Date(this.dueSchedule.promiseDate);
+    nextDate.setDate(nextDate.getDate() + Number(this.dueSchedule.customDays));
+
+    this.dueSchedule.nextDueDate = nextDate.toISOString().slice(0, 10);
+    this.nextCollectionDate = this.dueSchedule.nextDueDate;
+  }
+
   if (this.dueSchedule?.promiseDate && !this.dueSchedule.nextDueDate) {
     this.dueSchedule.nextDueDate = this.dueSchedule.promiseDate;
   }
@@ -325,23 +349,6 @@ SaleSchema.pre("save", function () {
 
   if (due > 0 && this.nextCollectionDate) {
     this.dueSchedule.enabled = true;
-  }
-
-  if (this.installmentEnabled && Number(this.installmentMonths || 0) > 0) {
-    this.installmentAmount =
-      Number(this.dueAmount || 0) / Number(this.installmentMonths || 1);
-
-    if (!this.dueSchedule.totalInstallments) {
-      this.dueSchedule.totalInstallments = Number(this.installmentMonths || 0);
-    }
-
-    if (!this.dueSchedule.installmentAmount) {
-      this.dueSchedule.installmentAmount = this.installmentAmount;
-    }
-
-    if (!this.dueSchedule.reminderType || this.dueSchedule.reminderType === "none") {
-      this.dueSchedule.reminderType = "monthly";
-    }
   }
 
   if (
@@ -361,17 +368,52 @@ SaleSchema.pre("save", function () {
     this.interestAppliedAt = new Date();
   }
 
+  if (this.installmentEnabled && Number(this.installmentMonths || 0) > 0) {
+    const finalDue =
+      Number(this.dueAmount || 0) + Number(this.dueInterestAmount || 0);
+
+    this.installmentAmount =
+      finalDue / Number(this.installmentMonths || 1);
+
+    if (!this.dueSchedule.totalInstallments) {
+      this.dueSchedule.totalInstallments = Number(this.installmentMonths || 0);
+    }
+
+    this.dueSchedule.installmentAmount = this.installmentAmount;
+
+    if (
+      !this.dueSchedule.reminderType ||
+      this.dueSchedule.reminderType === "none"
+    ) {
+      this.dueSchedule.reminderType = "monthly";
+    }
+  }
+
   if (Number(this.dueAmount || 0) <= 0) {
     this.collectionStatus = "completed";
+    this.collectionPriority = "normal";
     this.nextCollectionDate = "";
-    if (this.dueSchedule) this.dueSchedule.isClosed = true;
+
+    if (this.dueSchedule) {
+      this.dueSchedule.isClosed = true;
+    }
   } else if (this.nextCollectionDate) {
-    this.collectionStatus =
-      String(this.nextCollectionDate) < today ? "overdue" : "pending";
+    if (String(this.nextCollectionDate) < today) {
+      this.collectionStatus = "overdue";
+      this.collectionPriority = "overdue";
+    } else if (String(this.nextCollectionDate) === today) {
+      this.collectionStatus = "pending";
+      this.collectionPriority = "today";
+    } else {
+      this.collectionStatus = "pending";
+      this.collectionPriority = "normal";
+    }
   } else if (this.paymentType === "credit" || this.paymentType === "partial") {
     this.collectionStatus = "pending";
+    this.collectionPriority = "normal";
   } else {
     this.collectionStatus = "none";
+    this.collectionPriority = "normal";
   }
 });
 
@@ -386,9 +428,11 @@ SaleSchema.index({ companyId: 1, marketingOfficerId: 1 });
 SaleSchema.index({ companyId: 1, marketingOfficerName: 1 });
 SaleSchema.index({ companyId: 1, nextCollectionDate: 1 });
 SaleSchema.index({ companyId: 1, collectionStatus: 1 });
+SaleSchema.index({ companyId: 1, collectionPriority: 1 });
 SaleSchema.index({ companyId: 1, customerId: 1 });
 SaleSchema.index({ companyId: 1, installmentEnabled: 1 });
 SaleSchema.index({ companyId: 1, "dueSchedule.reminderType": 1 });
 SaleSchema.index({ companyId: 1, "dueSchedule.nextDueDate": 1 });
+SaleSchema.index({ companyId: 1, "dueSchedule.customDays": 1 });
 
 export default mongoose.models.Sale || mongoose.model("Sale", SaleSchema);

@@ -38,6 +38,22 @@ function formatTime() {
   });
 }
 
+function todayISO() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function addDaysISO(baseDate, days) {
+  const d = baseDate ? new Date(baseDate) : new Date();
+  d.setDate(d.getDate() + Number(days || 0));
+  return d.toISOString().slice(0, 10);
+}
+
+function addMonthsISO(baseDate, months) {
+  const d = baseDate ? new Date(baseDate) : new Date();
+  d.setMonth(d.getMonth() + Number(months || 0));
+  return d.toISOString().slice(0, 10);
+}
+
 function numberToWords(num) {
   const a = [
     "",
@@ -200,6 +216,7 @@ export default function SalesForm() {
 
   const [dueReminderEnabled, setDueReminderEnabled] = useState(false);
   const [reminderType, setReminderType] = useState("none");
+  const [customDays, setCustomDays] = useState("30");
   const [promiseDate, setPromiseDate] = useState("");
   const [nextCollectionDate, setNextCollectionDate] = useState("");
   const [installmentEnabled, setInstallmentEnabled] = useState(false);
@@ -227,7 +244,7 @@ export default function SalesForm() {
           setCompanyInfo(data.data);
           setVatPercent(String(data.data?.vatPercent || ""));
           setAitPercent(String(data.data?.aitPercent || ""));
-          setDueMode(data.data?.defaultDueMode || "show");
+          setDueMode(data.data?.defaultDueMode === "hide" ? "hide" : "show");
           setDueInterestPercent(String(data.data?.dueInterestPercent || ""));
         }
       })
@@ -259,6 +276,33 @@ export default function SalesForm() {
       })
       .catch(console.error);
   }, []);
+
+  useEffect(() => {
+    if (!reminderType || reminderType === "none") return;
+
+    const basePromiseDate = promiseDate || todayISO();
+
+    if (!promiseDate) {
+      setPromiseDate(basePromiseDate);
+    }
+
+    if (reminderType === "weekly") {
+      setNextCollectionDate(addDaysISO(basePromiseDate, 7));
+      return;
+    }
+
+    if (reminderType === "monthly") {
+      setNextCollectionDate(addMonthsISO(basePromiseDate, 1));
+      return;
+    }
+
+    if (reminderType === "custom") {
+      setNextCollectionDate(addDaysISO(basePromiseDate, Number(customDays || 30)));
+      return;
+    }
+
+    setNextCollectionDate(basePromiseDate);
+  }, [reminderType, customDays, promiseDate]);
 
   const fetchCustomers = async (value) => {
     setCustomer(value);
@@ -381,9 +425,21 @@ export default function SalesForm() {
       ? "cash"
       : "partial";
 
+      const isRetailBusiness = companyInfo?.businessType === "retail";
+
+const allowInterest =
+  isRetailBusiness && companyInfo?.allowDueInterest === true;
+
+const dueInterestAmount =
+  allowInterest && statementDueAmount > 0
+    ? (statementDueAmount * Number(dueInterestPercent || 0)) / 100
+    : 0;
+
+  const dueWithInterest = statementDueAmount + dueInterestAmount;
+
   const installmentAmount =
     installmentEnabled && Number(installmentMonths || 0) > 0
-      ? statementDueAmount / Number(installmentMonths || 1)
+      ? dueWithInterest / Number(installmentMonths || 1)
       : 0;
 
   const getValidItems = () =>
@@ -420,9 +476,10 @@ export default function SalesForm() {
     setTransactionId("");
     setChequeNo("");
 
-    setDueMode(companyInfo?.defaultDueMode || "show");
+    setDueMode(companyInfo?.defaultDueMode === "hide" ? "hide" : "show");
     setDueReminderEnabled(false);
     setReminderType("none");
+    setCustomDays("30");
     setPromiseDate("");
     setNextCollectionDate("");
     setInstallmentEnabled(false);
@@ -477,6 +534,7 @@ export default function SalesForm() {
     dueSchedule: {
       enabled: dueReminderEnabled || statementDueAmount > 0,
       reminderType,
+      customDays: Number(customDays || 0),
       promiseDate,
       nextDueDate: nextCollectionDate || promiseDate,
       installmentAmount,
@@ -485,12 +543,25 @@ export default function SalesForm() {
     },
 
     reminderType,
+    customDays: Number(customDays || 0),
     promiseDate,
     nextCollectionDate: nextCollectionDate || promiseDate,
     installmentEnabled,
     installmentMonths: Number(installmentMonths || 0),
     installmentAmount,
-    dueInterestPercent: Number(dueInterestPercent || 0),
+    dueInterestPercent: allowInterest
+  ? Number(dueInterestPercent || 0)
+  : 0,
+
+dueInterestAmount: allowInterest
+  ? dueInterestAmount
+  : 0,
+
+dueWithInterest: allowInterest
+  ? dueWithInterest
+  : statementDueAmount,
+    dueInterestAmount,
+    dueWithInterest,
     collectionComment: reminderNote,
     reminderNote,
 
@@ -552,9 +623,10 @@ export default function SalesForm() {
 
       const previousDueFromAPI = Number(data?.data?.previousDue || 0);
       const showPreviousDue = dueMode !== "hide" && previousDueFromAPI > 0;
-      const netPriceInTaka = showPreviousDue
-        ? Number(tax.invoiceTotal || 0) + previousDueFromAPI
-        : Number(tax.invoiceTotal || 0);
+      const netPriceInTaka =
+  Number(tax.invoiceTotal || 0) +
+  (showPreviousDue ? previousDueFromAPI : 0) +
+  (allowInterest ? Number(dueInterestAmount || 0) : 0);
 
       setInvoiceData({
         ...payload,
@@ -585,6 +657,13 @@ export default function SalesForm() {
         currentDueAmount: data?.data?.currentDueAmount || 0,
         totalDueAfterSale: data?.data?.totalDueAfterSale || 0,
 
+        dueInterestAmount: allowInterest
+  ? dueInterestAmount
+  : 0,
+
+dueWithInterest: allowInterest
+  ? dueWithInterest
+  : statementDueAmount,
         netPriceInTaka,
         netPayable: netPriceInTaka,
 
@@ -613,9 +692,9 @@ export default function SalesForm() {
 
   const livePreviousDue = Number(creditInfo?.previousDue || 0);
   const liveNetPrice =
-    dueMode !== "hide"
-      ? Number(tax.invoiceTotal || 0) + livePreviousDue
-      : Number(tax.invoiceTotal || 0);
+    Number(tax.invoiceTotal || 0) +
+    (dueMode !== "hide" ? livePreviousDue : 0) +
+    Number(dueInterestAmount || 0);
 
   return (
     <div className="space-y-6">
@@ -1017,11 +1096,21 @@ export default function SalesForm() {
                     className="border p-3 rounded-xl w-full outline-none focus:ring-4 focus:ring-blue-100 bg-white"
                   >
                     <option value="none">None</option>
-                    <option value="one_time">One Time</option>
                     <option value="weekly">Weekly</option>
                     <option value="monthly">Monthly</option>
+                    <option value="custom">Custom Days</option>
                   </select>
                 </div>
+
+                {reminderType === "custom" && (
+                  <Input
+                    type="number"
+                    label="Custom Days"
+                    value={customDays}
+                    onChange={setCustomDays}
+                    placeholder="Example: 15 / 60 / 90"
+                  />
+                )}
 
                 <Input
                   type="date"
@@ -1040,13 +1129,15 @@ export default function SalesForm() {
                   onChange={setNextCollectionDate}
                 />
 
-                <Input
-                  type="number"
-                  label="Late Interest %"
-                  value={dueInterestPercent}
-                  onChange={setDueInterestPercent}
-                  placeholder="Example: 5 or 10"
-                />
+                {allowInterest && (
+  <Input
+    type="number"
+    label="Late Interest %"
+    value={dueInterestPercent}
+    onChange={setDueInterestPercent}
+    placeholder="Example: 5 or 10"
+  />
+)}
 
                 <label className="flex items-center gap-2 text-sm font-semibold md:col-span-2">
                   <input
@@ -1056,6 +1147,9 @@ export default function SalesForm() {
                       setInstallmentEnabled(e.target.checked);
                       if (e.target.checked && reminderType === "none") {
                         setReminderType("monthly");
+                      }
+                      if (e.target.checked && !promiseDate) {
+                        setPromiseDate(todayISO());
                       }
                     }}
                   />
@@ -1103,8 +1197,9 @@ export default function SalesForm() {
           />
         </div>
 
-        <div className="bg-white border rounded-[28px] p-5 shadow-sm space-y-3">
-          <h3 className="font-bold">Calculation Summary</h3>
+{/* Calculation Summary */}
+        <div className="bg-gradient-to-br from-blue-700 to-sky-600 text-white border rounded-[28px] p-5 shadow-sm space-y-3 self-start sticky top-4">
+          <h3 className="font-bold text-center text-lg">Calculation Summary</h3>
 
           <Row title="Subtotal" value={subTotal} />
           <Row title="Discount" value={discountAmount} danger />
@@ -1120,6 +1215,10 @@ export default function SalesForm() {
 
             <Row title="Current Statement Due" value={statementDueAmount} danger />
 
+            {Number(dueInterestAmount || 0) > 0 && (
+              <Row title={`Late Interest (${dueInterestPercent || 0}%)`} value={dueInterestAmount} danger />
+            )}
+
             {installmentEnabled && (
               <Row title="Installment Amount" value={installmentAmount} />
             )}
@@ -1127,8 +1226,8 @@ export default function SalesForm() {
             <Row title="Net Price in Taka" value={liveNetPrice} danger bold />
           </div>
 
-          <div className="border rounded-xl p-3 space-y-2 mt-3">
-            <p className="font-semibold text-sm">Previous Due Settings</p>
+          <div className="border border-white/25 rounded-xl p-3 space-y-2 mt-3 bg-white/10">
+            <p className="font-semibold text-sm text-white">Previous Due Settings</p>
 
             <label className="flex items-center gap-2 text-sm">
               <input
@@ -1139,17 +1238,6 @@ export default function SalesForm() {
                 onChange={(e) => setDueMode(e.target.value)}
               />
               Show Previous Due on Invoice
-            </label>
-
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="radio"
-                name="dueMode"
-                value="add"
-                checked={dueMode === "add"}
-                onChange={(e) => setDueMode(e.target.value)}
-              />
-              Add Previous Due to Net Price
             </label>
 
             <label className="flex items-center gap-2 text-sm">
@@ -1240,22 +1328,29 @@ function SalesInvoicePreview({ invoice, onClose }) {
   const invoiceItems = (invoice?.items || []).filter(Boolean);
 
   const invoiceTotal = Number(invoice?.invoiceTotal || 0);
-  const previousDue = Number(invoice?.previousDue || 0);
+const previousDue = Number(invoice?.previousDue || 0);
+const paidAmount = Number(invoice?.paidAmount || 0);
+const dueInterestAmount = Number(invoice?.dueInterestAmount || 0);
 
-  const showPreviousDue =
-    invoice?.hidePreviousDue !== true &&
-    invoice?.showPreviousDue === true &&
-    previousDue > 0;
+const showPreviousDue =
+  invoice?.hidePreviousDue !== true &&
+  invoice?.showPreviousDue === true &&
+  previousDue > 0;
 
-  const netPayable = showPreviousDue
-    ? invoiceTotal + previousDue
-    : invoiceTotal;
+const netPayable = Math.max(
+  invoiceTotal +
+    (showPreviousDue ? previousDue : 0) +
+    dueInterestAmount -
+    paidAmount,
+  0
+);
 
-  const ITEMS_PER_FIRST_PAGE = 10;
-  const ITEMS_PER_OTHER_PAGE = 16;
+const ITEMS_PER_FIRST_PAGE = 10;
+const ITEMS_PER_OTHER_PAGE = 16;
 
-  const pages = [];
-  let remainingItems = [...invoiceItems];
+const pages = [];
+let remainingItems = [...invoiceItems];
+
 
   pages.push(remainingItems.splice(0, ITEMS_PER_FIRST_PAGE));
 
@@ -1409,6 +1504,20 @@ function SalesInvoicePreview({ invoice, onClose }) {
                               value={previousDue}
                             />
                           )}
+
+                          {dueInterestAmount > 0 && (
+                            <InvoiceTotalRow
+                              title={`Late Interest (${invoice?.dueInterestPercent || 0}%)`}
+                              value={dueInterestAmount}
+                            />
+                          )}
+
+                          {paidAmount > 0 && (
+  <InvoiceTotalRow
+    title="Payment Received"
+    value={-paidAmount}
+  />
+)}
 
                           <div className="bg-blue-700 text-white px-4 py-3 flex justify-between font-bold rounded-xl">
                             <span>Net Price in Taka</span>
@@ -1626,13 +1735,10 @@ function ItemTable({ items, startIndex }) {
             <td className="p-3 text-center font-bold">{startIndex + index + 1}</td>
 
             <td className="p-3">
-              <p className="font-bold">{item?.name || "-"}</p>
-
-              {item?.description ? (
-                <p className="text-[10px] text-gray-500 mt-1">
-                  {item.description}
-                </p>
-              ) : null}
+              <p className="font-bold">
+                {item?.name || "-"}
+                {item?.description ? ` - ${item.description}` : ""}
+              </p>
             </td>
 
             <td className="p-3 text-center bg-gray-100 font-bold">
@@ -1654,10 +1760,21 @@ function ItemTable({ items, startIndex }) {
 }
 
 function InvoiceTotalRow({ title, value }) {
+  const amount = Number(value || 0);
+  const isMinus = amount < 0;
+
   return (
-    <div className="flex justify-between px-4">
+    <div
+      className={`flex justify-between px-4 ${
+        isMinus ? "text-green-600 font-semibold" : ""
+      }`}
+    >
       <span>{title}</span>
-      <span>৳ {money(value)}</span>
+
+      <span>
+        {isMinus ? "- " : ""}
+        ৳ {money(Math.abs(amount))}
+      </span>
     </div>
   );
 }
@@ -1687,7 +1804,7 @@ function Row({ title, value, bold, danger, success }) {
     <div
       className={`flex justify-between text-sm ${
         bold ? "font-bold text-base" : ""
-      } ${danger ? "text-red-500" : ""} ${success ? "text-green-600" : ""}`}
+      } ${danger ? "text-red-100" : ""} ${success ? "text-green-100" : ""}`}
     >
       <span>{title}</span>
       <span>৳ {money(value)}</span>

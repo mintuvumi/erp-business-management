@@ -477,18 +477,25 @@ export default function Sidebar({ open, setOpen }) {
         },
 
         {
-          name: "Company",
-          bn: "কোম্পানি",
-          icon: BriefcaseBusiness,
-          path: "/company",
-        },
+  name: "Company",
+  bn: "কোম্পানি",
+  icon: BriefcaseBusiness,
+  path: "/company",
+},
 
-        features.settings && {
-          name: "Settings",
-          bn: "সেটিংস",
-          icon: Settings,
-          path: "/settings",
-        },
+features.settings && {
+  name: "Users",
+  bn: "ইউজার",
+  icon: Users,
+  path: "/users",
+},
+
+features.settings && {
+  name: "Settings",
+  bn: "সেটিংস",
+  icon: Settings,
+  path: "/settings",
+},
       ].filter(Boolean),
     },
   ]

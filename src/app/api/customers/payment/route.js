@@ -15,7 +15,11 @@ function today() {
 }
 
 function money(value) {
-  return Number(value || 0);
+  return Number(value || 0) || 0;
+}
+
+function clean(value = "") {
+  return String(value || "").trim();
 }
 
 function getPaymentType({ paidAmount, targetAmount }) {
@@ -66,13 +70,56 @@ async function addBankBalance({ bankId, amount, companyId }) {
   return { bank, balanceBefore, balanceAfter };
 }
 
+async function getOfficerForUser({ tenant, user }) {
+  if (user.role !== "marketing_officer") return null;
+
+  let officer = await MarketingOfficer.findOne({
+    companyId: tenant.companyId,
+    userId: tenant.user?.id,
+    status: "active",
+  });
+
+  if (!officer) {
+    officer = await MarketingOfficer.findOne({
+      companyId: tenant.companyId,
+      $or: [
+        user.email ? { email: user.email } : null,
+        user.phone ? { phone: user.phone } : null,
+      ].filter(Boolean),
+      status: "active",
+    });
+  }
+
+  if (!officer) {
+    officer = await MarketingOfficer.create({
+      companyId: tenant.companyId,
+      userId: tenant.user?.id,
+      name: user.name || "Marketing Officer",
+      phone: user.phone || "",
+      email: user.email || "",
+      photo: user.photo || user.avatar || "",
+      designation: "Marketing Officer",
+      status: "active",
+      createdByUserId: tenant.user?.id || null,
+      createdBy: user.name || "",
+    });
+  }
+
+  if (!officer.userId) {
+    officer.userId = tenant.user?.id;
+    await officer.save();
+  }
+
+  return officer;
+}
+
 export async function POST(req) {
   try {
     await connectDB();
 
     const tenant = getTenant(req);
 
-    if (!tenant.companyId) {
+    if (!tenant?.companyId || !tenant?.user?.id) {
       return NextResponse.json(
         { success: false, message: "Unauthorized" },
         { status: 401 }
@@ -93,17 +140,27 @@ export async function POST(req) {
       );
     }
 
+    const officerForUser = await getOfficerForUser({ tenant, user });
+
     const body = await req.json();
 
-    const saleId = body.saleId;
+    const saleId = clean(body.saleId);
     const amount = money(body.amount);
     const paymentDate = body.date || today();
-    const note = body.note || "";
-    const collectionComment =
-      body.collectionComment || body.comment || note || "";
 
-    const paymentTo = body.paymentTo || body.collectionTo || "cash";
+    const note = clean(body.note);
+    const collectionComment = clean(
+      body.collectionComment || body.comment || body.paymentNote || note
+    );
+
+    const paymentTo = clean(body.paymentTo || body.collectionTo || "cash");
     const bankId = body.bankId || null;
+
+    const nextCollectionDate = clean(
+      body.nextCollectionDate || body.nextDueDate || ""
+    );
+
+    const promiseDate = clean(body.promiseDate || "");
 
     if (!saleId) {
       return NextResponse.json(
@@ -122,6 +179,13 @@ export async function POST(req) {
     if (amount <= 0) {
       return NextResponse.json(
         { success: false, message: "Valid payment amount required" },
+        { status: 400 }
+      );
+    }
+
+    if (!["cash", "bank"].includes(paymentTo)) {
+      return NextResponse.json(
+        { success: false, message: "Invalid payment method" },
         { status: 400 }
       );
     }
@@ -148,7 +212,7 @@ export async function POST(req) {
 
     if (
       user.role === "marketing_officer" &&
-      String(sale.marketingOfficerId || "") !== String(tenant.user?.id || "")
+      String(sale.marketingOfficerId || "") !== String(officerForUser?._id || "")
     ) {
       return NextResponse.json(
         {
@@ -159,7 +223,9 @@ export async function POST(req) {
       );
     }
 
-    let marketingOfficerId = body.marketingOfficerId || sale.marketingOfficerId;
+    let marketingOfficerId =
+      body.marketingOfficerId || sale.marketingOfficerId || officerForUser?._id;
+
     let marketingOfficerName = sale.marketingOfficerName || "";
 
     if (!marketingOfficerId) {
@@ -189,15 +255,17 @@ export async function POST(req) {
     marketingOfficerName = officer.name;
 
     const previousPaidAmount = money(sale.paidAmount);
+
     const invoiceTotal = money(
-      sale.invoiceTotal || sale.grossAmount || sale.netTotal
+      sale.invoiceTotal || sale.grossAmount || sale.netTotal || sale.total
     );
+
     const netReceivable = money(
       sale.netReceivable || sale.statementDueAmount || sale.dueAmount
     );
 
     const currentStatementDue = money(
-      sale.statementDueAmount || sale.dueAmount
+      sale.statementDueAmount || sale.dueAmount || sale.invoiceDueAmount
     );
 
     if (currentStatementDue <= 0) {
@@ -260,33 +328,36 @@ export async function POST(req) {
       if (statementDueAmount <= 0) {
         sale.dueSchedule.isClosed = true;
         sale.nextCollectionDate = "";
+        sale.dueSchedule.nextDueDate = "";
       } else {
         const reminderType = sale.dueSchedule.reminderType || "none";
 
-        const nextDate =
-          body.nextCollectionDate ||
-          body.nextDueDate ||
-          body.promiseDate ||
-          nextInstallmentDate(
-            sale.nextCollectionDate || paymentDate,
-            reminderType
-          );
+        const autoNextDate = nextInstallmentDate(
+          sale.nextCollectionDate || paymentDate,
+          reminderType
+        );
 
-        sale.nextCollectionDate = nextDate || "";
-        sale.dueSchedule.nextDueDate = nextDate || "";
+        const finalNextDate =
+          nextCollectionDate || promiseDate || autoNextDate || "";
+
+        sale.nextCollectionDate = finalNextDate;
+        sale.dueSchedule.nextDueDate = finalNextDate;
         sale.dueSchedule.promiseDate =
-          body.promiseDate || sale.dueSchedule.promiseDate || "";
+          promiseDate || sale.dueSchedule.promiseDate || "";
         sale.dueSchedule.reminderNote =
           collectionComment || sale.dueSchedule.reminderNote || "";
+        sale.dueSchedule.enabled = true;
       }
     } else {
-      sale.nextCollectionDate = body.nextCollectionDate || "";
+      sale.nextCollectionDate = nextCollectionDate || promiseDate || "";
     }
 
     await sale.save();
 
+    let transaction;
+
     if (paymentTo === "bank") {
-      await BankTransaction.create({
+      transaction = await BankTransaction.create({
         companyId: tenant.companyId,
         createdByUserId: tenant.user?.id || null,
         createdBy: tenant.user?.name || "",
@@ -326,7 +397,7 @@ export async function POST(req) {
         status: "active",
       });
     } else {
-      await CashTransaction.create({
+      transaction = await CashTransaction.create({
         companyId: tenant.companyId,
         type: "in",
         category: "due_collection",
@@ -395,6 +466,7 @@ export async function POST(req) {
         data: {
           saleId: sale._id,
           customerName: sale.customerName,
+          customerPhone: sale.customerPhone,
           billNo: sale.billNo,
 
           marketingOfficerId,
@@ -415,6 +487,9 @@ export async function POST(req) {
 
           paymentTo,
           paymentType: sale.paymentType,
+
+          transactionId: transaction?._id || null,
+          transactionNo: transaction?.transactionNo || transaction?.voucherNo || "",
         },
       },
       { status: 200 }

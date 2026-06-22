@@ -8,40 +8,15 @@ const CompanySettingSchema = new mongoose.Schema(
       required: true,
     },
 
-    companyName: {
+    companyName: { type: String, default: "SeeERP", trim: true },
+    companyCode: { type: String, default: "", trim: true },
+    companyAddress: { type: String, default: "", trim: true },
+    companyPhone: { type: String, default: "", trim: true },
+    companyEmail: { type: String, default: "", trim: true, lowercase: true },
+    companyWebsite: { type: String, default: "", trim: true },
+    companySlogan: {
       type: String,
-      default: "NextCore ERP",
-      trim: true,
-    },
-
-    companyCode: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-
-    companyAddress: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-
-    companyPhone: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-
-    companyEmail: {
-      type: String,
-      default: "",
-      trim: true,
-      lowercase: true,
-    },
-
-    companyWebsite: {
-      type: String,
-      default: "",
+      default: "Your trusted business partner",
       trim: true,
     },
 
@@ -64,33 +39,22 @@ const CompanySettingSchema = new mongoose.Schema(
     tinNumber: { type: String, default: "", trim: true },
     binNumber: { type: String, default: "", trim: true },
 
-    ownerName: {
-      type: String,
-      default: "Company User",
-      trim: true,
-    },
-
-    ownerRole: {
-      type: String,
-      default: "Admin / Owner",
-      trim: true,
-    },
-
     currency: { type: String, default: "৳" },
     currencyCode: { type: String, default: "BDT" },
+    timezone: { type: String, default: "Asia/Dhaka" },
+    language: { type: String, default: "bn" },
+    dateFormat: { type: String, default: "DD/MM/YYYY" },
+    timeFormat: { type: String, default: "12" },
+    financialYearStart: { type: String, default: "01-01" },
 
     vatPercent: { type: Number, default: 0 },
     aitPercent: { type: Number, default: 0 },
     lowStockLimit: { type: Number, default: 5 },
+    allowNegativeStock: { type: Boolean, default: false },
+    barcodeEnabled: { type: Boolean, default: false },
 
     themeColor: { type: String, default: "blue" },
     darkMode: { type: Boolean, default: false },
-
-    companySlogan: {
-      type: String,
-      default: "Your trusted business partner",
-      trim: true,
-    },
 
     logo: { type: String, default: "" },
     favicon: { type: String, default: "" },
@@ -101,9 +65,7 @@ const CompanySettingSchema = new mongoose.Schema(
       type: String,
       default: "Goods once sold are not refundable without company approval.",
     },
-
     invoiceNote: { type: String, default: "" },
-
     invoiceFooter: {
       type: String,
       default: "Thank you for doing business with us.",
@@ -123,7 +85,7 @@ const CompanySettingSchema = new mongoose.Schema(
 
     defaultDueMode: {
       type: String,
-      enum: ["show", "add", "hide"],
+      enum: ["show", "hide"],
       default: "show",
     },
 
@@ -143,18 +105,17 @@ const CompanySettingSchema = new mongoose.Schema(
     defaultCreditLimit: { type: Number, default: 50000 },
     ownerPin: { type: String, default: "1234" },
     allowCreditLimitOverride: { type: Boolean, default: true },
-
     creditWarningMessage: {
       type: String,
       default: "Customer credit limit exceeded. Owner approval is required.",
     },
 
-    timezone: { type: String, default: "Asia/Dhaka" },
-    language: { type: String, default: "bn" },
-    financialYearStart: { type: String, default: "01-01" },
-
     backupEnabled: { type: Boolean, default: true },
     autoBackupDaily: { type: Boolean, default: true },
+    auditLogEnabled: { type: Boolean, default: true },
+    loginAlertEnabled: { type: Boolean, default: false },
+    twoFactorEnabled: { type: Boolean, default: false },
+
     aiEnabled: { type: Boolean, default: true },
     multiUserEnabled: { type: Boolean, default: true },
     attendanceEnabled: { type: Boolean, default: true },
@@ -235,6 +196,9 @@ CompanySettingSchema.pre("save", function () {
   if (!this.currencyCode) this.currencyCode = "BDT";
   if (!this.currency) this.currency = "৳";
   if (!this.timezone) this.timezone = "Asia/Dhaka";
+  if (!this.language) this.language = "bn";
+  if (!this.dateFormat) this.dateFormat = "DD/MM/YYYY";
+  if (!this.timeFormat) this.timeFormat = "12";
 });
 
 CompanySettingSchema.index(
@@ -246,7 +210,6 @@ CompanySettingSchema.index(
     },
   }
 );
-
 
 CompanySettingSchema.index({ companyName: 1 });
 

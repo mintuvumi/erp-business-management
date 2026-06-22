@@ -1,6 +1,12 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useRef, useState } from "react";
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 
 const CompanyContext = createContext(null);
 
@@ -30,19 +36,14 @@ export const CompanyProvider = ({ children }) => {
     businessType: c.businessType || "shop",
     currency: c.currency || "BDT",
     timezone: c.timezone || "Asia/Dhaka",
+    logo: c.logo || "",
+    phone: c.phone || "",
+    email: c.email || "",
+    address: c.address || "",
+    website: c.website || "",
   });
 
-  const makeCompanyPayload = (companyData) => {
-    if (typeof companyData === "string") {
-      return {
-        name: companyData.trim(),
-        companyName: companyData.trim(),
-        businessType: "shop",
-        currency: "BDT",
-        timezone: "Asia/Dhaka",
-      };
-    }
-
+  const makeCompanyPayload = (companyData = {}) => {
     const name = String(
       companyData?.name ||
         companyData?.companyName ||
@@ -53,16 +54,20 @@ export const CompanyProvider = ({ children }) => {
 
     return {
       ...companyData,
+      id: companyData?.id || companyData?._id || undefined,
+      _id: companyData?._id || companyData?.id || undefined,
+
       name,
       companyName: companyData?.companyName || name,
+
       businessType: companyData?.businessType || "shop",
-      currency: companyData?.currency || "BDT",
-      timezone: companyData?.timezone || "Asia/Dhaka",
       phone: companyData?.phone || "",
       email: companyData?.email || "",
       address: companyData?.address || "",
-      ownerName: companyData?.ownerName || "",
-      ownerPhone: companyData?.ownerPhone || "",
+      logo: companyData?.logo || "",
+      website: companyData?.website || "",
+      currency: companyData?.currency || "BDT",
+      timezone: companyData?.timezone || "Asia/Dhaka",
     };
   };
 
@@ -229,14 +234,18 @@ export const CompanyProvider = ({ children }) => {
     };
 
     window.addEventListener("authChanged", reload);
+    window.addEventListener("companyChanged", reload);
     window.addEventListener("companySwitched", reload);
     window.addEventListener("companyAdded", reload);
+    window.addEventListener("companyUpdated", reload);
     window.addEventListener("storage", handleStorageChange);
 
     return () => {
       window.removeEventListener("authChanged", reload);
+      window.removeEventListener("companyChanged", reload);
       window.removeEventListener("companySwitched", reload);
       window.removeEventListener("companyAdded", reload);
+      window.removeEventListener("companyUpdated", reload);
       window.removeEventListener("storage", handleStorageChange);
     };
   }, []);
@@ -279,7 +288,9 @@ export const CompanyProvider = ({ children }) => {
         return;
       }
 
-      const switchedCompany = data.company || data.data?.company || selected;
+      const switchedCompany = normalizeCompany(
+        data.company || data.data?.company || selected
+      );
 
       saveActiveCompany(switchedCompany, true);
 
@@ -331,12 +342,6 @@ export const CompanyProvider = ({ children }) => {
         throw new Error(data.message || "Company create failed");
       }
 
-      const newCompany = data.data || data.company;
-
-      if (newCompany) {
-        saveActiveCompany(newCompany, true);
-      }
-
       await loadCompanies();
 
       localStorage.removeItem("dashboard_cache");
@@ -351,9 +356,117 @@ export const CompanyProvider = ({ children }) => {
     }
   };
 
-  const deleteCompany = async (id) => {
-    console.log("DELETE COMPANY API LATER", id);
+  const updateCompany = async (companyData) => {
+    try {
+      if (typeof window === "undefined") return null;
+
+      const payload = makeCompanyPayload(companyData);
+
+      if (!payload.id && !payload._id) {
+        throw new Error("Company id required");
+      }
+
+      if (!payload.name) {
+        throw new Error("Company name required");
+      }
+
+      const selectedCompanyId = localStorage.getItem("selectedCompanyId");
+
+      const res = await fetch("/api/company", {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+          ...(selectedCompanyId ? { "x-company-id": selectedCompanyId } : {}),
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        throw new Error(data.message || "Company update failed");
+      }
+
+      const updatedCompany = normalizeCompany(data.data || data.company || payload);
+
+      setCompanies((prev) =>
+        prev.map((c) =>
+          String(c.id) === String(updatedCompany.id) ? updatedCompany : c
+        )
+      );
+
+      if (
+        String(activeCompany?.id || activeCompany?._id || "") ===
+        String(updatedCompany.id)
+      ) {
+        saveActiveCompany(updatedCompany, true);
+      }
+
+      localStorage.removeItem("dashboard_cache");
+      localStorage.removeItem("erp_search_cache");
+
+      window.dispatchEvent(new Event("companyUpdated"));
+
+      return data;
+    } catch (error) {
+      console.error("COMPANY_UPDATE_ERROR:", error);
+      throw error;
+    }
   };
+
+  const deleteCompany = async (id) => {
+  const confirmed = window.confirm(
+    "Are you sure you want to archive this company?"
+  );
+
+  if (!confirmed) return;
+
+  try {
+    const selectedCompanyId =
+      localStorage.getItem("selectedCompanyId");
+
+    const res = await fetch("/api/company/delete", {
+      method: "POST",
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/json",
+        ...(selectedCompanyId
+          ? { "x-company-id": selectedCompanyId }
+          : {}),
+      },
+      body: JSON.stringify({
+        companyId: id,
+      }),
+    });
+
+    const data = await res.json();
+
+    if (!res.ok || !data.success) {
+      throw new Error(
+        data.message || "Company archive failed"
+      );
+    }
+
+    await loadCompanies();
+
+    localStorage.removeItem("dashboard_cache");
+    localStorage.removeItem("erp_search_cache");
+
+    window.dispatchEvent(
+      new Event("companyDeleted")
+    );
+
+    return data;
+  } catch (error) {
+    console.error(
+      "COMPANY_DELETE_ERROR:",
+      error
+    );
+    throw error;
+  }
+};
+
 
   return (
     <CompanyContext.Provider
@@ -363,6 +476,7 @@ export const CompanyProvider = ({ children }) => {
         setActiveCompany,
         switchCompany,
         addCompany,
+        updateCompany,
         deleteCompany,
         loadCompanies,
         loadingCompanies,

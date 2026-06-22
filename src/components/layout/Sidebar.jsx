@@ -40,12 +40,12 @@ const Sidebar = ({ open, setOpen }) => {
         return;
       }
 
-      const res = await fetch("/api/settings", {
-        credentials: "include",
-        headers: {
-          "x-company-id": companyId,
-        },
-      });
+      const res = await fetch("/api/company-settings", {
+  credentials: "include",
+  headers: {
+    "x-company-id": companyId,
+  },
+});
 
       const data = await res.json();
 

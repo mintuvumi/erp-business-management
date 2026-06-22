@@ -9,39 +9,40 @@ import {
   Search,
   X,
   Settings,
+  Bell,
+  ShieldCheck,
+  FileText,
+  Package,
+  DatabaseBackup,
 } from "lucide-react";
 
 const settingSuggestions = [
   "Company Information",
-  "Company Name",
-  "Company Address",
-  "Company Phone",
-  "Company Email",
-  "Company Slogan",
-  "Owner Name",
-  "Owner Role",
   "Logo",
   "Signature",
   "Stamp",
   "VAT",
   "AIT",
-  "Low Stock Limit",
-  "Currency",
-  "Business Type",
-  "Theme Color",
-  "Invoice Terms",
-  "Invoice Note",
-  "Invoice Footer",
-  "Default Due Mode",
-  "Print Color",
-  "PDF Download",
-  "WhatsApp Number",
-  "Invoice Template",
-  "Stock Report Footer",
+  "Low Stock",
+  "Invoice",
+  "Previous Due",
+  "Due Collection",
+  "Late Interest",
+  "Installment",
   "Credit Approval",
-  "Default Credit Limit",
   "Owner PIN",
-  "Credit Warning Message",
+  "WhatsApp",
+  "SMS",
+  "Email",
+  "Prefix",
+  "TIN",
+  "BIN",
+  "Trade License",
+  "Date Format",
+  "Time Format",
+  "Negative Stock",
+  "Barcode",
+  "Backup",
 ];
 
 export default function SettingsPage() {
@@ -53,22 +54,33 @@ export default function SettingsPage() {
   const [settingsSearch, setSettingsSearch] = useState("");
 
   const [form, setForm] = useState({
+    companyCode: "",
     companyName: "",
     companyAddress: "",
     companyPhone: "",
     companyEmail: "",
+    companyWebsite: "",
     companySlogan: "Your trusted business partner",
 
-    ownerName: "Company User",
-    ownerRole: "Admin / Owner",
-
+    businessType: "shop",
     currency: "৳",
+    currencyCode: "BDT",
+    timezone: "Asia/Dhaka",
+    language: "bn",
+    dateFormat: "DD/MM/YYYY",
+    timeFormat: "12",
+
+    tradeLicense: "",
+    tinNumber: "",
+    binNumber: "",
+
     vatPercent: 0,
     aitPercent: 0,
     lowStockLimit: 5,
-    businessType: "shop",
-
+    allowNegativeStock: false,
+    barcodeEnabled: false,
     themeColor: "blue",
+    darkMode: false,
 
     logo: "",
     signature: "",
@@ -78,12 +90,20 @@ export default function SettingsPage() {
       "Goods once sold are not refundable without company approval.",
     invoiceNote: "",
     invoiceFooter: "Thank you for doing business with us.",
-
     defaultDueMode: "show",
     printColor: true,
     pdfEnabled: true,
+    whatsappEnabled: true,
     whatsappNumber: "",
+    emailEnabled: false,
+    smsEnabled: false,
     invoiceTemplate: "modern",
+
+    invoicePrefix: "INV",
+    purchasePrefix: "PUR",
+    customerPrefix: "CUS",
+    supplierPrefix: "SUP",
+    employeePrefix: "EMP",
 
     stockReportFooter: "This report is system generated.",
 
@@ -93,7 +113,21 @@ export default function SettingsPage() {
     allowCreditLimitOverride: true,
     creditWarningMessage:
       "Customer credit limit exceeded. Owner approval is required.",
+
+    dueReminderEnabled: true,
+    allowDueInterest: false,
+    dueInterestPercent: 0,
+    installmentEnabled: true,
+    collectionReminderDays: 3,
+
+    autoBackupDaily: true,
+    backupEnabled: true,
+    auditLogEnabled: true,
+    loginAlertEnabled: false,
+    twoFactorEnabled: false,
   });
+
+  const isRetail = form.businessType === "retail";
 
   const update = (field, value) => {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -117,31 +151,45 @@ export default function SettingsPage() {
     try {
       setLoading(true);
 
-     const res = await fetch("/api/settings", {
-      credentials: "include",
-    });
-          const data = await res.json();
+      const res = await fetch("/api/company-settings", {
+        credentials: "include",
+        cache: "no-store",
+      });
+
+      const data = await res.json();
 
       if (data.success) {
         setForm((prev) => ({
           ...prev,
 
+          companyCode: data.data.companyCode || "",
           companyName: data.data.companyName || "",
           companyAddress: data.data.companyAddress || "",
           companyPhone: data.data.companyPhone || "",
           companyEmail: data.data.companyEmail || "",
+          companyWebsite: data.data.companyWebsite || "",
           companySlogan:
             data.data.companySlogan || "Your trusted business partner",
 
-          ownerName: data.data.ownerName || "Company User",
-          ownerRole: data.data.ownerRole || "Admin / Owner",
-
+          businessType: data.data.businessType || "shop",
           currency: data.data.currency || "৳",
+          currencyCode: data.data.currencyCode || "BDT",
+          timezone: data.data.timezone || "Asia/Dhaka",
+          language: data.data.language || "bn",
+          dateFormat: data.data.dateFormat || "DD/MM/YYYY",
+          timeFormat: data.data.timeFormat || "12",
+
+          tradeLicense: data.data.tradeLicense || "",
+          tinNumber: data.data.tinNumber || "",
+          binNumber: data.data.binNumber || "",
+
           vatPercent: Number(data.data.vatPercent || 0),
           aitPercent: Number(data.data.aitPercent || 0),
           lowStockLimit: Number(data.data.lowStockLimit || 5),
-
+          allowNegativeStock: data.data.allowNegativeStock === true,
+          barcodeEnabled: data.data.barcodeEnabled === true,
           themeColor: data.data.themeColor || "blue",
+          darkMode: data.data.darkMode === true,
 
           logo: data.data.logo || "",
           signature: data.data.signature || "",
@@ -154,12 +202,21 @@ export default function SettingsPage() {
           invoiceFooter:
             data.data.invoiceFooter ||
             "Thank you for doing business with us.",
-
-          defaultDueMode: data.data.defaultDueMode || "show",
+          defaultDueMode:
+            data.data.defaultDueMode === "hide" ? "hide" : "show",
           printColor: data.data.printColor === false ? false : true,
           pdfEnabled: data.data.pdfEnabled === false ? false : true,
+          whatsappEnabled: data.data.whatsappEnabled === false ? false : true,
           whatsappNumber: data.data.whatsappNumber || "",
+          emailEnabled: data.data.emailEnabled === true,
+          smsEnabled: data.data.smsEnabled === true,
           invoiceTemplate: data.data.invoiceTemplate || "modern",
+
+          invoicePrefix: data.data.invoicePrefix || "INV",
+          purchasePrefix: data.data.purchasePrefix || "PUR",
+          customerPrefix: data.data.customerPrefix || "CUS",
+          supplierPrefix: data.data.supplierPrefix || "SUP",
+          employeePrefix: data.data.employeePrefix || "EMP",
 
           stockReportFooter:
             data.data.stockReportFooter ||
@@ -174,6 +231,20 @@ export default function SettingsPage() {
           creditWarningMessage:
             data.data.creditWarningMessage ||
             "Customer credit limit exceeded. Owner approval is required.",
+
+          dueReminderEnabled:
+            data.data.dueReminderEnabled === false ? false : true,
+          allowDueInterest: data.data.allowDueInterest === true,
+          dueInterestPercent: Number(data.data.dueInterestPercent || 0),
+          installmentEnabled:
+            data.data.installmentEnabled === false ? false : true,
+          collectionReminderDays: Number(data.data.collectionReminderDays || 3),
+
+          backupEnabled: data.data.backupEnabled === false ? false : true,
+          autoBackupDaily: data.data.autoBackupDaily === false ? false : true,
+          auditLogEnabled: data.data.auditLogEnabled === false ? false : true,
+          loginAlertEnabled: data.data.loginAlertEnabled === true,
+          twoFactorEnabled: data.data.twoFactorEnabled === true,
         }));
       }
     } catch (error) {
@@ -184,80 +255,40 @@ export default function SettingsPage() {
     }
   };
 
-  const fetchCompany = async () => {
-    try {
-
-      const res = await fetch("/api/company", {
-      credentials: "include",
-    });
-
-      const data = await res.json();
-
-      if (data.success) {
-      const company = data.data.company;
-
-      setForm((prev) => ({
-        ...prev,
-        companyName: company?.name || prev.companyName,
-        companyAddress: company?.address || prev.companyAddress,
-        companyPhone: company?.phone || prev.companyPhone,
-        companyEmail: company?.email || prev.companyEmail,
-        businessType: company?.businessType || "shop",
-      }));
-    }
-
-    } catch (error) {
-      console.error("COMPANY_LOAD_ERROR:", error);
-    }
-  };
-
   useEffect(() => {
     fetchSettings();
-    fetchCompany();
   }, []);
 
   const saveSettings = async () => {
     try {
       setLoading(true);
 
-      const settingsRes = await fetch("/api/settings", {
+      const payload = {
+        ...form,
+        defaultDueMode: form.defaultDueMode === "hide" ? "hide" : "show",
+        allowDueInterest:
+          form.businessType === "retail" && form.allowDueInterest === true,
+        dueInterestPercent:
+          form.businessType === "retail" && form.allowDueInterest
+            ? Number(form.dueInterestPercent || 0)
+            : 0,
+      };
+
+      const res = await fetch("/api/company-settings", {
         method: "POST",
         credentials: "include",
-        headers: {
-      "Content-Type": "application/json",
-      },
-      body: JSON.stringify(form),
-    });
-
-      const settingsData = await settingsRes.json();
-
-      if (!settingsRes.ok || !settingsData.success) {
-        throw new Error(settingsData.message || "Settings save failed");
-      }
-
-      const companyRes = await fetch("/api/company", {
-      method: "POST",
-      credentials: "include",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-
-          name: form.companyName,
-          address: form.companyAddress,
-          phone: form.companyPhone,
-          email: form.companyEmail,
-          businessType: form.businessType,
-        }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
       });
 
-      const companyData = await companyRes.json();
+      const data = await res.json();
 
-      if (!companyRes.ok || !companyData.success) {
-        throw new Error(companyData.message || "Company save failed");
+      if (!res.ok || !data.success) {
+        throw new Error(data.message || "Settings save failed");
       }
 
       alert("Settings saved ✅");
+      fetchSettings();
     } catch (error) {
       console.error("SETTINGS_SAVE_ERROR:", error);
       alert(error.message || "Settings save failed");
@@ -285,7 +316,7 @@ export default function SettingsPage() {
       const data = await res.json();
 
       if (data.success) {
-        setForm((prev) => ({ ...prev, [field]: data.url }));
+        update(field, data.url);
         alert(`${field} uploaded ✅`);
       } else {
         alert(`${field} upload failed`);
@@ -312,16 +343,14 @@ export default function SettingsPage() {
                 Company Settings
               </h1>
               <p className="text-sm text-gray-500 mt-1">
-                Company profile, invoice, stock, credit and report settings.
+                Invoice, stock, credit, due collection, notification and
+                branding settings.
               </p>
             </div>
           </div>
 
           <button
-            onClick={() => {
-              fetchSettings();
-              fetchCompany();
-            }}
+            onClick={fetchSettings}
             className="px-4 py-2 rounded-xl border flex items-center justify-center gap-2 hover:bg-gray-50"
           >
             <RefreshCcw size={16} className={loading ? "animate-spin" : ""} />
@@ -338,7 +367,7 @@ export default function SettingsPage() {
           <input
             value={settingsSearch}
             onChange={(e) => setSettingsSearch(e.target.value)}
-            placeholder="Search settings: logo, VAT, invoice, footer, credit, theme..."
+            placeholder="Search settings: logo, VAT, invoice, due, credit..."
             className="w-full border rounded-2xl pl-11 pr-12 py-3 outline-none focus:ring-4 focus:ring-blue-100"
           />
 
@@ -369,70 +398,120 @@ export default function SettingsPage() {
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
-        <div className="xl:col-span-2 bg-white border rounded-[30px] p-5 md:p-7 shadow-sm space-y-5">
-          {showSection([
-            "company",
-            "information",
-            "name",
-            "phone",
-            "email",
-            "address",
-            "slogan",
-            "owner",
-            "role",
-            "currency",
-          ]) && (
-            <>
-              <SectionTitle title="Company Information" />
-
+        <div className="xl:col-span-2 bg-white border rounded-[30px] p-5 md:p-7 shadow-sm space-y-7">
+          {showSection(["company", "information", "name", "phone", "email"]) && (
+            <SectionCard
+              icon={Building2}
+              title="General Settings"
+              subtitle="Company identity and official information."
+            >
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <Input
                   label="Company Name"
                   value={form.companyName}
                   onChange={(v) => update("companyName", v)}
-                  placeholder="Company name"
                 />
 
                 <Input
                   label="Phone"
                   value={form.companyPhone}
                   onChange={(v) => update("companyPhone", v)}
-                  placeholder="Phone number"
                 />
 
                 <Input
                   label="Email"
                   value={form.companyEmail}
                   onChange={(v) => update("companyEmail", v)}
-                  placeholder="Email address"
+                />
+
+                <Input
+                  label="Website"
+                  value={form.companyWebsite}
+                  onChange={(v) => update("companyWebsite", v)}
                 />
 
                 <Input
                   label="Company Slogan"
                   value={form.companySlogan}
                   onChange={(v) => update("companySlogan", v)}
-                  placeholder="Your trusted business partner"
                 />
 
                 <Input
-                  label="Owner/Admin Name"
-                  value={form.ownerName}
-                  onChange={(v) => update("ownerName", v)}
-                  placeholder="Owner name"
+                  label="Company Code"
+                  value={form.companyCode}
+                  readOnly
                 />
 
                 <Input
-                  label="Owner Role"
-                  value={form.ownerRole}
-                  onChange={(v) => update("ownerRole", v)}
-                  placeholder="Admin / Owner"
-                />
-
-                <Input
-                  label="Currency"
+                  label="Currency Symbol"
                   value={form.currency}
                   onChange={(v) => update("currency", v)}
-                  placeholder="৳"
+                />
+
+                <Input
+                  label="Currency Code"
+                  value={form.currencyCode}
+                  onChange={(v) => update("currencyCode", v)}
+                />
+
+                <Select
+                  label="Timezone"
+                  value={form.timezone}
+                  onChange={(v) => update("timezone", v)}
+                  options={[
+                    ["Asia/Dhaka", "Asia/Dhaka"],
+                    ["Asia/Kolkata", "Asia/Kolkata"],
+                    ["UTC", "UTC"],
+                  ]}
+                />
+
+                <Select
+                  label="Language"
+                  value={form.language}
+                  onChange={(v) => update("language", v)}
+                  options={[
+                    ["bn", "Bangla"],
+                    ["en", "English"],
+                  ]}
+                />
+
+                <Select
+                  label="Date Format"
+                  value={form.dateFormat}
+                  onChange={(v) => update("dateFormat", v)}
+                  options={[
+                    ["DD/MM/YYYY", "DD/MM/YYYY"],
+                    ["MM/DD/YYYY", "MM/DD/YYYY"],
+                    ["YYYY-MM-DD", "YYYY-MM-DD"],
+                  ]}
+                />
+
+                <Select
+                  label="Time Format"
+                  value={form.timeFormat}
+                  onChange={(v) => update("timeFormat", v)}
+                  options={[
+                    ["12", "12 Hour"],
+                    ["24", "24 Hour"],
+                  ]}
+                />
+
+                <Input
+                  label="Trade License"
+                  value={form.tradeLicense}
+                  onChange={(v) => update("tradeLicense", v)}
+                />
+
+                <Input
+                  label="TIN Number"
+                  value={form.tinNumber}
+                  onChange={(v) => update("tinNumber", v)}
+                />
+
+                <Input
+                  label="BIN / VAT Number"
+                  value={form.binNumber}
+                  onChange={(v) => update("binNumber", v)}
                 />
 
                 <div className="md:col-span-2">
@@ -440,26 +519,19 @@ export default function SettingsPage() {
                   <textarea
                     value={form.companyAddress}
                     onChange={(e) => update("companyAddress", e.target.value)}
-                    placeholder="Company address"
                     className="w-full mt-1 border rounded-xl p-3 outline-none focus:ring-4 focus:ring-blue-100 min-h-[90px]"
                   />
                 </div>
               </div>
-            </>
+            </SectionCard>
           )}
 
-          {showSection([
-            "tax",
-            "vat",
-            "ait",
-            "stock",
-            "business",
-            "theme",
-            "low stock",
-          ]) && (
-            <>
-              <SectionTitle title="Tax & ERP Rules" />
-
+          {showSection(["tax", "vat", "ait", "stock", "theme"]) && (
+            <SectionCard
+              icon={Package}
+              title="Tax & Inventory Settings"
+              subtitle="VAT, AIT and stock alert settings."
+            >
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                 <Input
                   type="number"
@@ -482,15 +554,16 @@ export default function SettingsPage() {
                   onChange={(v) => update("lowStockLimit", Number(v) || 5)}
                 />
 
-                <Select
-                  label="Business Type"
-                  value={form.businessType}
-                  onChange={(v) => update("businessType", v)}
-                  options={[
-                    ["shop", "Shop"],
-                    ["wholesale", "Wholesale"],
-                    ["manufacturing", "Manufacturing"],
-                  ]}
+                <Toggle
+                  label="Allow Negative Stock"
+                  checked={form.allowNegativeStock}
+                  onChange={(v) => update("allowNegativeStock", v)}
+                />
+
+                <Toggle
+                  label="Barcode Enabled"
+                  checked={form.barcodeEnabled}
+                  onChange={(v) => update("barcodeEnabled", v)}
                 />
 
                 <Select
@@ -505,32 +578,35 @@ export default function SettingsPage() {
                     ["orange", "Orange"],
                   ]}
                 />
+
+                <Toggle
+                  label="Dark Mode"
+                  checked={form.darkMode}
+                  onChange={(v) => update("darkMode", v)}
+                />
+
+                <TextArea
+                  label="Stock Report Footer"
+                  value={form.stockReportFooter}
+                  onChange={(v) => update("stockReportFooter", v)}
+                />
               </div>
-            </>
+            </SectionCard>
           )}
 
-          {showSection([
-            "invoice",
-            "terms",
-            "note",
-            "footer",
-            "due",
-            "print",
-            "pdf",
-            "whatsapp",
-            "template",
-          ]) && (
-            <>
-              <SectionTitle title="Invoice & Print Settings" />
-
+          {showSection(["invoice", "terms", "note", "footer", "print", "pdf"]) && (
+            <SectionCard
+              icon={FileText}
+              title="Invoice & Print Settings"
+              subtitle="Invoice display, footer, terms and print controls."
+            >
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <Select
-                  label="Default Previous Due Mode"
+                  label="Previous Due Display"
                   value={form.defaultDueMode}
                   onChange={(v) => update("defaultDueMode", v)}
                   options={[
-                    ["show", "Show Previous Due Only"],
-                    ["add", "Add Previous Due to Invoice Total"],
+                    ["show", "Show Previous Due"],
                     ["hide", "Hide Previous Due"],
                   ]}
                 />
@@ -547,10 +623,33 @@ export default function SettingsPage() {
                 />
 
                 <Input
-                  label="WhatsApp Number"
-                  value={form.whatsappNumber}
-                  onChange={(v) => update("whatsappNumber", v)}
-                  placeholder="Example: 88017xxxxxxxx"
+                  label="Invoice Prefix"
+                  value={form.invoicePrefix}
+                  onChange={(v) => update("invoicePrefix", v)}
+                />
+
+                <Input
+                  label="Purchase Prefix"
+                  value={form.purchasePrefix}
+                  onChange={(v) => update("purchasePrefix", v)}
+                />
+
+                <Input
+                  label="Customer Prefix"
+                  value={form.customerPrefix}
+                  onChange={(v) => update("customerPrefix", v)}
+                />
+
+                <Input
+                  label="Supplier Prefix"
+                  value={form.supplierPrefix}
+                  onChange={(v) => update("supplierPrefix", v)}
+                />
+
+                <Input
+                  label="Employee Prefix"
+                  value={form.employeePrefix}
+                  onChange={(v) => update("employeePrefix", v)}
                 />
 
                 <Toggle
@@ -565,63 +664,33 @@ export default function SettingsPage() {
                   onChange={(v) => update("pdfEnabled", v)}
                 />
 
-                <div className="md:col-span-2">
-                  <label className="text-xs text-gray-500">Invoice Terms</label>
-                  <textarea
-                    value={form.invoiceTerms}
-                    onChange={(e) => update("invoiceTerms", e.target.value)}
-                    placeholder="Invoice terms and conditions"
-                    className="w-full mt-1 border rounded-xl p-3 outline-none focus:ring-4 focus:ring-blue-100 min-h-[90px]"
-                  />
-                </div>
+                <TextArea
+                  label="Invoice Terms"
+                  value={form.invoiceTerms}
+                  onChange={(v) => update("invoiceTerms", v)}
+                />
 
-                <div className="md:col-span-2">
-                  <label className="text-xs text-gray-500">Invoice Note</label>
-                  <textarea
-                    value={form.invoiceNote}
-                    onChange={(e) => update("invoiceNote", e.target.value)}
-                    placeholder="Default invoice note"
-                    className="w-full mt-1 border rounded-xl p-3 outline-none focus:ring-4 focus:ring-blue-100 min-h-[80px]"
-                  />
-                </div>
+                <TextArea
+                  label="Invoice Note"
+                  value={form.invoiceNote}
+                  onChange={(v) => update("invoiceNote", v)}
+                />
 
-                <div className="md:col-span-2">
-                  <label className="text-xs text-gray-500">Invoice Footer</label>
-                  <textarea
-                    value={form.invoiceFooter}
-                    onChange={(e) => update("invoiceFooter", e.target.value)}
-                    placeholder="Invoice footer text"
-                    className="w-full mt-1 border rounded-xl p-3 outline-none focus:ring-4 focus:ring-blue-100 min-h-[80px]"
-                  />
-                </div>
+                <TextArea
+                  label="Invoice Footer"
+                  value={form.invoiceFooter}
+                  onChange={(v) => update("invoiceFooter", v)}
+                />
               </div>
-            </>
+            </SectionCard>
           )}
 
-          {showSection(["stock", "report", "footer"]) && (
-            <>
-              <SectionTitle title="Stock Report Settings" />
-
-              <textarea
-                value={form.stockReportFooter}
-                onChange={(e) => update("stockReportFooter", e.target.value)}
-                placeholder="Stock report footer"
-                className="w-full border rounded-xl p-3 outline-none focus:ring-4 focus:ring-blue-100 min-h-[80px]"
-              />
-            </>
-          )}
-
-          {showSection([
-            "credit",
-            "limit",
-            "owner",
-            "pin",
-            "approval",
-            "warning",
-          ]) && (
-            <>
-              <SectionTitle title="Credit Control" />
-
+          {showSection(["due", "collection", "interest", "installment"]) && (
+            <SectionCard
+              icon={ShieldCheck}
+              title="Sales, Credit & Due Collection"
+              subtitle="Credit approval, due reminder and EMI controls."
+            >
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <Toggle
                   label="Credit Approval Required"
@@ -650,20 +719,138 @@ export default function SettingsPage() {
                   placeholder="Leave empty to keep old PIN"
                 />
 
-                <div className="md:col-span-2">
-                  <label className="text-xs text-gray-500">
-                    Credit Warning Message
-                  </label>
-                  <textarea
-                    value={form.creditWarningMessage}
-                    onChange={(e) =>
-                      update("creditWarningMessage", e.target.value)
-                    }
-                    className="w-full mt-1 border rounded-xl p-3 outline-none focus:ring-4 focus:ring-blue-100 min-h-[80px]"
-                  />
-                </div>
+                <Toggle
+                  label="Enable Due Reminder"
+                  checked={form.dueReminderEnabled}
+                  onChange={(v) => update("dueReminderEnabled", v)}
+                />
+
+                <Toggle
+                  label="Enable Installment / EMI"
+                  checked={form.installmentEnabled}
+                  onChange={(v) => update("installmentEnabled", v)}
+                />
+
+                <Input
+                  type="number"
+                  label="Collection Reminder Days"
+                  value={form.collectionReminderDays}
+                  onChange={(v) =>
+                    update("collectionReminderDays", Number(v) || 0)
+                  }
+                />
+
+                {isRetail && (
+                  <>
+                    <Toggle
+                      label="Allow Late Interest (Retail Only)"
+                      checked={form.allowDueInterest}
+                      onChange={(v) => update("allowDueInterest", v)}
+                    />
+
+                    {form.allowDueInterest && (
+                      <Input
+                        type="number"
+                        label="Default Late Interest %"
+                        value={form.dueInterestPercent}
+                        onChange={(v) =>
+                          update("dueInterestPercent", Number(v) || 0)
+                        }
+                      />
+                    )}
+                  </>
+                )}
+
+                {!isRetail && (
+                  <div className="md:col-span-2 bg-yellow-50 border border-yellow-100 rounded-2xl p-4 text-sm text-yellow-700">
+                    Late Interest শুধু Retail business type-এর জন্য available.
+                    এই company type:{" "}
+                    <b className="capitalize">{form.businessType}</b>
+                  </div>
+                )}
+
+                <TextArea
+                  label="Credit Warning Message"
+                  value={form.creditWarningMessage}
+                  onChange={(v) => update("creditWarningMessage", v)}
+                />
               </div>
-            </>
+            </SectionCard>
+          )}
+
+          {showSection(["notification", "whatsapp", "sms", "email"]) && (
+            <SectionCard
+              icon={Bell}
+              title="Notification Settings"
+              subtitle="WhatsApp, SMS and email notification controls."
+            >
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <Toggle
+                  label="Enable WhatsApp"
+                  checked={form.whatsappEnabled}
+                  onChange={(v) => update("whatsappEnabled", v)}
+                />
+
+                <Input
+                  label="WhatsApp Number"
+                  value={form.whatsappNumber}
+                  onChange={(v) => update("whatsappNumber", v)}
+                  placeholder="Example: 88017xxxxxxxx"
+                />
+
+                <Toggle
+                  label="Enable SMS"
+                  checked={form.smsEnabled}
+                  onChange={(v) => update("smsEnabled", v)}
+                />
+
+                <Toggle
+                  label="Enable Email"
+                  checked={form.emailEnabled}
+                  onChange={(v) => update("emailEnabled", v)}
+                />
+
+                <Toggle
+                  label="Login Alert"
+                  checked={form.loginAlertEnabled}
+                  onChange={(v) => update("loginAlertEnabled", v)}
+                />
+              </div>
+            </SectionCard>
+          )}
+
+          {showSection(["backup", "restore", "audit", "security"]) && (
+            <SectionCard
+              icon={DatabaseBackup}
+              title="Backup & Security"
+              subtitle="Backup, audit log and account protection controls."
+            >
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <Toggle
+                  label="Backup Enabled"
+                  checked={form.backupEnabled}
+                  onChange={(v) => update("backupEnabled", v)}
+                />
+
+                <Toggle
+                  label="Auto Backup Daily"
+                  checked={form.autoBackupDaily}
+                  onChange={(v) => update("autoBackupDaily", v)}
+                />
+
+                <Toggle
+                  label="Audit Log Enabled"
+                  checked={form.auditLogEnabled}
+                  onChange={(v) => update("auditLogEnabled", v)}
+                />
+
+                <Toggle
+                  label="Two Factor Authentication"
+                  checked={form.twoFactorEnabled}
+                  onChange={(v) => update("twoFactorEnabled", v)}
+                />
+              </div>
+            </SectionCard>
           )}
 
           <button
@@ -762,11 +949,30 @@ export default function SettingsPage() {
           )}
 
           <div className="bg-blue-50 text-blue-700 rounded-2xl p-4 text-sm">
-            Search দিয়ে যেকোনো setting দ্রুত খুঁজুন। User নিজের logo,
-            invoice terms, due mode, print/PDF, credit limit সব setup করতে পারবে।
+            Business Type Company Management থেকে সেট হবে। Settings শুধু
+            configuration control করবে।
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function SectionCard({ icon: Icon, title, subtitle, children }) {
+  return (
+    <div className="border rounded-[26px] p-4 md:p-5 bg-white space-y-4">
+      <div className="flex items-start gap-3 border-b pb-3">
+        <div className="w-10 h-10 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+          <Icon size={19} />
+        </div>
+
+        <div>
+          <h2 className="font-bold text-gray-900">{title}</h2>
+          {subtitle && <p className="text-xs text-gray-500 mt-1">{subtitle}</p>}
+        </div>
+      </div>
+
+      {children}
     </div>
   );
 }
@@ -779,16 +985,32 @@ function SectionTitle({ title }) {
   );
 }
 
-function Input({ label, value, onChange, placeholder, type = "text" }) {
+function Input({ label, value, onChange, placeholder, type = "text", readOnly }) {
   return (
     <div>
       <label className="text-xs text-gray-500">{label}</label>
       <input
         type={type}
         value={value}
+        readOnly={readOnly}
+        onChange={(e) => onChange?.(e.target.value)}
+        placeholder={placeholder || label}
+        className={`w-full mt-1 border rounded-xl p-3 outline-none focus:ring-4 focus:ring-blue-100 ${
+          readOnly ? "bg-gray-50 text-gray-500 cursor-not-allowed" : ""
+        }`}
+      />
+    </div>
+  );
+}
+
+function TextArea({ label, value, onChange }) {
+  return (
+    <div className="md:col-span-2">
+      <label className="text-xs text-gray-500">{label}</label>
+      <textarea
+        value={value}
         onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        className="w-full mt-1 border rounded-xl p-3 outline-none focus:ring-4 focus:ring-blue-100"
+        className="w-full mt-1 border rounded-xl p-3 outline-none focus:ring-4 focus:ring-blue-100 min-h-[80px]"
       />
     </div>
   );
