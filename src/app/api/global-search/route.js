@@ -325,7 +325,7 @@ function dueReminderResults(sales = []) {
         } ${s.collectionComment || ""}`,
         amount: Number(s.dueAmount || 0),
         date: nextDate || s.date || s.createdAt,
-        route: `/customers/statement?id=${s.customerId || ""}&saleId=${s._id}`,
+        route: `/customers/profile?id=${s.customerId || ""}`,
         priority: isDueToday ? 1200 : isOverdue ? 1100 : 700,
       });
     });
@@ -589,7 +589,7 @@ export async function GET(req) {
           } ${c.customerCode || ""} customer due collection ledger`,
           amount: Number(c.dueAmount || c.balance || 0),
           date: c.createdAt,
-          route: `/customers?id=${c._id}`,
+          route: `/customers/profile?id=${c._id}`,
           priority: 1000,
         })
       ),
@@ -700,7 +700,7 @@ export async function GET(req) {
           } purchase supplier stock payable`,
           amount: Number(p.total || p.netTotal || 0),
           date: p.date || p.createdAt,
-          route: `/suppliers/ledger?id=${p._id}`,
+          route: `/suppliers/profile?id=${p._id}`,
           priority: 750,
         })
       ),
@@ -720,7 +720,8 @@ export async function GET(req) {
           } supplier vendor ledger payable`,
           amount: Number(s.dueAmount || s.balance || 0),
           date: s.createdAt,
-          route: `/suppliers?id=${s._id}`,
+          route: `/suppliers/profile?id=${s._id}`,
+path: `/suppliers/profile?id=${s._id}`,
           priority: 720,
         })
       ),

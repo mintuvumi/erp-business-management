@@ -85,6 +85,7 @@ export default function Navbar({ setOpen }) {
 
   const [searchText, setSearchText] = useState("");
   const [searchResults, setSearchResults] = useState([]);
+  const [selectedSearchIndex, setSelectedSearchIndex] = useState(0);
   const [aiAnswer, setAiAnswer] = useState(null);
   const [searchLoading, setSearchLoading] = useState(false);
 
@@ -293,11 +294,12 @@ export default function Navbar({ setOpen }) {
 
   useEffect(() => {
     const timer = setTimeout(async () => {
-      if (!searchText.trim()) {
-        setSearchResults([]);
-        setAiAnswer(null);
-        return;
-      }
+      if (searchText.trim().length < 2) {
+  setSearchResults([]);
+  setAiAnswer(null);
+  setSelectedSearchIndex(0);
+  return;
+}
 
       try {
         setSearchLoading(true);
@@ -369,36 +371,138 @@ export default function Navbar({ setOpen }) {
     return () => clearTimeout(timer);
   }, [searchText, isMarketingOfficer]);
 
+
   useEffect(() => {
-    const keyHandler = (e) => {
-      if (e.ctrlKey && e.key.toLowerCase() === "k") {
-        e.preventDefault();
+  const keyHandler = (e) => {
+    const key = e.key.toLowerCase();
+
+    if (e.ctrlKey && key === "k") {
+      e.preventDefault();
+      setOpenSearch(true);
+      setTimeout(() => {
         document.getElementById("premium-navbar-search")?.focus();
-      }
-    };
-
-    window.addEventListener("keydown", keyHandler);
-    return () => window.removeEventListener("keydown", keyHandler);
-  }, []);
-
-  const handleSearchEnter = (e) => {
-    if (e.key !== "Enter") return;
-
-    e.preventDefault();
-
-    if (searchResults.length > 0) {
-      const first = searchResults[0];
-      goTo(first.path || first.route || "/dashboard");
+      }, 50);
       return;
     }
 
-    if (aiAnswer?.path) {
-      goTo(aiAnswer.path);
+    if (e.altKey && key === "n") {
+      e.preventDefault();
+      goTo("/sales");
       return;
     }
 
-    router.push(`/search?q=${encodeURIComponent(searchText)}`);
+    if (e.altKey && key === "p") {
+      e.preventDefault();
+      goTo("/purchase");
+      return;
+    }
+
+    if (e.altKey && key === "c") {
+      e.preventDefault();
+      goTo("/customers");
+      return;
+    }
+
+    if (e.altKey && key === "d") {
+      e.preventDefault();
+      goTo("/customers/statement?dueOnly=true");
+      return;
+    }
+
+    if (e.altKey && key === "r") {
+      e.preventDefault();
+      goTo("/reports");
+      return;
+    }
+
+    if (key === "escape") {
+      setOpenQuick(false);
+      setOpenProfile(false);
+      setOpenNotification(false);
+      setOpenSearch(false);
+      setSearchText("");
+      setSearchResults([]);
+      setAiAnswer(null);
+    }
   };
+
+  window.addEventListener("keydown", keyHandler);
+  return () => window.removeEventListener("keydown", keyHandler);
+}, []);
+
+
+useEffect(() => {
+  const handler = () => {
+    setOpenSearch(true);
+    setSearchText("");
+    setSearchResults([]);
+    setAiAnswer(null);
+    setSelectedSearchIndex(0);
+
+    requestAnimationFrame(() => {
+      const input = document.getElementById("premium-navbar-search");
+
+      if (input) {
+        input.focus();
+      }
+    });
+  };
+
+  window.addEventListener("erp-focus-global-search", handler);
+
+  return () => {
+    window.removeEventListener("erp-focus-global-search", handler);
+  };
+}, []);
+
+    const handleSearchEnter = (e) => {
+  if (!openSearch) return;
+
+  if (e.key === "ArrowDown") {
+    e.preventDefault();
+    setSelectedSearchIndex((prev) =>
+      searchResults.length === 0
+        ? 0
+        : Math.min(prev + 1, searchResults.length - 1)
+    );
+    return;
+  }
+
+  if (e.key === "ArrowUp") {
+    e.preventDefault();
+    setSelectedSearchIndex((prev) => Math.max(prev - 1, 0));
+    return;
+  }
+
+  if (e.key === "Escape") {
+    e.preventDefault();
+    setOpenSearch(false);
+    setSearchText("");
+    setSearchResults([]);
+    setAiAnswer(null);
+    return;
+  }
+
+  if (e.key !== "Enter") return;
+
+  e.preventDefault();
+
+  const selected =
+    searchResults[selectedSearchIndex] || searchResults[0];
+
+  if (selected) {
+    goTo(selected.path || selected.route || "/dashboard");
+    return;
+  }
+
+  if (aiAnswer?.path) {
+    goTo(aiAnswer.path);
+    return;
+  }
+
+  router.push(`/search?q=${encodeURIComponent(searchText)}`);
+};
+
 
   const goTo = (path) => {
     if (!path) return;
@@ -791,8 +895,9 @@ router.refresh();
                         </button>
                       )}
 
+
                       {searchResults.length > 0 ? (
-                        searchResults.map((item, index) => (
+                         (searchResults.map((item, index) =>
                           <button
                             key={`${item.type || "item"}-${
                               item.title || item.name || index
@@ -801,7 +906,11 @@ router.refresh();
                             onClick={() =>
                               goTo(item.path || item.route || "/dashboard")
                             }
-                            className="w-full text-left p-4 border-b last:border-b-0 hover:bg-blue-50 transition-all"
+                            className={`w-full text-left p-4 border-b last:border-b-0 transition-all ${
+                          selectedSearchIndex === index
+                            ? "bg-blue-100 border-l-4 border-blue-600"
+                            : "hover:bg-blue-50"
+                        }`}
                           >
                             <div className="flex items-start justify-between gap-3">
                               <div>

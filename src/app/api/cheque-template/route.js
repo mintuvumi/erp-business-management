@@ -80,7 +80,7 @@ export async function POST(req) {
       },
       {
         upsert: true,
-        new: true,
+        returnDocument: "after",
       }
     );
 

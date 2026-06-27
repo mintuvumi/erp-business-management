@@ -106,15 +106,16 @@ export async function GET(req) {
       saleQuery.marketingOfficerId = marketingOfficerId;
     }
 
-    if (customer) {
-      saleQuery.$or = [
-        { customerName: { $regex: customer, $options: "i" } },
-        { customerPhone: { $regex: customer, $options: "i" } },
-        { billNo: { $regex: customer, $options: "i" } },
-      ];
-    }
+    if (customerId) {
+  saleQuery.customerId = customerId;
+} else if (customer) {
+  saleQuery.$or = [
+    { customerName: { $regex: customer, $options: "i" } },
+    { customerPhone: { $regex: customer, $options: "i" } },
+    { billNo: { $regex: customer, $options: "i" } },
+  ];
+}
 
-    if (customerId) saleQuery.customerId = customerId;
 
     if (from || to) {
       saleQuery.date = {};

@@ -290,8 +290,12 @@ export async function GET(req) {
         } ${p.supplierPhone || ""} ${p.itemName || ""} ${p.productName || ""}`,
         amount: Number(p.total || p.netTotal || 0),
         date: p.date || p.createdAt,
-        route: `/suppliers/ledger?id=${p._id}`,
-        path: `/suppliers/ledger?id=${p._id}`,
+       route: p.supplierId
+  ? `/suppliers/profile?id=${p.supplierId}`
+  : `/suppliers/ledger?search=${encodeURIComponent(p.supplierName || "")}`,
+path: p.supplierId
+  ? `/suppliers/profile?id=${p.supplierId}`
+  : `/suppliers/ledger?search=${encodeURIComponent(p.supplierName || "")}`,
         priority: 60,
       })),
 

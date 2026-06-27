@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Search,
   Printer,
@@ -35,6 +35,16 @@ function csvSafe(value) {
   return `"${text}"`;
 }
 
+function cleanParams(params) {
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && String(value).trim() !== "") {
+      query.set(key, String(value));
+    }
+  });
+  return query.toString();
+}
+
 export default function CustomerStatementPage() {
   const [customer, setCustomer] = useState("");
   const [selectedCustomer, setSelectedCustomer] = useState(null);
@@ -62,12 +72,28 @@ export default function CustomerStatementPage() {
   const [paymentNote, setPaymentNote] = useState("");
   const [savingPayment, setSavingPayment] = useState(false);
 
-  const canModify = ["owner", "admin", "manager"].includes(
-    authUser?.role || ""
-  );
+  const canModify = ["owner", "admin", "manager"].includes(authUser?.role || "");
 
   const customerInfo = useMemo(() => {
     if (selectedCustomer) return selectedCustomer;
+
+    if (customer) {
+      const same = rows.find(
+        (r) =>
+          String(r.customerName || "").toLowerCase() ===
+          String(customer || "").toLowerCase()
+      );
+
+      if (same) {
+        return {
+          name: same.customerName || customer,
+          phone: same.customerPhone || "",
+          address: same.customerAddress || "",
+        };
+      }
+
+      return { name: customer, phone: "", address: "" };
+    }
 
     const first = rows.find((r) => r.customerName || r.customerPhone);
 
@@ -78,7 +104,7 @@ export default function CustomerStatementPage() {
           address: first.customerAddress || "",
         }
       : null;
-  }, [rows, selectedCustomer]);
+  }, [rows, selectedCustomer, customer]);
 
   const totalCollections = useMemo(() => {
     return rows.reduce((sum, row) => {
@@ -96,6 +122,7 @@ export default function CustomerStatementPage() {
         credentials: "include",
         cache: "no-store",
       });
+
       const data = await res.json();
 
       if (data.success) {
@@ -123,6 +150,12 @@ export default function CustomerStatementPage() {
     }
   };
 
+  const syncUrl = (params = {}) => {
+    const query = cleanParams(params);
+    const nextUrl = query ? `/customers/statement?${query}` : "/customers/statement";
+    window.history.replaceState({}, "", nextUrl);
+  };
+
   const fetchStatement = async (extra = {}) => {
     try {
       setLoading(true);
@@ -130,7 +163,8 @@ export default function CustomerStatementPage() {
       const params = new URLSearchParams();
 
       const qCustomer = extra.customer ?? customer;
-      const qCustomerId = extra.customerId ?? selectedCustomer?._id ?? "";
+      const qCustomerId =
+        extra.customerId ?? selectedCustomer?._id ?? selectedCustomer?.id ?? "";
       const qFrom = extra.from ?? from;
       const qTo = extra.to ?? to;
       const qDueOnly = extra.dueOnly ?? dueOnly;
@@ -154,9 +188,37 @@ export default function CustomerStatementPage() {
         throw new Error(data.message || "Statement load failed");
       }
 
-      setRows(data.data?.rows || []);
+      const apiRows = Array.isArray(data.data?.rows) ? data.data.rows : [];
+
+      setRows(apiRows);
       setSummary(data.data?.summary || {});
       setOfficer(data.data?.officer || null);
+
+      if (data.data?.customer) {
+        setSelectedCustomer(data.data.customer);
+        setCustomer(data.data.customer.name || qCustomer || "");
+      } else if (qCustomerId || qCustomer) {
+        const first = apiRows.find((r) => r.customerName || r.customerPhone);
+        if (first) {
+          setSelectedCustomer({
+            _id: qCustomerId || first.customerId || "",
+            id: qCustomerId || first.customerId || "",
+            name: first.customerName || qCustomer || "",
+            phone: first.customerPhone || "",
+            address: first.customerAddress || "",
+          });
+          setCustomer(first.customerName || qCustomer || "");
+        }
+      }
+
+      syncUrl({
+        customer: qCustomer,
+        customerId: qCustomerId,
+        from: qFrom,
+        to: qTo,
+        dueOnly: qDueOnly ? "true" : "",
+        dueToday: qDueToday ? "true" : "",
+      });
     } catch (error) {
       console.error("STATEMENT_LOAD_ERROR:", error);
       alert(error.message || "Statement load failed");
@@ -170,13 +232,32 @@ export default function CustomerStatementPage() {
     loadAuth();
 
     const url = new URL(window.location.href);
+    const urlCustomer = url.searchParams.get("customer") || "";
+    const urlCustomerId = url.searchParams.get("customerId") || "";
+    const urlFrom = url.searchParams.get("from") || "";
+    const urlTo = url.searchParams.get("to") || "";
     const hasDueOnly = url.searchParams.get("dueOnly") === "true";
     const hasDueToday = url.searchParams.get("dueToday") === "true";
 
+    setCustomer(urlCustomer);
+    setFrom(urlFrom);
+    setTo(urlTo);
     setDueOnly(hasDueOnly);
     setDueToday(hasDueToday);
 
+    if (urlCustomer || urlCustomerId) {
+      setSelectedCustomer({
+        _id: urlCustomerId,
+        id: urlCustomerId,
+        name: urlCustomer,
+      });
+    }
+
     fetchStatement({
+      customer: urlCustomer,
+      customerId: urlCustomerId,
+      from: urlFrom,
+      to: urlTo,
       dueOnly: hasDueOnly,
       dueToday: hasDueToday,
     });
@@ -184,27 +265,43 @@ export default function CustomerStatementPage() {
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      if (customer.trim()) {
+      if (customer.trim().length >= 2) {
         loadCustomers(customer);
         setShowSuggest(true);
       } else {
         setSuggestions([]);
         setShowSuggest(false);
-        setSelectedCustomer(null);
       }
-    }, 250);
+    }, 200);
 
     return () => clearTimeout(timer);
   }, [customer]);
 
   const selectCustomer = (c) => {
-    setSelectedCustomer(c);
-    setCustomer(c.name || c.customerName || "");
+    const name = c.name || c.customerName || "";
+    const id = c._id || c.id || "";
+
+    const selected = {
+      ...c,
+      _id: id,
+      id,
+      name,
+      phone: c.phone || c.customerPhone || "",
+      address: c.address || "",
+    };
+
+    setSelectedCustomer(selected);
+    setCustomer(name);
     setShowSuggest(false);
+    setExpanded({});
 
     fetchStatement({
-      customer: c.name || c.customerName || "",
-      customerId: c._id || c.id || "",
+      customer: name,
+      customerId: id,
+      from,
+      to,
+      dueOnly,
+      dueToday,
     });
   };
 
@@ -213,14 +310,23 @@ export default function CustomerStatementPage() {
     setSelectedCustomer(null);
     setSuggestions([]);
     setShowSuggest(false);
-    fetchStatement({ customer: "", customerId: "" });
+    setExpanded({});
+
+    fetchStatement({
+      customer: "",
+      customerId: "",
+      from,
+      to,
+      dueOnly,
+      dueToday,
+    });
   };
 
   const openPayment = (row) => {
     setSelectedSale(row);
     setPaymentAmount(row.currentDue || row.dueAmount || "");
     setPaymentDate(today());
-    setPaymentNote("");
+    setPaymentNote(row.collectionComment || row.lastCollectionComment || "");
     setPaymentOpen(true);
   };
 
@@ -243,6 +349,8 @@ export default function CustomerStatementPage() {
           amount: Number(paymentAmount),
           date: paymentDate || today(),
           note: paymentNote,
+          comment: paymentNote,
+          collectionComment: paymentNote,
         }),
       });
 
@@ -412,10 +520,18 @@ export default function CustomerStatementPage() {
               <Search size={18} className="text-gray-400" />
               <input
                 value={customer}
-                onChange={(e) => setCustomer(e.target.value)}
+                onChange={(e) => {
+                  setCustomer(e.target.value);
+                  setSelectedCustomer(null);
+                }}
                 onFocus={() => customer && setShowSuggest(true)}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter") fetchStatement();
+                  if (e.key === "Enter") {
+                    fetchStatement({
+                      customer,
+                      customerId: selectedCustomer?._id || "",
+                    });
+                  }
                 }}
                 placeholder="Search customer name, phone, bill no..."
                 className="w-full outline-none text-sm"
@@ -430,9 +546,9 @@ export default function CustomerStatementPage() {
 
             {showSuggest && suggestions.length > 0 && (
               <div className="absolute left-0 right-0 top-full mt-2 bg-white border rounded-2xl shadow-xl z-[999] overflow-hidden">
-                {suggestions.map((c) => (
+                {suggestions.map((c, index) => (
                   <button
-                    key={c._id || c.id || c.phone}
+                    key={c._id || c.id || c.phone || `${c.name}-${index}`}
                     type="button"
                     onClick={() => selectCustomer(c)}
                     className="w-full text-left px-4 py-3 hover:bg-blue-50 border-b last:border-b-0"
@@ -479,7 +595,16 @@ export default function CustomerStatementPage() {
           </select>
 
           <button
-            onClick={() => fetchStatement()}
+            onClick={() =>
+              fetchStatement({
+                customer,
+                customerId: selectedCustomer?._id || "",
+                from,
+                to,
+                dueOnly,
+                dueToday,
+              })
+            }
             className="h-12 rounded-2xl bg-blue-600 text-white flex items-center justify-center hover:bg-blue-700"
           >
             <RefreshCcw size={18} className={loading ? "animate-spin" : ""} />
@@ -519,10 +644,14 @@ export default function CustomerStatementPage() {
               <div>
                 <p className="text-xs text-gray-500">Responsible Officer</p>
                 <h3 className="font-bold text-blue-700">
-                  {officer?.name || "Company"}
+                  {officer?.name ||
+                    rows.find((r) => r.marketingOfficerName)
+                      ?.marketingOfficerName ||
+                    "Company"}
                 </h3>
                 <p className="text-xs text-gray-500 mt-1">
-                  {officer?.phone || ""} {officer?.area ? `• ${officer.area}` : ""}
+                  {officer?.phone || ""}{" "}
+                  {officer?.area ? `• ${officer.area}` : ""}
                 </p>
               </div>
             </div>
@@ -594,13 +723,14 @@ export default function CustomerStatementPage() {
                     </td>
                   </tr>
                 ) : (
-                  rows.map((row) => {
+                  rows.map((row, index) => {
+                    const rowKey = row._id || `${row.billNo}-${index}`;
                     const hasCollections = (row.collections || []).length > 0;
                     const isRowOpen = expanded[row._id] === true;
 
                     return (
-                      <>
-                        <tr key={row._id} className="border-t hover:bg-gray-50">
+                      <React.Fragment key={rowKey}>
+                        <tr className="border-t hover:bg-gray-50">
                           <td className="p-3 whitespace-nowrap">{row.date}</td>
 
                           <td className="p-3 font-semibold whitespace-nowrap">
@@ -747,8 +877,14 @@ export default function CustomerStatementPage() {
                                     </tr>
                                   </thead>
                                   <tbody>
-                                    {row.collections.map((c) => (
-                                      <tr key={c._id} className="border-t">
+                                    {row.collections.map((c, cIndex) => (
+                                      <tr
+                                        key={
+                                          c._id ||
+                                          `${rowKey}-collection-${cIndex}`
+                                        }
+                                        className="border-t"
+                                      >
                                         <td className="p-2">{c.date}</td>
                                         <td className="p-2">{c.voucherNo}</td>
                                         <td className="p-2 capitalize">
@@ -768,7 +904,7 @@ export default function CustomerStatementPage() {
                             </td>
                           </tr>
                         )}
-                      </>
+                      </React.Fragment>
                     );
                   })
                 )}

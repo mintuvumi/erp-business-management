@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Wallet,
@@ -22,8 +22,18 @@ import ProfitModal from "./ProfitModal";
 import ExpenseModal from "./ExpenseModal";
 import EmployeeModal from "./EmployeeModal";
 
+function money(value) {
+  return Number(value || 0).toFixed(2);
+}
+
 export default function Dashboard() {
   const router = useRouter();
+
+  const abortRef = useRef(null);
+  const mountedRef = useRef(false);
+  const fetchLockRef = useRef(false);
+
+  const [loading, setLoading] = useState(false);
 
   const [openBankModal, setOpenBankModal] = useState(false);
   const [openSalesModal, setOpenSalesModal] = useState(false);
@@ -52,7 +62,7 @@ export default function Dashboard() {
     value: "৳ 0.00",
   });
 
-  const resetDashboard = () => {
+  const resetDashboard = useCallback(() => {
     setBankBalance(0);
     setCashInHand(0);
     setCashAndBankBalance(0);
@@ -62,7 +72,7 @@ export default function Dashboard() {
     setTotalSales(0);
     setProfitCard({ title: "Profit", value: "৳ 0.00" });
     setExpenseCard({ title: "Expense", value: "৳ 0.00" });
-  };
+  }, []);
 
   const getSavedUser = () => {
     try {
@@ -79,119 +89,140 @@ export default function Dashboard() {
     return user?.role === "marketing_officer";
   };
 
-  const safeFetch = async (url) => {
+  const safeFetch = async (url, signal) => {
     try {
       const user = localStorage.getItem("user");
       const companyId = getCompanyId();
 
-      if (!user || !companyId) {
-        resetDashboard();
-        return { success: false };
-      }
-
-      if (isMarketingOfficer()) {
+      if (!user || !companyId || isMarketingOfficer()) {
         return { success: false };
       }
 
       const res = await fetch(url, {
         credentials: "include",
         cache: "no-store",
+        signal,
         headers: {
           "x-company-id": companyId,
         },
       });
 
       if (!res.ok) {
-        console.error("DASHBOARD_API_ERROR:", url, "Status:", res.status);
         return { success: false };
       }
 
       return await res.json();
     } catch (error) {
-      console.error("DASHBOARD_API_ERROR:", url, error);
+      if (error?.name === "AbortError") {
+        return { success: false, aborted: true };
+      }
+
+      console.warn("DASHBOARD_API_WARNING:", url, error?.message || error);
       return { success: false };
     }
   };
 
-  const fetchAll = async () => {
-    const user = localStorage.getItem("user");
-    const companyId = getCompanyId();
+  const fetchAll = useCallback(
+    async ({ force = false } = {}) => {
+      const user = localStorage.getItem("user");
+      const companyId = getCompanyId();
 
-    if (!user || !companyId) {
-      resetDashboard();
-      return;
-    }
+      if (!user || !companyId) {
+        resetDashboard();
+        return;
+      }
 
-    if (isMarketingOfficer()) {
-      router.replace("/customers/statement?dueOnly=true");
-      return;
-    }
+      if (isMarketingOfficer()) {
+        router.replace("/customers/statement?dueOnly=true");
+        return;
+      }
 
-    const [
-      bank,
-      cash,
-      purchase,
-      stock,
-      profit,
-      expense,
-      employee,
-      salesReport,
-    ] = await Promise.all([
-      safeFetch("/api/bank"),
-      safeFetch("/api/cash"),
-      safeFetch("/api/dashboard/purchase"),
-      safeFetch("/api/dashboard/stock"),
-      safeFetch("/api/dashboard/profit"),
-      safeFetch("/api/dashboard/expense"),
-      safeFetch("/api/employees"),
-      safeFetch("/api/sales/report"),
-    ]);
+      if (fetchLockRef.current && !force) return;
 
-    const bankTotal = Number(bank.data?.totalBankBalance || 0);
-    const cashTotal = Number(cash.data?.cashInHand || 0);
-    const cashBankTotal = Number(
-      cash.data?.cashAndBankBalance || cashTotal + bankTotal
-    );
+      fetchLockRef.current = true;
+      setLoading(true);
 
-    if (bank.success) setBankBalance(bankTotal);
+      if (abortRef.current) abortRef.current.abort();
 
-    if (cash.success) {
-      setCashInHand(cashTotal);
-      setCashAndBankBalance(cashBankTotal);
-    }
+      const controller = new AbortController();
+      abortRef.current = controller;
 
-    if (purchase.success) {
-      setPurchaseDue(Number(purchase.data?.totalDuePurchase || 0));
-    }
+      try {
+        const [
+          bank,
+          cash,
+          purchase,
+          stock,
+          profit,
+          expense,
+          employee,
+          salesReport,
+        ] = await Promise.all([
+          safeFetch("/api/bank", controller.signal),
+          safeFetch("/api/cash", controller.signal),
+          safeFetch("/api/dashboard/purchase", controller.signal),
+          safeFetch("/api/dashboard/stock", controller.signal),
+          safeFetch("/api/dashboard/profit", controller.signal),
+          safeFetch("/api/dashboard/expense", controller.signal),
+          safeFetch("/api/employees", controller.signal),
+          safeFetch("/api/sales/report", controller.signal),
+        ]);
 
-    if (stock.success) {
-      setStockValue(Number(stock.data?.totalValue || 0));
-    }
+        if (!mountedRef.current || controller.signal.aborted) return;
 
-    if (profit.success) {
-      setProfitCard({
-        title: profit.data?.profitCardTitle || "Profit",
-        value: profit.data?.profitCardValue || "৳ 0.00",
-      });
-    }
+        const bankTotal = Number(bank.data?.totalBankBalance || 0);
+        const cashTotal = Number(cash.data?.cashInHand || 0);
+        const cashBankTotal = Number(
+          cash.data?.cashAndBankBalance || cashTotal + bankTotal
+        );
 
-    if (expense.success) {
-      setExpenseCard({
-        title: "Expense",
-        value: expense.data?.cardValue || "৳ 0.00",
-      });
-    }
+        if (bank.success) setBankBalance(bankTotal);
 
-    if (employee.success) {
-      setEmployeeCount(Number(employee.data?.totalEmployee || 0));
-    }
+        if (cash.success) {
+          setCashInHand(cashTotal);
+          setCashAndBankBalance(cashBankTotal);
+        }
 
-    if (salesReport.success) {
-      setTotalSales(Number(salesReport.data?.totalSales || 0));
-    }
-  };
+        if (purchase.success) {
+          setPurchaseDue(Number(purchase.data?.totalDuePurchase || 0));
+        }
+
+        if (stock.success) {
+          setStockValue(Number(stock.data?.totalValue || 0));
+        }
+
+        if (profit.success) {
+          setProfitCard({
+            title: profit.data?.profitCardTitle || "Profit",
+            value: profit.data?.profitCardValue || "৳ 0.00",
+          });
+        }
+
+        if (expense.success) {
+          setExpenseCard({
+            title: "Expense",
+            value: expense.data?.cardValue || "৳ 0.00",
+          });
+        }
+
+        if (employee.success) {
+          setEmployeeCount(Number(employee.data?.totalEmployee || 0));
+        }
+
+        if (salesReport.success) {
+          setTotalSales(Number(salesReport.data?.totalSales || 0));
+        }
+      } finally {
+        fetchLockRef.current = false;
+        if (mountedRef.current) setLoading(false);
+      }
+    },
+    [resetDashboard, router]
+  );
 
   useEffect(() => {
+    mountedRef.current = true;
+
     const user = localStorage.getItem("user");
     const companyId = getCompanyId();
 
@@ -205,13 +236,11 @@ export default function Dashboard() {
       return;
     }
 
-    fetchAll();
+    fetchAll({ force: true });
 
-    const interval = setInterval(() => {
-      if (!isMarketingOfficer()) {
-        fetchAll();
-      }
-    }, 5000);
+    const refreshDashboard = () => {
+      fetchAll({ force: true });
+    };
 
     const handleCompanyChange = () => {
       resetDashboard();
@@ -222,22 +251,45 @@ export default function Dashboard() {
         return;
       }
 
-      fetchAll();
+      fetchAll({ force: true });
     };
+
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") {
+        fetchAll({ force: true });
+      }
+    };
+
+    window.addEventListener("dashboard:update", refreshDashboard);
+    window.addEventListener("sale:saved", refreshDashboard);
+    window.addEventListener("purchase:saved", refreshDashboard);
+    window.addEventListener("collection:saved", refreshDashboard);
+    window.addEventListener("cashbank:update", refreshDashboard);
 
     window.addEventListener("companyChanged", handleCompanyChange);
     window.addEventListener("companySwitched", handleCompanyChange);
     window.addEventListener("companyAdded", handleCompanyChange);
     window.addEventListener("authChanged", handleCompanyChange);
+    document.addEventListener("visibilitychange", handleVisibility);
 
     return () => {
-      clearInterval(interval);
+      mountedRef.current = false;
+
+      if (abortRef.current) abortRef.current.abort();
+
+      window.removeEventListener("dashboard:update", refreshDashboard);
+      window.removeEventListener("sale:saved", refreshDashboard);
+      window.removeEventListener("purchase:saved", refreshDashboard);
+      window.removeEventListener("collection:saved", refreshDashboard);
+      window.removeEventListener("cashbank:update", refreshDashboard);
+
       window.removeEventListener("companyChanged", handleCompanyChange);
       window.removeEventListener("companySwitched", handleCompanyChange);
       window.removeEventListener("companyAdded", handleCompanyChange);
       window.removeEventListener("authChanged", handleCompanyChange);
+      document.removeEventListener("visibilitychange", handleVisibility);
     };
-  }, [router]);
+  }, [fetchAll, resetDashboard, router]);
 
   const cards = [
     {
@@ -402,7 +454,7 @@ export default function Dashboard() {
                 <span
                   className={`text-[11px] font-semibold px-2.5 py-1 rounded-full ${card.softBg} ${card.iconColor} border border-white/70 shadow-sm`}
                 >
-                  Active
+                  {loading ? "Syncing" : "Active"}
                 </span>
               </div>
             </div>
@@ -456,8 +508,4 @@ export default function Dashboard() {
       </div>
     </>
   );
-}
-
-function money(value) {
-  return Number(value || 0).toFixed(2);
 }

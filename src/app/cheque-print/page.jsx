@@ -105,6 +105,8 @@ const defaultTemplate = {
 export default function ChequePrintPage() {
   const [template, setTemplate] = useState(defaultTemplate);
   const [loading, setLoading] = useState(true);
+  const [transactionId, setTransactionId] = useState("");
+const [chequeRegisterId, setChequeRegisterId] = useState("");
 
   const [form, setForm] = useState({
     payTo: "",
@@ -163,6 +165,8 @@ export default function ChequePrintPage() {
         const params = new URLSearchParams(window.location.search);
         const transactionId = params.get("transactionId");
 
+setTransactionId(transactionId || "");
+
         if (transactionId) {
           const txRes = await fetch("/api/accounts/transactions?limit=300");
           const txData = await txRes.json();
@@ -213,33 +217,85 @@ export default function ChequePrintPage() {
     });
   };
 
+
   const saveTemplate = async () => {
-    const res = await fetch("/api/cheque-template", {
-      method: "POST",
+  const res = await fetch("/api/cheque-template", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(template),
+  });
+
+  const data = await res.json();
+
+  if (data.success) {
+    alert("Cheque template saved");
+  } else {
+    alert(data.message || "Save failed");
+  }
+};
+
+const resetNccTemplate = () => {
+  setTemplate(defaultTemplate);
+};
+
+// ✅ এখানেই নতুন function বসবে
+const registerCheque = async () => {
+  if (!form.payTo || !form.amount) return null;
+
+  const res = await fetch("/api/cheque-register", {
+    method: "POST",
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      transactionId,
+      chequeNo:
+        new URLSearchParams(window.location.search).get("chequeNo") ||
+        transactionId ||
+        `CHQ-${Date.now()}`,
+      payTo: form.payTo,
+      amount: Number(form.amount),
+      chequeDate: form.chequeDate,
+      sourceType: "bank",
+      status: "pending",
+    }),
+  });
+
+  const data = await res.json();
+
+  if (data.success) {
+    setChequeRegisterId(data.data._id);
+  }
+
+  return data;
+};
+
+const printCheque = async () => {
+  const result = await registerCheque();
+
+  if (result?.success && result?.data?._id) {
+    await fetch("/api/cheque-register", {
+      method: "PATCH",
+      credentials: "include",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify(template),
+      body: JSON.stringify({
+        _id: result.data._id,
+        markPrinted: true,
+      }),
     });
+  }
 
-    const data = await res.json();
+  window.print();
+};
 
-    if (data.success) {
-      alert("Cheque template saved");
-    } else {
-      alert(data.message || "Save failed");
-    }
-  };
 
-  const resetNccTemplate = () => {
-    setTemplate(defaultTemplate);
-  };
+return (
 
-  const printCheque = () => {
-    window.print();
-  };
-
-  return (
     <div className="min-h-screen bg-gray-100 p-5">
       <style jsx global>{`
         @page {

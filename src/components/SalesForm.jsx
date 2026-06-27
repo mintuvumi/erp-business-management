@@ -675,8 +675,17 @@ dueWithInterest: allowInterest
       });
 
       setShowInvoice(true);
-      alert("Sale Saved ✅ Invoice Ready");
-      resetForm();
+
+// 🔄 Dashboard Live Refresh
+window.dispatchEvent(new Event("dashboard:update"));
+window.dispatchEvent(new Event("sale:saved"));
+
+// ✅ ভবিষ্যতে অন্য module-ও শুনতে পারবে
+window.dispatchEvent(new Event("cashbank:update"));
+
+alert("Sale Saved ✅ Invoice Ready");
+
+resetForm();
     } catch (err) {
       alert(err.message || "Sale save failed");
     } finally {

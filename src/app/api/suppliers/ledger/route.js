@@ -33,6 +33,10 @@ function dueOf(p) {
   return n(p.dueAmount || p.purchaseDueAmount);
 }
 
+function keyText(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
 export async function GET(req) {
   try {
     await connectDB();
@@ -81,8 +85,6 @@ export async function GET(req) {
         { itemName: regex },
         { note: regex },
         { "items.itemName": regex },
-        { "items.name": regex },
-        { "items.productName": regex },
       ];
     }
 
@@ -105,6 +107,18 @@ export async function GET(req) {
         .lean(),
       Purchase.find(query).sort({ date: 1, createdAt: 1 }).lean(),
     ]);
+
+    const supplierById = {};
+    const supplierByName = {};
+    const supplierByPhone = {};
+
+    suppliers.forEach((s) => {
+      const id = String(s._id);
+      supplierById[id] = s;
+
+      if (s.name) supplierByName[keyText(s.name)] = s;
+      if (s.phone) supplierByPhone[keyText(s.phone)] = s;
+    });
 
     const purchaseIds = purchases.map((p) => p._id);
     const purchaseIdStrings = purchaseIds.map((id) => String(id));
@@ -149,12 +163,28 @@ export async function GET(req) {
         note: txn.note || "",
         comment: txn.comment || "",
         voucherNo: txn.voucherNo || txn.transactionNo || "",
+        chequeNo: txn.chequeNo || "",
+        transactionId: txn.transactionId || "",
       });
     });
 
     let balance = 0;
 
     const rows = purchases.map((purchase) => {
+      const purchaseSupplierId = purchase.supplierId
+        ? String(purchase.supplierId)
+        : "";
+
+      const matchedSupplier =
+        supplierById[purchaseSupplierId] ||
+        supplierByName[keyText(purchase.supplierName)] ||
+        supplierByPhone[keyText(purchase.supplierPhone)] ||
+        null;
+
+      const finalSupplierId = matchedSupplier
+        ? String(matchedSupplier._id)
+        : purchaseSupplierId;
+
       const total = amountOf(purchase);
       const paidAmount = paidOf(purchase);
       const dueAmount = dueOf(purchase);
@@ -167,19 +197,27 @@ export async function GET(req) {
         purchaseNo: purchase.purchaseNo || "",
         supplierBillNo: purchase.supplierBillNo || "",
         supplierInvoiceNo: purchase.supplierInvoiceNo || "",
-        supplierId: purchase.supplierId ? String(purchase.supplierId) : "",
-        supplierName: purchase.supplierName || "Cash Supplier",
-        supplierPhone: purchase.supplierPhone || "",
-        supplierAddress: purchase.supplierAddress || "",
+
+        supplierId: finalSupplierId,
+        supplierName:
+          purchase.supplierName || matchedSupplier?.name || "Cash Supplier",
+        supplierPhone:
+          purchase.supplierPhone || matchedSupplier?.phone || "",
+        supplierAddress:
+          purchase.supplierAddress || matchedSupplier?.address || "",
+
         itemName: purchase.itemName || purchase.items?.[0]?.itemName || "",
         items: purchase.items || [],
+
         purchaseType: purchase.purchaseType || "",
         paymentType: purchase.paymentType || "",
         paymentFrom: purchase.paymentFrom || "",
+
         total,
         paidAmount,
         dueAmount,
         balance,
+
         payments: paymentMap[String(purchase._id)] || [],
         note: purchase.note || "",
       };
@@ -225,7 +263,7 @@ export async function GET(req) {
       totalPurchase: rows.reduce((s, r) => s + n(r.total), 0),
       totalPaid: rows.reduce((s, r) => s + n(r.paidAmount), 0),
       totalDue: rows.reduce((s, r) => s + n(r.dueAmount), 0),
-      closingBalance: balance,
+      closingBalance: rows.reduce((s, r) => s + n(r.dueAmount), 0),
       totalEntry: rows.length,
 
       todayPurchase: todayRows.reduce((s, r) => s + n(r.total), 0),
@@ -253,19 +291,22 @@ export async function GET(req) {
           logo: settings?.logo || "",
           currency: settings?.currency || "৳",
         },
-        suppliers,
+        suppliers: suppliers.map((s) => ({
+          ...s,
+          _id: String(s._id),
+        })),
         supplierWise,
         rows,
         summary,
       },
     });
   } catch (error) {
-    console.error("SUPPLIER_STATEMENT_ERROR:", error);
+    console.error("SUPPLIER_LEDGER_ERROR:", error);
 
     return NextResponse.json(
       {
         success: false,
-        message: error.message || "Failed to load supplier statement",
+        message: error.message || "Failed to load supplier ledger",
       },
       { status: 500 }
     );

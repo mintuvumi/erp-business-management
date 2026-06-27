@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   Search,
   CalendarDays,
@@ -9,7 +10,6 @@ import {
   Download,
   Share2,
   Wallet,
-  X,
   Sparkles,
   Building2,
   Users,
@@ -17,7 +17,24 @@ import {
   Eye,
 } from "lucide-react";
 
+function money(value) {
+  return Number(value || 0).toFixed(2);
+}
+
+function number(value) {
+  return Number(value || 0) || 0;
+}
+
+function today() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function toDate(date) {
+  return date.toISOString().slice(0, 10);
+}
+
 export default function SupplierLedgerPage() {
+  const router = useRouter();
   const fromRef = useRef(null);
   const toRef = useRef(null);
 
@@ -34,24 +51,19 @@ export default function SupplierLedgerPage() {
   const [summary, setSummary] = useState({});
   const [loading, setLoading] = useState(false);
 
-  const [reportMode, setReportMode] = useState("ledger"); // ledger | all | single
+  const [reportMode, setReportMode] = useState("ledger");
   const [selectedSupplier, setSelectedSupplier] = useState(null);
-
-  const [paymentOpen, setPaymentOpen] = useState(false);
-  const [selectedPurchase, setSelectedPurchase] = useState(null);
-  const [paymentAmount, setPaymentAmount] = useState("");
-  const [paymentDate, setPaymentDate] = useState(today());
-  const [paymentNote, setPaymentNote] = useState("");
-  const [savingPayment, setSavingPayment] = useState(false);
 
   const currency = company?.currency || "৳";
 
   const singleRows = useMemo(() => {
     if (!selectedSupplier) return [];
+
     const key = selectedSupplier.supplierId || selectedSupplier.supplierName;
+
     return rows.filter(
       (r) =>
-        r.supplierId === key ||
+        String(r.supplierId || "") === String(key || "") ||
         r.supplierName === selectedSupplier.supplierName
     );
   }, [rows, selectedSupplier]);
@@ -78,6 +90,7 @@ export default function SupplierLedgerPage() {
       if (dueOnly) params.set("dueOnly", "true");
 
       const res = await fetch(`/api/suppliers/ledger?${params.toString()}`, {
+        credentials: "include",
         cache: "no-store",
       });
 
@@ -93,7 +106,6 @@ export default function SupplierLedgerPage() {
       setSupplierWise(data.data.supplierWise || []);
       setSuppliers(data.data.suppliers || []);
     } catch (error) {
-      console.error(error);
       alert(error.message || "Supplier ledger load failed");
     } finally {
       setLoading(false);
@@ -158,11 +170,6 @@ export default function SupplierLedgerPage() {
       end = toDate(new Date(now.getFullYear(), 11, 31));
     }
 
-    if (type === "all") {
-      start = "";
-      end = "";
-    }
-
     setFrom(start);
     setTo(end);
   };
@@ -171,29 +178,23 @@ export default function SupplierLedgerPage() {
     const text = aiSearch.toLowerCase().trim();
     if (!text) return;
 
-    let cleanText = aiSearch
-      .replace(/today|আজ|this month|এই মাস|last 7 days|last 30 days|due|statement|supplier/gi, "")
+    const cleanText = aiSearch
+      .replace(
+        /today|আজ|this month|এই মাস|last 7 days|last 30 days|due|statement|supplier/gi,
+        ""
+      )
       .trim();
 
     setSupplier(cleanText || aiSearch);
 
-    if (text.includes("today") || text.includes("আজ")) {
-      setDateRange("today");
-    } else if (text.includes("this month") || text.includes("এই মাস")) {
+    if (text.includes("today") || text.includes("আজ")) setDateRange("today");
+    else if (text.includes("this month") || text.includes("এই মাস"))
       setDateRange("thisMonth");
-    } else if (text.includes("last 7")) {
-      setDateRange("last7");
-    } else if (text.includes("last 30")) {
-      setDateRange("last30");
-    }
+    else if (text.includes("last 7")) setDateRange("last7");
+    else if (text.includes("last 30")) setDateRange("last30");
 
-    if (text.includes("due")) {
-      setDueOnly(true);
-    }
-
-    if (text.includes("statement")) {
-      setReportMode("ledger");
-    }
+    if (text.includes("due")) setDueOnly(true);
+    if (text.includes("statement")) setReportMode("ledger");
   };
 
   const resetFilter = () => {
@@ -206,51 +207,15 @@ export default function SupplierLedgerPage() {
     setSelectedSupplier(null);
   };
 
-  const openPayment = (row) => {
-    setSelectedPurchase(row);
-    setPaymentAmount(row.dueAmount || "");
-    setPaymentDate(today());
-    setPaymentNote("");
-    setPaymentOpen(true);
-  };
+  const openSupplierProfile = (row) => {
+    const supplierId = row?.supplierId || row?._id || "";
 
-  const savePayment = async () => {
-    if (!selectedPurchase?._id) return alert("Purchase not selected");
-
-    if (!paymentAmount || Number(paymentAmount) <= 0) {
-      return alert("Valid payment amount required");
+    if (!supplierId) {
+      alert("Supplier id not found");
+      return;
     }
 
-    try {
-      setSavingPayment(true);
-
-      const res = await fetch("/api/suppliers/payment", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          purchaseId: selectedPurchase._id,
-          amount: Number(paymentAmount),
-          date: paymentDate,
-          note: paymentNote,
-        }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok || !data.success) {
-        throw new Error(data.message || "Payment failed");
-      }
-
-      alert("Supplier Payment Saved ✅");
-      setPaymentOpen(false);
-      await fetchLedger();
-    } catch (error) {
-      alert(error.message || "Payment failed");
-    } finally {
-      setSavingPayment(false);
-    }
+    router.push(`/suppliers/profile?id=${supplierId}`);
   };
 
   const shareLedger = async () => {
@@ -262,10 +227,7 @@ Total Due: ${currency} ${money(summary.totalDue)}
 Closing Balance: ${currency} ${money(summary.closingBalance)}`;
 
     if (navigator.share) {
-      await navigator.share({
-        title: "Supplier Ledger",
-        text,
-      });
+      await navigator.share({ title: "Supplier Ledger", text });
     } else {
       await navigator.clipboard.writeText(text);
       alert("Supplier ledger copied");
@@ -290,42 +252,27 @@ Closing Balance: ${currency} ${money(summary.closingBalance)}`;
           <CompanyHeader company={company} />
 
           <div className="flex flex-wrap gap-2 print:hidden">
-            <button
-              onClick={fetchLedger}
-              className="px-4 py-2 rounded-xl border flex items-center gap-2 hover:bg-gray-50"
-            >
+            <button onClick={fetchLedger} className="top-btn">
               <RefreshCcw size={16} className={loading ? "animate-spin" : ""} />
               Refresh
             </button>
 
-            <button
-              onClick={() => printReport("ledger")}
-              className="px-4 py-2 rounded-xl border flex items-center gap-2 hover:bg-gray-50"
-            >
+            <button onClick={() => printReport("ledger")} className="top-btn">
               <Printer size={16} />
               Print
             </button>
 
-            <button
-              onClick={() => printReport("all")}
-              className="px-4 py-2 rounded-xl border flex items-center gap-2 hover:bg-gray-50"
-            >
+            <button onClick={() => printReport("all")} className="top-btn">
               <FileText size={16} />
               All Statement
             </button>
 
-            <button
-              onClick={() => printReport(reportMode)}
-              className="px-4 py-2 rounded-xl border flex items-center gap-2 hover:bg-gray-50"
-            >
+            <button onClick={() => printReport(reportMode)} className="top-btn">
               <Download size={16} />
               PDF
             </button>
 
-            <button
-              onClick={shareLedger}
-              className="px-4 py-2 rounded-xl border flex items-center gap-2 hover:bg-gray-50"
-            >
+            <button onClick={shareLedger} className="top-btn">
               <Share2 size={16} />
               Share
             </button>
@@ -348,7 +295,7 @@ Closing Balance: ${currency} ${money(summary.closingBalance)}`;
                 onKeyDown={(e) => {
                   if (e.key === "Enter") applyAISearch();
                 }}
-                placeholder="Example: Rahim due / Rahim statement / today due / this month purchase / bill no 102"
+                placeholder="Example: Shop PD due / today due / this month purchase / bill no 102"
                 className="border rounded-xl px-4 py-3 outline-none"
               />
 
@@ -370,11 +317,23 @@ Closing Balance: ${currency} ${money(summary.closingBalance)}`;
 
           <div className="flex flex-wrap gap-2 print:hidden">
             <DateButton label="Today" onClick={() => setDateRange("today")} />
-            <DateButton label="Yesterday" onClick={() => setDateRange("yesterday")} />
+            <DateButton
+              label="Yesterday"
+              onClick={() => setDateRange("yesterday")}
+            />
             <DateButton label="Last 7 Days" onClick={() => setDateRange("last7")} />
-            <DateButton label="Last 30 Days" onClick={() => setDateRange("last30")} />
-            <DateButton label="This Month" onClick={() => setDateRange("thisMonth")} />
-            <DateButton label="Last Month" onClick={() => setDateRange("lastMonth")} />
+            <DateButton
+              label="Last 30 Days"
+              onClick={() => setDateRange("last30")}
+            />
+            <DateButton
+              label="This Month"
+              onClick={() => setDateRange("thisMonth")}
+            />
+            <DateButton
+              label="Last Month"
+              onClick={() => setDateRange("lastMonth")}
+            />
             <DateButton label="This Year" onClick={() => setDateRange("thisYear")} />
             <DateButton label="All" onClick={() => setDateRange("all")} />
           </div>
@@ -385,38 +344,13 @@ Closing Balance: ${currency} ${money(summary.closingBalance)}`;
               <input
                 value={supplier}
                 onChange={(e) => setSupplier(e.target.value)}
-                placeholder="Search supplier / phone / bill no / invoice no / item..."
+                placeholder="Search supplier / phone / bill no / item..."
                 className="w-full outline-none text-sm"
               />
             </div>
 
-            <div
-              onClick={() => fromRef.current?.showPicker?.()}
-              className="flex items-center gap-2 border rounded-2xl px-4 py-3 bg-white shadow-sm cursor-pointer"
-            >
-              <CalendarDays size={18} className="text-gray-400" />
-              <input
-                ref={fromRef}
-                type="date"
-                value={from}
-                onChange={(e) => setFrom(e.target.value)}
-                className="w-full outline-none text-sm cursor-pointer"
-              />
-            </div>
-
-            <div
-              onClick={() => toRef.current?.showPicker?.()}
-              className="flex items-center gap-2 border rounded-2xl px-4 py-3 bg-white shadow-sm cursor-pointer"
-            >
-              <CalendarDays size={18} className="text-gray-400" />
-              <input
-                ref={toRef}
-                type="date"
-                value={to}
-                onChange={(e) => setTo(e.target.value)}
-                className="w-full outline-none text-sm cursor-pointer"
-              />
-            </div>
+            <DateInput inputRef={fromRef} value={from} onChange={setFrom} />
+            <DateInput inputRef={toRef} value={to} onChange={setTo} />
 
             <button
               onClick={() => setDueOnly((v) => !v)}
@@ -438,14 +372,49 @@ Closing Balance: ${currency} ${money(summary.closingBalance)}`;
           </div>
 
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 print:hidden">
-            <SummaryCard title="Total Purchase" value={summary.totalPurchase} currency={currency} />
-            <SummaryCard title="Total Paid" value={summary.totalPaid} currency={currency} />
-            <SummaryCard title="Total Due" value={summary.totalDue} currency={currency} danger />
-            <SummaryCard title="Closing Balance" value={summary.closingBalance} currency={currency} danger />
-            <SummaryCard title="Today Purchase" value={summary.todayPurchase} currency={currency} />
-            <SummaryCard title="Today Due" value={summary.todayDue} currency={currency} danger />
-            <SummaryCard title="This Month Purchase" value={summary.thisMonthPurchase} currency={currency} />
-            <InfoCard title="Due Suppliers" value={summary.dueSuppliers} icon={<Users size={18} />} />
+            <SummaryCard
+              title="Total Purchase"
+              value={summary.totalPurchase}
+              currency={currency}
+            />
+            <SummaryCard
+              title="Total Paid"
+              value={summary.totalPaid}
+              currency={currency}
+            />
+            <SummaryCard
+              title="Total Due"
+              value={summary.totalDue}
+              currency={currency}
+              danger
+            />
+            <SummaryCard
+              title="Closing Balance"
+              value={summary.closingBalance}
+              currency={currency}
+              danger
+            />
+            <SummaryCard
+              title="Today Purchase"
+              value={summary.todayPurchase}
+              currency={currency}
+            />
+            <SummaryCard
+              title="Today Due"
+              value={summary.todayDue}
+              currency={currency}
+              danger
+            />
+            <SummaryCard
+              title="This Month Purchase"
+              value={summary.thisMonthPurchase}
+              currency={currency}
+            />
+            <InfoCard
+              title="Due Suppliers"
+              value={summary.dueSuppliers}
+              icon={<Users size={18} />}
+            />
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 print:hidden">
@@ -473,6 +442,7 @@ Closing Balance: ${currency} ${money(summary.closingBalance)}`;
               supplierWise={supplierWise}
               currency={currency}
               onSingle={openSingleStatement}
+              onPay={openSupplierProfile}
             />
           )}
 
@@ -491,7 +461,7 @@ Closing Balance: ${currency} ${money(summary.closingBalance)}`;
               rows={rows}
               summary={summary}
               currency={currency}
-              openPayment={openPayment}
+              openSupplierProfile={openSupplierProfile}
               openSingleStatement={openSingleStatement}
               supplierWise={supplierWise}
             />
@@ -499,68 +469,20 @@ Closing Balance: ${currency} ${money(summary.closingBalance)}`;
         </div>
       </div>
 
-      {paymentOpen && (
-        <div className="fixed inset-0 z-[150] bg-black/30 backdrop-blur-[3px] flex items-center justify-center p-4 print:hidden">
-          <div className="w-full max-w-md bg-white rounded-[28px] border shadow-[0_30px_80px_rgba(15,23,42,0.25)] overflow-hidden">
-            <div className="p-5 border-b flex justify-between items-start">
-              <div>
-                <h2 className="text-lg font-bold">Supplier Payment</h2>
-                <p className="text-sm text-gray-500 mt-1">
-                  {selectedPurchase?.supplierName} • Bill{" "}
-                  {selectedPurchase?.supplierBillNo || "-"}
-                </p>
-              </div>
-
-              <button
-                onClick={() => setPaymentOpen(false)}
-                className="w-9 h-9 rounded-full border flex items-center justify-center hover:bg-red-50 hover:text-red-500"
-              >
-                <X size={17} />
-              </button>
-            </div>
-
-            <div className="p-5 space-y-3">
-              <div className="bg-gray-50 border rounded-2xl p-4 space-y-1 text-sm">
-                <Line label="Total Purchase" value={`${currency} ${money(selectedPurchase?.total)}`} />
-                <Line label="Paid" value={`${currency} ${money(selectedPurchase?.paidAmount)}`} green />
-                <Line label="Due" value={`${currency} ${money(selectedPurchase?.dueAmount)}`} red />
-              </div>
-
-              <input
-                type="number"
-                value={paymentAmount}
-                onChange={(e) => setPaymentAmount(e.target.value)}
-                placeholder="Payment Amount"
-                className="w-full border rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-400"
-              />
-
-              <input
-                type="date"
-                value={paymentDate}
-                onChange={(e) => setPaymentDate(e.target.value)}
-                className="w-full border rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-400"
-              />
-
-              <textarea
-                value={paymentNote}
-                onChange={(e) => setPaymentNote(e.target.value)}
-                placeholder="Payment note"
-                className="w-full border rounded-xl p-3 outline-none min-h-[90px] focus:ring-2 focus:ring-blue-400"
-              />
-
-              <button
-                onClick={savePayment}
-                disabled={savingPayment}
-                className="w-full bg-blue-500 text-white rounded-xl py-3 font-medium hover:bg-blue-600 disabled:opacity-60"
-              >
-                {savingPayment ? "Saving..." : "Save Payment"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       <style jsx global>{`
+        .top-btn {
+          padding: 10px 16px;
+          border-radius: 12px;
+          border: 1px solid #e5e7eb;
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+        }
+
+        .top-btn:hover {
+          background: #f9fafb;
+        }
+
         @media print {
           body {
             background: white !important;
@@ -590,6 +512,24 @@ Closing Balance: ${currency} ${money(summary.closingBalance)}`;
           }
         }
       `}</style>
+    </div>
+  );
+}
+
+function DateInput({ inputRef, value, onChange }) {
+  return (
+    <div
+      onClick={() => inputRef.current?.showPicker?.()}
+      className="flex items-center gap-2 border rounded-2xl px-4 py-3 bg-white shadow-sm cursor-pointer"
+    >
+      <CalendarDays size={18} className="text-gray-400" />
+      <input
+        ref={inputRef}
+        type="date"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full outline-none text-sm cursor-pointer"
+      />
     </div>
   );
 }
@@ -628,16 +568,17 @@ function LedgerTable({
   rows,
   summary,
   currency,
-  openPayment,
+  openSupplierProfile,
   openSingleStatement,
   supplierWise,
 }) {
   const getSupplierSummary = (row) =>
     supplierWise.find(
       (s) =>
-        s.supplierId === row.supplierId ||
+        String(s.supplierId || "") === String(row.supplierId || "") ||
         s.supplierName === row.supplierName
     ) || {
+      supplierId: row.supplierId,
       supplierName: row.supplierName,
       supplierPhone: row.supplierPhone,
       supplierAddress: row.supplierAddress,
@@ -679,8 +620,11 @@ function LedgerTable({
                 </td>
               </tr>
             ) : (
-              rows.map((row) => (
-                <tr key={row._id} className="border-t hover:bg-blue-50/40">
+              rows.map((row, index) => (
+                <tr
+                  key={row._id || `${row.supplierName}-${index}`}
+                  className="border-t hover:bg-blue-50/40"
+                >
                   <td className="p-3">{row.date || "-"}</td>
                   <td className="p-3">{row.purchaseNo || "-"}</td>
                   <td className="p-3">{row.supplierBillNo || "-"}</td>
@@ -690,7 +634,9 @@ function LedgerTable({
                   <td className="p-3">{row.itemName || "-"}</td>
                   <td className="p-3 capitalize">{row.purchaseType || "-"}</td>
                   <td className="p-3 capitalize">{row.paymentType || "-"}</td>
-                  <td className="p-3 text-right">{currency} {money(row.total)}</td>
+                  <td className="p-3 text-right">
+                    {currency} {money(row.total)}
+                  </td>
                   <td className="p-3 text-right text-green-600">
                     {currency} {money(row.paidAmount)}
                   </td>
@@ -703,16 +649,18 @@ function LedgerTable({
                   <td className="p-3 text-center print:hidden">
                     <div className="flex items-center justify-center gap-2">
                       <button
-                        onClick={() => openSingleStatement(getSupplierSummary(row))}
+                        onClick={() =>
+                          openSingleStatement(getSupplierSummary(row))
+                        }
                         className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl border hover:bg-gray-50"
                       >
                         <Eye size={14} />
                         View
                       </button>
 
-                      {Number(row.dueAmount || 0) > 0 ? (
+                      {number(row.dueAmount) > 0 ? (
                         <button
-                          onClick={() => openPayment(row)}
+                          onClick={() => openSupplierProfile(row)}
                           className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-blue-500 text-white hover:bg-blue-600"
                         >
                           <Wallet size={14} />
@@ -731,11 +679,21 @@ function LedgerTable({
           {rows.length > 0 && (
             <tfoot className="bg-gray-50 font-bold">
               <tr>
-                <td className="p-3" colSpan="9">Total</td>
-                <td className="p-3 text-right">{currency} {money(summary.totalPurchase)}</td>
-                <td className="p-3 text-right">{currency} {money(summary.totalPaid)}</td>
-                <td className="p-3 text-right">{currency} {money(summary.totalDue)}</td>
-                <td className="p-3 text-right">{currency} {money(summary.closingBalance)}</td>
+                <td className="p-3" colSpan="9">
+                  Total
+                </td>
+                <td className="p-3 text-right">
+                  {currency} {money(summary.totalPurchase)}
+                </td>
+                <td className="p-3 text-right">
+                  {currency} {money(summary.totalPaid)}
+                </td>
+                <td className="p-3 text-right">
+                  {currency} {money(summary.totalDue)}
+                </td>
+                <td className="p-3 text-right">
+                  {currency} {money(summary.closingBalance)}
+                </td>
                 <td className="p-3 print:hidden"></td>
               </tr>
             </tfoot>
@@ -746,7 +704,7 @@ function LedgerTable({
   );
 }
 
-function AllSupplierStatement({ company, supplierWise, currency, onSingle }) {
+function AllSupplierStatement({ company, supplierWise, currency, onSingle, onPay }) {
   return (
     <div className="border rounded-3xl overflow-hidden bg-white">
       <StatementTitle company={company} title="All Supplier Statement" />
@@ -779,17 +737,36 @@ function AllSupplierStatement({ company, supplierWise, currency, onSingle }) {
                   <td className="p-3 font-semibold">{s.supplierName || "-"}</td>
                   <td className="p-3">{s.supplierPhone || "-"}</td>
                   <td className="p-3">{s.supplierAddress || "-"}</td>
-                  <td className="p-3 text-right">{currency} {money(s.totalPurchase)}</td>
-                  <td className="p-3 text-right text-green-600">{currency} {money(s.totalPaid)}</td>
-                  <td className="p-3 text-right text-red-500">{currency} {money(s.totalDue)}</td>
-                  <td className="p-3 text-right font-bold">{currency} {money(s.closingBalance)}</td>
+                  <td className="p-3 text-right">
+                    {currency} {money(s.totalPurchase)}
+                  </td>
+                  <td className="p-3 text-right text-green-600">
+                    {currency} {money(s.totalPaid)}
+                  </td>
+                  <td className="p-3 text-right text-red-500">
+                    {currency} {money(s.totalDue)}
+                  </td>
+                  <td className="p-3 text-right font-bold">
+                    {currency} {money(s.closingBalance)}
+                  </td>
                   <td className="p-3 text-center print:hidden">
-                    <button
-                      onClick={() => onSingle(s)}
-                      className="px-3 py-1.5 rounded-xl border hover:bg-gray-50"
-                    >
-                      View Statement
-                    </button>
+                    <div className="flex justify-center gap-2">
+                      <button
+                        onClick={() => onSingle(s)}
+                        className="px-3 py-1.5 rounded-xl border hover:bg-gray-50"
+                      >
+                        View
+                      </button>
+
+                      {number(s.totalDue) > 0 && (
+                        <button
+                          onClick={() => onPay(s)}
+                          className="px-3 py-1.5 rounded-xl bg-blue-500 text-white hover:bg-blue-600"
+                        >
+                          Pay
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))
@@ -799,18 +776,24 @@ function AllSupplierStatement({ company, supplierWise, currency, onSingle }) {
           {supplierWise.length > 0 && (
             <tfoot className="bg-gray-50 font-bold">
               <tr>
-                <td className="p-3" colSpan="3">Grand Total</td>
-                <td className="p-3 text-right">
-                  {currency} {money(supplierWise.reduce((a, b) => a + number(b.totalPurchase), 0))}
+                <td className="p-3" colSpan="3">
+                  Grand Total
                 </td>
                 <td className="p-3 text-right">
-                  {currency} {money(supplierWise.reduce((a, b) => a + number(b.totalPaid), 0))}
+                  {currency}{" "}
+                  {money(supplierWise.reduce((a, b) => a + number(b.totalPurchase), 0))}
                 </td>
                 <td className="p-3 text-right">
-                  {currency} {money(supplierWise.reduce((a, b) => a + number(b.totalDue), 0))}
+                  {currency}{" "}
+                  {money(supplierWise.reduce((a, b) => a + number(b.totalPaid), 0))}
                 </td>
                 <td className="p-3 text-right">
-                  {currency} {money(supplierWise.reduce((a, b) => a + number(b.closingBalance), 0))}
+                  {currency}{" "}
+                  {money(supplierWise.reduce((a, b) => a + number(b.totalDue), 0))}
+                </td>
+                <td className="p-3 text-right">
+                  {currency}{" "}
+                  {money(supplierWise.reduce((a, b) => a + number(b.closingBalance), 0))}
                 </td>
                 <td className="p-3 print:hidden"></td>
               </tr>
@@ -842,10 +825,24 @@ function SingleSupplierStatement({ company, supplier, rows, summary, currency })
         </div>
 
         <div className="grid grid-cols-2 gap-2 text-sm">
-          <MiniAmount title="Purchase" value={`${currency} ${money(summary.totalPurchase)}`} />
-          <MiniAmount title="Paid" value={`${currency} ${money(summary.totalPaid)}`} />
-          <MiniAmount title="Due" value={`${currency} ${money(summary.totalDue)}`} danger />
-          <MiniAmount title="Closing" value={`${currency} ${money(summary.closingBalance)}`} danger />
+          <MiniAmount
+            title="Purchase"
+            value={`${currency} ${money(summary.totalPurchase)}`}
+          />
+          <MiniAmount
+            title="Paid"
+            value={`${currency} ${money(summary.totalPaid)}`}
+          />
+          <MiniAmount
+            title="Due"
+            value={`${currency} ${money(summary.totalDue)}`}
+            danger
+          />
+          <MiniAmount
+            title="Closing"
+            value={`${currency} ${money(summary.closingBalance)}`}
+            danger
+          />
         </div>
       </div>
 
@@ -873,17 +870,25 @@ function SingleSupplierStatement({ company, supplier, rows, summary, currency })
                 </td>
               </tr>
             ) : (
-              rows.map((r) => (
-                <tr key={r._id} className="border-t">
+              rows.map((r, index) => (
+                <tr key={r._id || index} className="border-t">
                   <td className="p-3">{r.date || "-"}</td>
                   <td className="p-3">{r.purchaseNo || "-"}</td>
                   <td className="p-3">{r.supplierBillNo || "-"}</td>
                   <td className="p-3">{r.supplierInvoiceNo || "-"}</td>
                   <td className="p-3">{r.itemName || "-"}</td>
-                  <td className="p-3 text-right">{currency} {money(r.total)}</td>
-                  <td className="p-3 text-right text-green-600">{currency} {money(r.paidAmount)}</td>
-                  <td className="p-3 text-right text-red-500">{currency} {money(r.dueAmount)}</td>
-                  <td className="p-3 text-right font-bold">{currency} {money(r.balance)}</td>
+                  <td className="p-3 text-right">
+                    {currency} {money(r.total)}
+                  </td>
+                  <td className="p-3 text-right text-green-600">
+                    {currency} {money(r.paidAmount)}
+                  </td>
+                  <td className="p-3 text-right text-red-500">
+                    {currency} {money(r.dueAmount)}
+                  </td>
+                  <td className="p-3 text-right font-bold">
+                    {currency} {money(r.balance)}
+                  </td>
                 </tr>
               ))
             )}
@@ -892,11 +897,21 @@ function SingleSupplierStatement({ company, supplier, rows, summary, currency })
           {rows.length > 0 && (
             <tfoot className="bg-gray-50 font-bold">
               <tr>
-                <td className="p-3" colSpan="5">Total</td>
-                <td className="p-3 text-right">{currency} {money(summary.totalPurchase)}</td>
-                <td className="p-3 text-right">{currency} {money(summary.totalPaid)}</td>
-                <td className="p-3 text-right">{currency} {money(summary.totalDue)}</td>
-                <td className="p-3 text-right">{currency} {money(summary.closingBalance)}</td>
+                <td className="p-3" colSpan="5">
+                  Total
+                </td>
+                <td className="p-3 text-right">
+                  {currency} {money(summary.totalPurchase)}
+                </td>
+                <td className="p-3 text-right">
+                  {currency} {money(summary.totalPaid)}
+                </td>
+                <td className="p-3 text-right">
+                  {currency} {money(summary.totalDue)}
+                </td>
+                <td className="p-3 text-right">
+                  {currency} {money(summary.closingBalance)}
+                </td>
               </tr>
             </tfoot>
           )}
@@ -976,20 +991,13 @@ function SmallInfo({ title, value, sub, icon }) {
 
 function MiniAmount({ title, value, danger }) {
   return (
-    <div className={`border rounded-xl p-3 ${danger ? "bg-red-50 text-red-600" : "bg-gray-50"}`}>
+    <div
+      className={`border rounded-xl p-3 ${
+        danger ? "bg-red-50 text-red-600" : "bg-gray-50"
+      }`}
+    >
       <p className="text-xs text-gray-500">{title}</p>
       <h4 className="font-bold">{value}</h4>
-    </div>
-  );
-}
-
-function Line({ label, value, green, red }) {
-  return (
-    <div className="flex justify-between">
-      <span>{label}</span>
-      <strong className={green ? "text-green-600" : red ? "text-red-500" : ""}>
-        {value}
-      </strong>
     </div>
   );
 }
@@ -1003,20 +1011,4 @@ function DateButton({ label, onClick }) {
       {label}
     </button>
   );
-}
-
-function money(value) {
-  return Number(value || 0).toFixed(2);
-}
-
-function number(value) {
-  return Number(value || 0) || 0;
-}
-
-function today() {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function toDate(date) {
-  return date.toISOString().slice(0, 10);
 }
