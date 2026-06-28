@@ -8,8 +8,14 @@ import BankTransaction from "@/models/BankTransaction";
 import AccountTransaction from "@/models/AccountTransaction";
 import MarketingOfficer from "@/models/MarketingOfficer";
 import MarketingOfficerLedger from "@/models/MarketingOfficerLedger";
+import ChequeBook from "@/models/ChequeBook";
+import ChequeRegister from "@/models/ChequeRegister";
 import { getTenant } from "@/lib/tenant";
 import { requireActiveSubscription } from "@/lib/subscription";
+
+function n(v) {
+  return Number(v || 0) || 0;
+}
 
 function makeBatchNo(prefix = "APP-SAL") {
   const now = new Date();
@@ -17,8 +23,42 @@ function makeBatchNo(prefix = "APP-SAL") {
   const m = String(now.getMonth() + 1).padStart(2, "0");
   const d = String(now.getDate()).padStart(2, "0");
   const r = Math.random().toString(36).slice(2, 7).toUpperCase();
-
   return `${prefix}-${y}${m}${d}-${r}`;
+}
+
+async function getAutoChequeNo({ companyId, bankId }) {
+  const chequeBook = await ChequeBook.findOne({
+    companyId,
+    bankId,
+    status: "active",
+  }).sort({ createdAt: 1 });
+
+  if (!chequeBook) {
+    throw new Error("No active cheque book found for this bank");
+  }
+
+  if (n(chequeBook.nextNo) > n(chequeBook.endNo)) {
+    chequeBook.status = "completed";
+    await chequeBook.save();
+    throw new Error("Cheque book completed. Please add new cheque book");
+  }
+
+  return {
+    chequeBook,
+    chequeNo: String(chequeBook.nextNo),
+  };
+}
+
+async function markChequeUsed(chequeBook) {
+  chequeBook.nextNo = n(chequeBook.nextNo) + 1;
+  chequeBook.usedLeaves = n(chequeBook.usedLeaves) + 1;
+  chequeBook.remainingLeaves = Math.max(0, n(chequeBook.remainingLeaves) - 1);
+
+  if (n(chequeBook.nextNo) > n(chequeBook.endNo)) {
+    chequeBook.status = "completed";
+  }
+
+  await chequeBook.save();
 }
 
 export async function POST(req) {
@@ -36,26 +76,22 @@ export async function POST(req) {
 
     const sub = await requireActiveSubscription(tenant);
 
-if (!sub.ok) {
-  return NextResponse.json(
-    {
-      success: false,
-      subscriptionExpired: true,
-      message: sub.message,
-    },
-    { status: sub.status }
-  );
-}
-
+    if (!sub.ok) {
+      return NextResponse.json(
+        {
+          success: false,
+          subscriptionExpired: true,
+          message: sub.message,
+        },
+        { status: sub.status }
+      );
+    }
 
     const body = await req.json();
 
-    const {
-      salaryIds = [],
-      paymentMethod,
-      bankId,
-      note = "",
-    } = body;
+    const { salaryIds = [], paymentMethod, bankId, note = "" } = body;
+
+    const payMode = paymentMethod === "cheque" ? "cheque" : paymentMethod;
 
     if (!salaryIds.length) {
       return NextResponse.json(
@@ -64,7 +100,7 @@ if (!sub.ok) {
       );
     }
 
-    if (!["cash", "bank"].includes(paymentMethod)) {
+    if (!["cash", "bank", "cheque"].includes(payMode)) {
       return NextResponse.json(
         { success: false, message: "Valid payment method required" },
         { status: 400 }
@@ -81,16 +117,13 @@ if (!sub.ok) {
 
     if (!salaries.length) {
       return NextResponse.json(
-        {
-          success: false,
-          message: "No approved unpaid salary found",
-        },
+        { success: false, message: "No approved unpaid salary found" },
         { status: 400 }
       );
     }
 
     const totalPayable = salaries.reduce(
-      (sum, s) => sum + Number(s.dueAmount || s.finalSalary || 0),
+      (sum, s) => sum + n(s.dueAmount || s.finalSalary),
       0
     );
 
@@ -103,7 +136,7 @@ if (!sub.ok) {
 
     let bank = null;
 
-    if (paymentMethod === "bank") {
+    if (payMode === "bank" || payMode === "cheque") {
       if (!bankId) {
         return NextResponse.json(
           { success: false, message: "Bank account required" },
@@ -114,6 +147,7 @@ if (!sub.ok) {
       bank = await BankAccount.findOne({
         _id: bankId,
         companyId: tenant.companyId,
+        status: { $ne: "inactive" },
       });
 
       if (!bank) {
@@ -123,7 +157,7 @@ if (!sub.ok) {
         );
       }
 
-      if (Number(bank.currentBalance || 0) < totalPayable) {
+      if (n(bank.currentBalance) < totalPayable) {
         return NextResponse.json(
           {
             success: false,
@@ -138,7 +172,7 @@ if (!sub.ok) {
 
     let cash = null;
 
-    if (paymentMethod === "cash") {
+    if (payMode === "cash") {
       cash = await Cash.findOne({ companyId: tenant.companyId });
 
       if (!cash) {
@@ -149,7 +183,7 @@ if (!sub.ok) {
         });
       }
 
-      if (Number(cash.currentBalance || cash.balance || 0) < totalPayable) {
+      if (n(cash.currentBalance || cash.balance) < totalPayable) {
         return NextResponse.json(
           {
             success: false,
@@ -166,16 +200,24 @@ if (!sub.ok) {
     const paymentDate = new Date().toISOString().slice(0, 10);
 
     const paidList = [];
+    const chequeList = [];
+    const transactionList = [];
 
     for (const salary of salaries) {
-      const payable = Number(salary.dueAmount || salary.finalSalary || 0);
+      const payable = n(salary.dueAmount || salary.finalSalary);
 
       if (payable <= 0) continue;
 
-      if (paymentMethod === "cash") {
-        cash.currentBalance =
-          Number(cash.currentBalance || cash.balance || 0) - payable;
-        cash.balance = cash.currentBalance;
+      let bankTxn = null;
+      let chequeRegister = null;
+      let chequeNo = "";
+
+      if (payMode === "cash") {
+        const balanceBefore = n(cash.currentBalance || cash.balance);
+        const balanceAfter = balanceBefore - payable;
+
+        cash.currentBalance = balanceAfter;
+        cash.balance = balanceAfter;
         await cash.save();
 
         await CashTransaction.create({
@@ -184,33 +226,83 @@ if (!sub.ok) {
           category: "salary_payment",
           title: `Salary paid to ${salary.employeeName} - ${salary.month}`,
           amount: payable,
+          balanceBefore,
+          balanceAfter,
           date: paymentDate,
           note,
           refType: "salary",
           refId: salary._id.toString(),
+          employeeId: salary.employeeId,
+          employeeName: salary.employeeName,
           createdByUserId: tenant.user?.id || null,
           createdBy: tenant.user?.name || "",
         });
       }
 
-      if (paymentMethod === "bank") {
-        bank.currentBalance = Number(bank.currentBalance || 0) - payable;
+      if (payMode === "bank" || payMode === "cheque") {
+        let chequeBook = null;
+
+        if (payMode === "cheque") {
+          const chequeInfo = await getAutoChequeNo({
+            companyId: tenant.companyId,
+            bankId: bank._id,
+          });
+
+          chequeBook = chequeInfo.chequeBook;
+          chequeNo = chequeInfo.chequeNo;
+        }
+
+        const balanceBefore = n(bank.currentBalance);
+        const balanceAfter = balanceBefore - payable;
+
+        bank.currentBalance = balanceAfter;
+        bank.lastTransactionAt = new Date();
         await bank.save();
 
-        await BankTransaction.create({
+        bankTxn = await BankTransaction.create({
           companyId: tenant.companyId,
           bankId: bank._id,
           type: "out",
           category: "salary_payment",
           title: `Salary paid to ${salary.employeeName} - ${salary.month}`,
           amount: payable,
+          paymentMethod: payMode === "cheque" ? "cheque" : "bank",
+          chequeNo,
           date: paymentDate,
           note,
           refType: "salary",
           refId: salary._id.toString(),
+          personName: salary.employeeName,
+          personType: "employee",
+          employeeId: salary.employeeId,
+          employeeName: salary.employeeName,
+          balanceBefore,
+          balanceAfter,
+          status: "active",
           createdByUserId: tenant.user?.id || null,
           createdBy: tenant.user?.name || "",
         });
+
+        transactionList.push(bankTxn);
+
+        if (payMode === "cheque") {
+          chequeRegister = await ChequeRegister.create({
+            companyId: tenant.companyId,
+            bankId: bank._id,
+            bankName: bank.bankName || "",
+            chequeNo,
+            payTo: salary.employeeName,
+            amount: payable,
+            chequeDate: paymentDate,
+            sourceType: "employee",
+            transactionId: String(bankTxn._id),
+            status: "pending",
+            note,
+          });
+
+          await markChequeUsed(chequeBook);
+          chequeList.push(chequeRegister);
+        }
       }
 
       await AccountTransaction.create({
@@ -221,15 +313,15 @@ if (!sub.ok) {
         title: `Salary paid to ${salary.employeeName} - ${salary.month}`,
         amount: payable,
         direction: "out",
-        paymentFrom: paymentMethod,
-        fromBankId: paymentMethod === "bank" ? bank._id : null,
+        paymentFrom: payMode === "cash" ? "cash" : "bank",
+        fromBankId: payMode === "cash" ? null : bank._id,
         receiveTo: "none",
         personType: "employee",
         personName: salary.employeeName,
         employeeId: salary.employeeId,
         referenceType: "salary",
         referenceId: salary._id,
-        paymentMethod,
+        paymentMethod: payMode,
         transactionDate: new Date(),
         note,
         createdByUserId: tenant.user?.id || null,
@@ -257,12 +349,12 @@ if (!sub.ok) {
         });
       }
 
-      salary.paidAmount = Number(salary.paidAmount || 0) + payable;
+      salary.paidAmount = n(salary.paidAmount) + payable;
       salary.dueAmount = 0;
-      salary.paymentMethod = paymentMethod;
+      salary.paymentMethod = payMode;
       salary.paymentStatus = "paid";
       salary.approvalStatus = "paid";
-      salary.bankId = paymentMethod === "bank" ? bank._id : null;
+      salary.bankId = payMode === "cash" ? null : bank._id;
       salary.transactionNo = batchNo;
       salary.date = paymentDate;
       salary.note = note || salary.note || "";
@@ -278,11 +370,10 @@ if (!sub.ok) {
       data: {
         batchNo,
         paidCount: paidList.length,
-        totalPaid: paidList.reduce(
-          (sum, s) => sum + Number(s.paidAmount || 0),
-          0
-        ),
+        totalPaid: paidList.reduce((sum, s) => sum + n(s.paidAmount), 0),
         paidList,
+        transactionList,
+        chequeList,
       },
     });
   } catch (error) {

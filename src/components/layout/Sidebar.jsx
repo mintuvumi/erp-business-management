@@ -10,6 +10,7 @@ import {
   FaBuilding,
   FaTruck,
   FaFileInvoiceDollar,
+  FaFileInvoice,
   FaBalanceScale,
   FaExchangeAlt,
   FaHistory,
@@ -41,11 +42,11 @@ const Sidebar = ({ open, setOpen }) => {
       }
 
       const res = await fetch("/api/company-settings", {
-  credentials: "include",
-  headers: {
-    "x-company-id": companyId,
-  },
-});
+        credentials: "include",
+        headers: {
+          "x-company-id": companyId,
+        },
+      });
 
       const data = await res.json();
 
@@ -212,6 +213,11 @@ const Sidebar = ({ open, setOpen }) => {
     menuItems.push(
       { name: "Expense", path: "/expense", icon: <FaMoneyBill /> },
       { name: "Bank", path: "/bank", icon: <FaUniversity /> },
+      {
+        name: "Cheque Register",
+        path: "/cheque-register",
+        icon: <FaFileInvoice />,
+      },
       { name: "Company", path: "/company", icon: <FaBuilding /> }
     );
   }

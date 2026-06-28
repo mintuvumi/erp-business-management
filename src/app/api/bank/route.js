@@ -3,6 +3,8 @@ import connectDB from "@/lib/db";
 import BankAccount from "@/models/BankAccount";
 import BankTransaction from "@/models/BankTransaction";
 import CashTransaction from "@/models/CashTransaction";
+import ChequeBook from "@/models/ChequeBook";
+import ChequeRegister from "@/models/ChequeRegister";
 import { getTenant } from "@/lib/tenant";
 import { requirePermission } from "@/lib/checkPermission";
 import { requireActiveSubscription } from "@/lib/subscription";
@@ -327,6 +329,8 @@ if (!sub.ok) {
       const amount = money(body.amount);
       const type = body.type;
       const date = body.date || today();
+      let autoChequeNo = body.chequeNo || "";
+let chequeBook = null;
 
       if (!body.bankId) {
         return NextResponse.json(
@@ -364,18 +368,44 @@ if (!sub.ok) {
       }
 
       const bank = await BankAccount.findOne({
-        _id: body.bankId,
-        companyId: tenant.companyId,
-        status: { $ne: "inactive" },
-      });
+  _id: body.bankId,
+  companyId: tenant.companyId,
+  status: { $ne: "inactive" },
+});
 
-      if (!bank) {
-        return NextResponse.json(
-          { success: false, message: "Bank account not found" },
-          { status: 404 }
-        );
-      }
+if (!bank) {
+  return NextResponse.json(
+    {
+      success: false,
+      message: "Bank account not found",
+    },
+    { status: 404 }
+  );
+}
 
+// Auto Cheque Number
+if (
+  type === "out" &&
+  body.paymentMethod === "cheque"
+) {
+  chequeBook = await ChequeBook.findOne({
+    companyId: tenant.companyId,
+    bankId: bank._id,
+    status: "active",
+  });
+
+  if (!chequeBook) {
+    return NextResponse.json(
+      {
+        success: false,
+        message: "No active cheque book found.",
+      },
+      { status: 400 }
+    );
+  }
+
+  autoChequeNo = String(chequeBook.nextNo);
+}
       if (type === "out" && money(bank.currentBalance) < amount) {
         return NextResponse.json(
           { success: false, message: "Not enough bank balance" },
@@ -406,7 +436,7 @@ if (!sub.ok) {
         amount,
 
         paymentMethod: body.paymentMethod || "bank",
-        chequeNo: body.chequeNo || "",
+        chequeNo: autoChequeNo,
         transactionId: body.transactionId || "",
 
         personName: body.personName || "",
@@ -468,16 +498,62 @@ if (!sub.ok) {
         });
       }
 
+      let chequeRegister = null;
+
+      if (type === "out" && body.paymentMethod === "cheque") {
+  const existingCheque = await ChequeRegister.findOne({
+    companyId: tenant.companyId,
+    transactionId: transaction._id,
+  });
+
+  if (!existingCheque) {
+    chequeRegister = await ChequeRegister.create({
+      companyId: tenant.companyId,
+      bankId: bank._id,
+      bankName: bank.bankName,
+      chequeNo: autoChequeNo,
+      payTo:
+        body.personName ||
+        body.supplierName ||
+        body.customerName ||
+        body.employeeName ||
+        body.title,
+      amount,
+      chequeDate: date,
+      sourceType: body.personType || "bank",
+      transactionId: transaction._id,
+      status: "pending",
+      note: body.note || "",
+    });
+
+    chequeBook.nextNo += 1;
+    chequeBook.usedLeaves += 1;
+    chequeBook.remainingLeaves = Math.max(
+      0,
+      chequeBook.remainingLeaves - 1
+    );
+
+    await chequeBook.save();
+  } else {
+    chequeRegister = existingCheque;
+  }
+}
+
+
       await recalculateBankLedger(bank._id, tenant.companyId);
 
       return NextResponse.json(
-        {
-          success: true,
-          message: "Bank transaction saved successfully",
-          data: transaction,
-        },
-        { status: 201 }
-      );
+{
+success:true,
+message:"Bank transaction saved successfully",
+data:{
+transaction,
+chequeRegister
+}
+},
+{status:201}
+);
+
     }
 
     return NextResponse.json(

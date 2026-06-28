@@ -47,14 +47,11 @@ export default function Bank() {
   const [toBankId, setToBankId] = useState("");
   const [amount, setAmount] = useState("");
   const [date, setDate] = useState(today());
-
   const [purpose, setPurpose] = useState("Office Cash Withdraw");
-
-const [customPurpose, setCustomPurpose] = useState("");
-
-const [note, setNote] = useState("");
-const [chequeNo, setChequeNo] = useState("");
-const [transactionId, setTransactionId] = useState("");
+  const [customPurpose, setCustomPurpose] = useState("");
+  const [note, setNote] = useState("");
+  const [chequeNo, setChequeNo] = useState("");
+  const [transactionId, setTransactionId] = useState("");
 
   const selectedBank = useMemo(
     () => banks.find((b) => String(b._id) === String(bankId)),
@@ -64,10 +61,12 @@ const [transactionId, setTransactionId] = useState("");
   const loadBank = async () => {
     try {
       setLoading(true);
+
       const res = await fetch("/api/bank", {
         credentials: "include",
         cache: "no-store",
       });
+
       const data = await res.json();
 
       if (!res.ok || !data.success) {
@@ -88,26 +87,24 @@ const [transactionId, setTransactionId] = useState("");
     loadBank();
   }, []);
 
- const clearTransaction = () => {
-  setAmount("");
-  setDate(today());
+  const clearTransaction = () => {
+    setAmount("");
+    setDate(today());
 
-  setPurpose(
-    tab === "withdraw"
-      ? "Office Cash Withdraw"
-      : tab === "deposit"
-      ? "Cash Deposit"
-      : "Bank Transfer"
-  );
+    setPurpose(
+      tab === "withdraw"
+        ? "Office Cash Withdraw"
+        : tab === "deposit"
+        ? "Cash Deposit"
+        : "Bank Transfer"
+    );
 
-  // ✅ Reset custom purpose
-  setCustomPurpose("");
-
-  setNote("");
-  setChequeNo("");
-  setTransactionId("");
-  setToBankId("");
-};
+    setCustomPurpose("");
+    setNote("");
+    setChequeNo("");
+    setTransactionId("");
+    setToBankId("");
+  };
 
   const createBank = async () => {
     if (!bankName.trim()) return alert("Bank name required");
@@ -152,78 +149,57 @@ const [transactionId, setTransactionId] = useState("");
     }
   };
 
-
   const saveTransaction = async () => {
-  if (!bankId) return alert("Select bank");
-  if (!amount || Number(amount) <= 0)
-    return alert("Enter valid amount");
+    if (!bankId) return alert("Select bank");
+    if (!amount || Number(amount) <= 0) return alert("Enter valid amount");
 
-  try {
-    setSaving(true);
-    setLastChequeTransaction(null);
+    try {
+      setSaving(true);
+      setLastChequeTransaction(null);
 
-    const finalPurpose =
-      purpose === "Other"
-        ? customPurpose.trim() || "Other"
-        : purpose;
+      const finalPurpose =
+        purpose === "Other" ? customPurpose.trim() || "Other" : purpose;
 
-    // ✅ Declare payload
-    let payload = {};
+      let payload = {};
 
-    if (tab === "transfer") {
-      if (!toBankId) return alert("Select To Bank");
+      if (tab === "transfer") {
+        if (!toBankId) return alert("Select To Bank");
 
-      payload = {
-        action: "transfer",
-        fromBankId: bankId,
-        toBankId,
-        amount: Number(amount),
-        date,
-        title: finalPurpose || "Bank Transfer",
-        note,
-      };
-    } else {
-      const isWithdraw = tab === "withdraw";
+        payload = {
+          action: "transfer",
+          fromBankId: bankId,
+          toBankId,
+          amount: Number(amount),
+          date,
+          title: finalPurpose || "Bank Transfer",
+          purpose: finalPurpose,
+          note,
+        };
+      } else {
+        const isWithdraw = tab === "withdraw";
 
-      payload = {
-        action: "transaction",
-        bankId,
-        type: isWithdraw ? "out" : "in",
-        category: isWithdraw
-          ? "cash_withdraw"
-          : "cash_deposit",
+        payload = {
+          action: "transaction",
+          bankId,
+          type: isWithdraw ? "out" : "in",
+          category: isWithdraw ? "cash_withdraw" : "cash_deposit",
+          title:
+            finalPurpose ||
+            (isWithdraw ? "Office Cash Withdraw" : "Cash Deposit"),
+          purpose: finalPurpose,
+          amount: Number(amount),
+          date,
+          note,
+          comment: note,
+          paymentMethod: isWithdraw ? "cheque" : "bank",
+chequeNo: chequeNo,
 
-        title:
-          finalPurpose ||
-          (isWithdraw
-            ? "Office Cash Withdraw"
-            : "Cash Deposit"),
-
-        amount: Number(amount),
-        date,
-        note,
-        comment: note,
-
-        paymentMethod:
-          isWithdraw && chequeNo
-            ? "cheque"
-            : "bank",
-
-        chequeNo: isWithdraw ? chequeNo : "",
-        transactionId,
-
-        personName: "Office",
-        personType: "owner",
-
-        refType: isWithdraw
-          ? "office_cash_withdraw"
-          : "cash_bank_deposit",
-      };
-    }
-
-    // নিচে আপনার fetch("/api/bank") আগের মতোই থাকবে...
-
-
+          transactionId,
+          personName: "Office",
+          personType: "owner",
+          refType: isWithdraw ? "office_cash_withdraw" : "cash_bank_deposit",
+        };
+      }
 
       const res = await fetch("/api/bank", {
         method: "POST",
@@ -238,9 +214,16 @@ const [transactionId, setTransactionId] = useState("");
         throw new Error(data.message || "Transaction failed");
       }
 
-      if (tab === "withdraw" && chequeNo && data?.data?._id) {
-        setLastChequeTransaction(data.data);
-      }
+      if (
+  tab === "withdraw" &&
+  data?.data?.transaction &&
+  data?.data?.chequeRegister
+) {
+  setLastChequeTransaction({
+    _id: data.data.transaction._id,
+    chequeNo: data.data.chequeRegister.chequeNo,
+  });
+}
 
       clearTransaction();
       await loadBank();
@@ -256,7 +239,13 @@ const [transactionId, setTransactionId] = useState("");
 
   const openChequePrint = () => {
     if (!lastChequeTransaction?._id) return;
-    window.open(`/cheque-print?transactionId=${lastChequeTransaction._id}`, "_blank");
+
+    const params = new URLSearchParams({
+      transactionId: lastChequeTransaction._id,
+      chequeNo: lastChequeTransaction.chequeNo || "",
+    });
+
+    window.open(`/cheque-print?${params.toString()}`, "_blank");
   };
 
   return (
@@ -312,9 +301,11 @@ const [transactionId, setTransactionId] = useState("");
               <TabBtn active={tab === "withdraw"} onClick={() => { setTab("withdraw"); setPurpose("Office Cash Withdraw"); setLastChequeTransaction(null); }}>
                 <ArrowDownToLine size={15} /> Withdraw
               </TabBtn>
+
               <TabBtn active={tab === "deposit"} onClick={() => { setTab("deposit"); setPurpose("Cash Deposit"); setLastChequeTransaction(null); }}>
                 <ArrowUpFromLine size={15} /> Deposit
               </TabBtn>
+
               <TabBtn active={tab === "transfer"} onClick={() => { setTab("transfer"); setPurpose("Bank Transfer"); setLastChequeTransaction(null); }}>
                 <Repeat size={15} /> Transfer
               </TabBtn>
@@ -332,13 +323,11 @@ const [transactionId, setTransactionId] = useState("");
             {tab === "transfer" && (
               <select className="input" value={toBankId} onChange={(e) => setToBankId(e.target.value)}>
                 <option value="">To Bank</option>
-                {banks
-                  .filter((b) => String(b._id) !== String(bankId))
-                  .map((b) => (
-                    <option key={b._id} value={b._id}>
-                      {b.bankName} - ৳ {money(b.currentBalance)}
-                    </option>
-                  ))}
+                {banks.filter((b) => String(b._id) !== String(bankId)).map((b) => (
+                  <option key={b._id} value={b._id}>
+                    {b.bankName} - ৳ {money(b.currentBalance)}
+                  </option>
+                ))}
               </select>
             )}
 
@@ -348,73 +337,57 @@ const [transactionId, setTransactionId] = useState("");
               </div>
             )}
 
-            <input
-  className="input"
-  type="number"
-  placeholder="Amount"
-  value={amount}
-  onChange={(e) => setAmount(e.target.value)}
-/>
+            <input className="input" type="number" placeholder="Amount" value={amount} onChange={(e) => setAmount(e.target.value)} />
+            <input className="input" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
 
-<input
-  className="input"
-  type="date"
-  value={date}
-  onChange={(e) => setDate(e.target.value)}
-/>
+            <select className="input" value={purpose} onChange={(e) => setPurpose(e.target.value)}>
+              {tab === "withdraw" ? (
+                <>
+                  <option value="Office Cash Withdraw">Office Cash Withdraw</option>
+                  <option value="Supplier Payment">Supplier Payment</option>
+                  <option value="Salary Payment">Salary Payment</option>
+                  <option value="Office Rent">Office Rent</option>
+                  <option value="Utility Bill">Utility Bill</option>
+                  <option value="Fuel Expense">Fuel Expense</option>
+                  <option value="Marketing Expense">Marketing Expense</option>
+                  <option value="Loan Payment">Loan Payment</option>
+                  <option value="Bank Charge">Bank Charge</option>
+                  <option value="Petty Cash">Petty Cash</option>
+                  <option value="Owner Drawings">Owner Drawings</option>
+                  <option value="Investment">Investment</option>
+                  <option value="Other">Other</option>
+                </>
+              ) : tab === "deposit" ? (
+                <>
+                  <option value="Cash Deposit">Cash Deposit</option>
+                  <option value="Customer Collection">Customer Collection</option>
+                  <option value="Customer Due Collection">Customer Due Collection</option>
+                  <option value="Sales Deposit">Sales Deposit</option>
+                  <option value="Owner Capital">Owner Capital</option>
+                  <option value="Loan Received">Loan Received</option>
+                  <option value="Transfer From Cash">Transfer From Cash</option>
+                  <option value="Other">Other</option>
+                </>
+              ) : (
+                <>
+                  <option value="Bank Transfer">Bank Transfer</option>
+                  <option value="Transfer To Branch">Transfer To Branch</option>
+                  <option value="Fund Movement">Fund Movement</option>
+                  <option value="Other">Other</option>
+                </>
+              )}
+            </select>
 
-<select
-  className="input"
-  value={purpose}
-  onChange={(e) => setPurpose(e.target.value)}
->
-  {tab === "withdraw" ? (
-    <>
-      <option value="Office Cash Withdraw">Office Cash Withdraw</option>
-      <option value="Supplier Payment">Supplier Payment</option>
-      <option value="Salary Payment">Salary Payment</option>
-      <option value="Office Rent">Office Rent</option>
-      <option value="Utility Bill">Utility Bill</option>
-      <option value="Fuel Expense">Fuel Expense</option>
-      <option value="Marketing Expense">Marketing Expense</option>
-      <option value="Loan Payment">Loan Payment</option>
-      <option value="Bank Charge">Bank Charge</option>
-      <option value="Petty Cash">Petty Cash</option>
-      <option value="Owner Drawings">Owner Drawings</option>
-      <option value="Investment">Investment</option>
-      <option value="Other">Other</option>
-    </>
-  ) : (
-    <>
-      <option value="Cash Deposit">Cash Deposit</option>
-      <option value="Customer Collection">Customer Collection</option>
-      <option value="Customer Due Collection">Customer Due Collection</option>
-      <option value="Sales Deposit">Sales Deposit</option>
-      <option value="Owner Capital">Owner Capital</option>
-      <option value="Loan Received">Loan Received</option>
-      <option value="Transfer From Cash">Transfer From Cash</option>
-      <option value="Other">Other</option>
-    </>
-  )}
-</select>
-
-{purpose === "Other" && (
-  <input
-    className="input mt-3"
-    placeholder="Enter Custom Purpose"
-    value={customPurpose}
-    onChange={(e) => setCustomPurpose(e.target.value)}
-  />
-)}
-      
-            {tab === "withdraw" && (
+            {purpose === "Other" && (
               <input
-                className="input"
-                placeholder="Cheque No (optional)"
-                value={chequeNo}
-                onChange={(e) => setChequeNo(e.target.value)}
+                className="input mt-3"
+                placeholder="Enter Custom Purpose"
+                value={customPurpose}
+                onChange={(e) => setCustomPurpose(e.target.value)}
               />
             )}
+
+            
 
             <input
               className="input"

@@ -8,6 +8,8 @@ import Cash from "@/models/Cash";
 import CashTransaction from "@/models/CashTransaction";
 import BankAccount from "@/models/BankAccount";
 import BankTransaction from "@/models/BankTransaction";
+import ChequeBook from "@/models/ChequeBook";
+import ChequeRegister from "@/models/ChequeRegister";
 
 import { getTenant } from "@/lib/tenant";
 import { requirePermission } from "@/lib/checkPermission";
@@ -65,134 +67,93 @@ async function reduceBank({ companyId, bankId, amount }) {
   if (!bank) throw new Error("Bank account not found");
 
   const balanceBefore = n(bank.currentBalance || bank.balance);
+
+  if (balanceBefore < n(amount)) {
+    throw new Error("Not enough bank balance");
+  }
+
   const balanceAfter = balanceBefore - n(amount);
 
   bank.currentBalance = balanceAfter;
   bank.balance = balanceAfter;
+  bank.lastTransactionAt = new Date();
 
   await bank.save();
 
   return { bank, balanceBefore, balanceAfter };
 }
 
-async function saveOnePayment({
-  tenant,
-  purchase,
-  amount,
-  paymentDate,
-  note,
-  comment,
-  paymentFrom,
-  bankId,
-  paymentMethod,
-  chequeNo,
-  transactionId,
-}) {
-  const grandTotal = n(purchase.grandTotal || purchase.total);
-  const oldPaid = n(purchase.paidAmount);
-  const oldDue = n(purchase.dueAmount || grandTotal - oldPaid);
-  const payNow = Math.min(n(amount), oldDue);
+async function getAutoChequeNo({ companyId, bankId }) {
+  const chequeBook = await ChequeBook.findOne({
+    companyId,
+    bankId,
+    status: "active",
+  }).sort({ createdAt: 1 });
 
-  if (payNow <= 0) return { paid: 0 };
+  if (!chequeBook) {
+    throw new Error("No active cheque book found for this bank");
+  }
 
-  const newPaid = oldPaid + payNow;
-  const newDue = Math.max(grandTotal - newPaid, 0);
-
-  purchase.paidAmount = newPaid;
-  purchase.dueAmount = newDue;
-  purchase.paymentType = paymentTypeOf({ paid: newPaid, total: grandTotal });
-  purchase.updatedByUserId = tenant.user?.id || null;
-  purchase.updatedBy = tenant.user?.name || "";
-  await purchase.save();
-
-  let transaction = null;
-
-  if (paymentFrom === "bank") {
-    const bankInfo = await reduceBank({
-      companyId: tenant.companyId,
-      bankId,
-      amount: payNow,
-    });
-
-    transaction = await BankTransaction.create({
-      companyId: tenant.companyId,
-      bankId,
-      purchaseId: purchase._id,
-
-      type: "out",
-      category: "supplier_payment",
-      title: `Supplier payment to ${purchase.supplierName || "Supplier"}`,
-      amount: payNow,
-
-      paymentMethod: paymentMethod || "bank",
-      chequeNo: chequeNo || "",
-      transactionId: transactionId || "",
-
-      personName: purchase.supplierName || "",
-      personType: "supplier",
-
-      supplierId: purchase.supplierId || null,
-      supplierName: purchase.supplierName || "",
-
-      billNo: purchase.purchaseNo || purchase.supplierBillNo || "",
-      date: paymentDate,
-      note,
-      comment,
-
-      refType: "supplier_payment",
-      refId: purchase._id.toString(),
-
-      balanceBefore: bankInfo.balanceBefore,
-      balanceAfter: bankInfo.balanceAfter,
-
-      status: "active",
-      createdByUserId: tenant.user?.id || null,
-      createdBy: tenant.user?.name || "",
-    });
-  } else {
-    const cashInfo = await reduceCash({
-      companyId: tenant.companyId,
-      amount: payNow,
-    });
-
-    transaction = await CashTransaction.create({
-      companyId: tenant.companyId,
-      purchaseId: purchase._id,
-
-      type: "out",
-      category: "supplier_payment",
-      title: `Supplier payment to ${purchase.supplierName || "Supplier"}`,
-      amount: payNow,
-
-      balanceBefore: cashInfo.balanceBefore,
-      balanceAfter: cashInfo.balanceAfter,
-
-      date: paymentDate,
-      note,
-      comment,
-
-      refType: "supplier_payment",
-      refId: purchase._id.toString(),
-
-      supplierId: purchase.supplierId || null,
-      supplierName: purchase.supplierName || "",
-
-      billNo: purchase.purchaseNo || purchase.supplierBillNo || "",
-      paymentType: "Cash",
-      paymentFrom: "cash",
-
-      status: "active",
-      createdByUserId: tenant.user?.id || null,
-      createdBy: tenant.user?.name || "",
-    });
+  if (n(chequeBook.nextNo) > n(chequeBook.endNo)) {
+    chequeBook.status = "completed";
+    await chequeBook.save();
+    throw new Error("Cheque book completed. Please add new cheque book");
   }
 
   return {
-    paid: payNow,
-    purchaseId: purchase._id,
-    dueAmount: newDue,
-    transactionId: transaction?._id || null,
+    chequeBook,
+    chequeNo: String(chequeBook.nextNo),
   };
+}
+
+async function markChequeUsed(chequeBook) {
+  chequeBook.nextNo = n(chequeBook.nextNo) + 1;
+  chequeBook.usedLeaves = n(chequeBook.usedLeaves) + 1;
+  chequeBook.remainingLeaves = Math.max(0, n(chequeBook.remainingLeaves) - 1);
+
+  if (n(chequeBook.nextNo) > n(chequeBook.endNo)) {
+    chequeBook.status = "completed";
+  }
+
+  await chequeBook.save();
+}
+
+async function applyPurchasePayments({ tenant, purchases, amount }) {
+  let remaining = n(amount);
+  const payments = [];
+
+  for (const purchase of purchases) {
+    if (remaining <= 0) break;
+
+    const grandTotal = n(purchase.grandTotal || purchase.total);
+    const oldPaid = n(purchase.paidAmount);
+    const oldDue = n(purchase.dueAmount || grandTotal - oldPaid);
+    const payNow = Math.min(remaining, oldDue);
+
+    if (payNow <= 0) continue;
+
+    const newPaid = oldPaid + payNow;
+    const newDue = Math.max(grandTotal - newPaid, 0);
+
+    purchase.paidAmount = newPaid;
+    purchase.dueAmount = newDue;
+    purchase.paymentType = paymentTypeOf({ paid: newPaid, total: grandTotal });
+    purchase.updatedByUserId = tenant.user?.id || null;
+    purchase.updatedBy = tenant.user?.name || "";
+
+    await purchase.save();
+
+    payments.push({
+      paid: payNow,
+      purchaseId: purchase._id,
+      purchaseNo: purchase.purchaseNo || purchase.supplierBillNo || "",
+      dueAmount: newDue,
+    });
+
+    remaining -= payNow;
+  }
+
+  return payments;
 }
 
 export async function POST(req) {
@@ -241,10 +202,11 @@ export async function POST(req) {
     const comment = clean(body.comment || body.paymentComment || note);
     const paymentFrom = clean(body.paymentFrom || body.paymentTo || "cash");
     const bankId = body.bankId || null;
+    const paymentMethod = clean(body.paymentMethod || paymentFrom);
 
     if (!["cash", "bank"].includes(paymentFrom)) {
       return NextResponse.json(
-        { success: false, message: "Invalid payment method" },
+        { success: false, message: "Invalid payment source" },
         { status: 400 }
       );
     }
@@ -320,36 +282,156 @@ export async function POST(req) {
       );
     }
 
-    let remaining = amount;
-    const payments = [];
-
-    for (const purchase of purchases) {
-      if (remaining <= 0) break;
-
-      const paid = Math.min(remaining, n(purchase.dueAmount));
-
-      const result = await saveOnePayment({
-        tenant,
-        purchase,
-        amount: paid,
-        paymentDate,
-        note,
-        comment,
-        paymentFrom,
-        bankId,
-        paymentMethod: body.paymentMethod || paymentFrom,
-        chequeNo: body.chequeNo || "",
-        transactionId: body.transactionId || "",
-      });
-
-      if (result.paid > 0) {
-        payments.push(result);
-        remaining -= result.paid;
-      }
-    }
-
+    const firstPurchase = purchases[0];
     const finalSupplierId =
       supplierId || purchases.find((p) => p.supplierId)?.supplierId || null;
+
+    let autoChequeNo = body.chequeNo || "";
+    let chequeBook = null;
+
+    if (paymentFrom === "bank" && paymentMethod === "cheque") {
+      const chequeInfo = await getAutoChequeNo({
+        companyId: tenant.companyId,
+        bankId,
+      });
+
+      chequeBook = chequeInfo.chequeBook;
+      autoChequeNo = chequeInfo.chequeNo;
+    }
+
+    const payments = await applyPurchasePayments({
+      tenant,
+      purchases,
+      amount,
+    });
+
+    let transaction = null;
+    let chequeRegister = null;
+
+    if (paymentFrom === "bank") {
+      const bankInfo = await reduceBank({
+        companyId: tenant.companyId,
+        bankId,
+        amount,
+      });
+
+      transaction = await BankTransaction.create({
+        companyId: tenant.companyId,
+        bankId,
+        purchaseId: firstPurchase?._id || null,
+
+        type: "out",
+        category: "supplier_payment",
+        title: `Supplier payment to ${
+          firstPurchase?.supplierName || supplierName || "Supplier"
+        }`,
+        amount,
+
+        paymentMethod: paymentMethod || "bank",
+        chequeNo: paymentMethod === "cheque" ? autoChequeNo : "",
+        transactionId: body.transactionId || "",
+
+        personName: firstPurchase?.supplierName || supplierName || "",
+        personType: "supplier",
+
+        supplierId: finalSupplierId || null,
+        supplierName: firstPurchase?.supplierName || supplierName || "",
+
+        billNo:
+          firstPurchase?.purchaseNo ||
+          firstPurchase?.supplierBillNo ||
+          `MULTI-${payments.length}`,
+
+        date: paymentDate,
+        note,
+        comment,
+
+        refType: "supplier_payment",
+        refId: finalSupplierId ? String(finalSupplierId) : String(firstPurchase?._id || ""),
+
+        balanceBefore: bankInfo.balanceBefore,
+        balanceAfter: bankInfo.balanceAfter,
+
+        status: "active",
+        createdByUserId: tenant.user?.id || null,
+        createdBy: tenant.user?.name || "",
+      });
+
+      if (paymentMethod === "cheque") {
+        const existingCheque = await ChequeRegister.findOne({
+          companyId: tenant.companyId,
+          transactionId: String(transaction._id),
+        });
+
+        if (!existingCheque) {
+          chequeRegister = await ChequeRegister.create({
+            companyId: tenant.companyId,
+
+            bankId: bankInfo.bank._id,
+            bankName: bankInfo.bank.bankName || "",
+
+            chequeNo: autoChequeNo,
+
+            payTo: firstPurchase?.supplierName || supplierName || "Supplier",
+
+            amount,
+            chequeDate: paymentDate,
+
+            sourceType: "supplier",
+            transactionId: String(transaction._id),
+
+            status: "pending",
+            note,
+          });
+
+          await markChequeUsed(chequeBook);
+        } else {
+          chequeRegister = existingCheque;
+        }
+      }
+    } else {
+      const cashInfo = await reduceCash({
+        companyId: tenant.companyId,
+        amount,
+      });
+
+      transaction = await CashTransaction.create({
+        companyId: tenant.companyId,
+        purchaseId: firstPurchase?._id || null,
+
+        type: "out",
+        category: "supplier_payment",
+        title: `Supplier payment to ${
+          firstPurchase?.supplierName || supplierName || "Supplier"
+        }`,
+        amount,
+
+        balanceBefore: cashInfo.balanceBefore,
+        balanceAfter: cashInfo.balanceAfter,
+
+        date: paymentDate,
+        note,
+        comment,
+
+        refType: "supplier_payment",
+        refId: finalSupplierId ? String(finalSupplierId) : String(firstPurchase?._id || ""),
+
+        supplierId: finalSupplierId || null,
+        supplierName: firstPurchase?.supplierName || supplierName || "",
+
+        billNo:
+          firstPurchase?.purchaseNo ||
+          firstPurchase?.supplierBillNo ||
+          `MULTI-${payments.length}`,
+
+        paymentType: "Cash",
+        paymentFrom: "cash",
+
+        status: "active",
+        createdByUserId: tenant.user?.id || null,
+        createdBy: tenant.user?.name || "",
+      });
+    }
 
     if (finalSupplierId) {
       const supplier = await Supplier.findOne({
@@ -372,6 +454,9 @@ export async function POST(req) {
         paidCount: payments.length,
         payments,
         remainingDue: Math.max(totalDue - amount, 0),
+        transaction,
+        chequeRegister,
+        chequeNo: chequeRegister?.chequeNo || autoChequeNo || "",
       },
     });
   } catch (error) {

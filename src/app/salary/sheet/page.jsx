@@ -28,19 +28,31 @@ function monthText(month) {
   });
 }
 
-function makeSubject(month, salaries) {
+function makeSubject(month, salaries, sheetType) {
   const hasOvertime = salaries.some((s) => Number(s.overtimeAmount || 0) > 0);
   const hasBonus = salaries.some((s) => Number(s.bonusAmount || 0) > 0);
   const m = monthText(month);
 
-  if (hasOvertime && hasBonus)
-    return `Request for Salary, Overtime and Festival Bonus Disbursement for the Month of ${m}`;
-  if (hasOvertime)
-    return `Request for Salary and Overtime Disbursement for the Month of ${m}`;
-  if (hasBonus)
-    return `Request for Salary and Festival Bonus Disbursement for the Month of ${m}`;
+  const mode =
+    sheetType === "cheque"
+      ? "Cheque Salary"
+      : sheetType === "bank"
+      ? "Bank Salary"
+      : "Cash Salary";
 
-  return `Request for Salary Disbursement for the Month of ${m}`;
+  if (hasOvertime && hasBonus) {
+    return `Request for ${mode}, Overtime and Festival Bonus Disbursement for the Month of ${m}`;
+  }
+
+  if (hasOvertime) {
+    return `Request for ${mode} and Overtime Disbursement for the Month of ${m}`;
+  }
+
+  if (hasBonus) {
+    return `Request for ${mode} and Festival Bonus Disbursement for the Month of ${m}`;
+  }
+
+  return `Request for ${mode} Disbursement for the Month of ${m}`;
 }
 
 export default function SalarySheetPage() {
@@ -65,17 +77,21 @@ export default function SalarySheetPage() {
       const salaryRes = await fetch(`/api/salary/history?month=${month}`, {
         credentials: "include",
       });
+
       const salaryData = await salaryRes.json();
 
       if (salaryData.success) {
         setSalaries(salaryData.data || []);
       }
 
-      const bankRes = await fetch("/api/bank", { credentials: "include" });
+      const bankRes = await fetch("/api/bank", {
+        credentials: "include",
+      });
+
       const bankData = await bankRes.json();
 
       if (bankData.success) {
-        setBanks(bankData.data.banks || []);
+        setBanks(bankData.data?.banks || []);
       }
     } catch (error) {
       alert(error.message || "Failed to load salary sheet");
@@ -89,15 +105,21 @@ export default function SalarySheetPage() {
     setSelectedIds([]);
   }, [month]);
 
-  const selectedBank = banks.find((b) => b._id === bankId);
+  const selectedBank = banks.find((b) => String(b._id) === String(bankId));
 
   const approvedSalaries = useMemo(() => {
-    return salaries.filter(
-      (s) =>
-        s.approvalStatus === "approved" &&
-        s.paymentStatus === "due" &&
-        s.paymentMethod === sheetType
-    );
+    return salaries.filter((s) => {
+      const isApproved =
+        s.approvalStatus === "approved" && s.paymentStatus === "due";
+
+      if (!isApproved) return false;
+
+      if (sheetType === "cheque") {
+        return s.paymentMethod === "cheque" || s.paymentMethod === "bank";
+      }
+
+      return s.paymentMethod === sheetType;
+    });
   }, [salaries, sheetType]);
 
   const selectedSalaries = useMemo(() => {
@@ -133,7 +155,7 @@ export default function SalarySheetPage() {
     0
   );
 
-  const subject = makeSubject(month, selectedSalaries);
+  const subject = makeSubject(month, selectedSalaries, sheetType);
 
   const toggleAll = () => {
     if (selectedIds.length === approvedSalaries.length) {
@@ -189,7 +211,11 @@ export default function SalarySheetPage() {
     XLSX.utils.book_append_sheet(
       workbook,
       worksheet,
-      sheetType === "bank" ? "Bank Salary" : "Cash Salary"
+      sheetType === "cheque"
+        ? "Cheque Salary"
+        : sheetType === "bank"
+        ? "Bank Salary"
+        : "Cash Salary"
     );
 
     XLSX.writeFile(workbook, `${sheetType}-approved-salary-${month}.xlsx`);
@@ -198,12 +224,12 @@ export default function SalarySheetPage() {
   const payApprovedSalary = async () => {
     if (!selectedIds.length) return alert("Select approved salary first");
 
-    if (sheetType === "bank" && !bankId) {
+    if ((sheetType === "bank" || sheetType === "cheque") && !bankId) {
       return alert("Select company bank account");
     }
 
     const ok = confirm(
-      `Are you sure? ${selectedIds.length} approved salary will be paid. Total ৳ ${money(
+      `Are you sure? ${selectedIds.length} approved salary will be paid by ${sheetType}. Total ৳ ${money(
         totalPayable
       )}`
     );
@@ -231,6 +257,23 @@ export default function SalarySheetPage() {
         throw new Error(data.message || "Salary payment failed");
       }
 
+      if (sheetType === "cheque" && data?.data?.transactionList?.length) {
+        const printNow = window.confirm(
+          `${data.data.transactionList.length} cheque generated.\n\nPrint cheque now?`
+        );
+
+        if (printNow) {
+          data.data.transactionList.forEach((txn, index) => {
+            const chequeNo = data.data.chequeList?.[index]?.chequeNo || "";
+
+            window.open(
+              `/cheque-print?transactionId=${txn._id}&chequeNo=${chequeNo}`,
+              "_blank"
+            );
+          });
+        }
+      }
+
       alert(`Salary paid successfully. Total ৳ ${money(data.data.totalPaid)}`);
 
       setSelectedIds([]);
@@ -249,7 +292,7 @@ export default function SalarySheetPage() {
           <div>
             <h1 className="text-2xl font-bold">Salary Sheet</h1>
             <p className="text-sm text-gray-500 mt-1">
-              Approved salary advice, cash register and salary payment.
+              Approved salary advice, cheque payment and cash register.
             </p>
           </div>
 
@@ -303,10 +346,12 @@ export default function SalarySheetPage() {
               onChange={(e) => {
                 setSheetType(e.target.value);
                 setSelectedIds([]);
+                if (e.target.value === "cash") setBankId("");
               }}
               className="border rounded-xl p-3"
             >
               <option value="bank">Bank Salary Advice</option>
+              <option value="cheque">Cheque Salary</option>
               <option value="cash">Cash Salary Register</option>
             </select>
 
@@ -336,19 +381,33 @@ export default function SalarySheetPage() {
               onClick={payApprovedSalary}
               disabled={paying || selectedIds.length === 0}
               className={`rounded-xl px-4 py-3 text-white flex items-center justify-center gap-2 disabled:opacity-60 ${
-                sheetType === "bank"
-                  ? "bg-blue-600 hover:bg-blue-700"
-                  : "bg-green-600 hover:bg-green-700"
+                sheetType === "cash"
+                  ? "bg-green-600 hover:bg-green-700"
+                  : "bg-blue-600 hover:bg-blue-700"
               }`}
             >
-              {sheetType === "bank" ? <Landmark size={16} /> : <Wallet size={16} />}
+              {sheetType === "cash" ? (
+                <Wallet size={16} />
+              ) : (
+                <Landmark size={16} />
+              )}
+
               {paying
                 ? "Paying..."
                 : sheetType === "bank"
-                ? "Pay Approved Bank Salary"
-                : "Pay Approved Cash Salary"}
+                ? "Pay Bank Salary"
+                : sheetType === "cheque"
+                ? "Pay Cheque Salary"
+                : "Pay Cash Salary"}
             </button>
           </div>
+
+          {sheetType === "cheque" && (
+            <div className="print:hidden bg-blue-50 border border-blue-100 text-blue-700 rounded-2xl p-4 text-sm">
+              Cheque salary uses active Cheque Book. Cheque numbers will be
+              generated automatically and saved into Cheque Register.
+            </div>
+          )}
 
           <textarea
             value={note}
@@ -360,8 +419,15 @@ export default function SalarySheetPage() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 print:hidden">
             <Summary title="Approved Salary" value={approvedSalaries.length} />
             <Summary title="Selected" value={selectedIds.length} />
-            <Summary title="Total Deduction" value={`৳ ${money(totalDeduction)}`} />
-            <Summary title="Total Payable" value={`৳ ${money(totalPayable)}`} highlight />
+            <Summary
+              title="Total Deduction"
+              value={`৳ ${money(totalDeduction)}`}
+            />
+            <Summary
+              title="Total Payable"
+              value={`৳ ${money(totalPayable)}`}
+              highlight
+            />
           </div>
 
           <div className="border rounded-3xl overflow-hidden print:hidden">
@@ -369,6 +435,8 @@ export default function SalarySheetPage() {
               <h2 className="font-semibold">
                 {sheetType === "bank"
                   ? "Approved Bank Salary List"
+                  : sheetType === "cheque"
+                  ? "Approved Cheque Salary List"
                   : "Approved Cash Salary List"}
               </h2>
 
@@ -398,7 +466,10 @@ export default function SalarySheetPage() {
                 <tbody>
                   {approvedSalaries.length === 0 ? (
                     <tr>
-                      <td colSpan="9" className="p-6 text-center text-gray-500">
+                      <td
+                        colSpan="9"
+                        className="p-6 text-center text-gray-500"
+                      >
                         No approved unpaid {sheetType} salary found.
                       </td>
                     </tr>
@@ -410,7 +481,10 @@ export default function SalarySheetPage() {
                         Number(s.loanDeduction || 0);
 
                       return (
-                        <tr key={s._id} className="border-t hover:bg-blue-50/40">
+                        <tr
+                          key={s._id}
+                          className="border-t hover:bg-blue-50/40"
+                        >
                           <td className="p-3 text-center">
                             <input
                               type="checkbox"
@@ -445,7 +519,13 @@ export default function SalarySheetPage() {
             </div>
           </div>
 
-          {sheetType === "bank" ? (
+          {sheetType === "cash" ? (
+            <CashRegister
+              month={month}
+              salaries={selectedSalaries}
+              totalPayable={totalPayable}
+            />
+          ) : (
             <BankAdvice
               bank={selectedBank}
               month={month}
@@ -456,12 +536,7 @@ export default function SalarySheetPage() {
               totalOvertime={totalOvertime}
               totalBonus={totalBonus}
               totalDeduction={totalDeduction}
-            />
-          ) : (
-            <CashRegister
-              month={month}
-              salaries={selectedSalaries}
-              totalPayable={totalPayable}
+              sheetType={sheetType}
             />
           )}
         </div>
@@ -495,6 +570,7 @@ function BankAdvice({
   totalOvertime,
   totalBonus,
   totalDeduction,
+  sheetType,
 }) {
   return (
     <div className="bg-white border rounded-[24px] p-6 print:border-0 print:rounded-none print:p-0">
@@ -510,9 +586,9 @@ function BankAdvice({
         <p className="mt-6">Dear Sir,</p>
 
         <p className="mt-4">
-          We kindly request you to transfer the salary amount from our account
-          maintained with your branch to the respective employee accounts as per
-          the details mentioned below.
+          {sheetType === "cheque"
+            ? "We kindly request approval for cheque salary disbursement as per the details mentioned below."
+            : "We kindly request you to transfer the salary amount from our account maintained with your branch to the respective employee accounts as per the details mentioned below."}
         </p>
 
         <table className="w-full text-sm border-collapse mt-6">
@@ -528,7 +604,10 @@ function BankAdvice({
           <tbody>
             {salaries.length === 0 ? (
               <tr>
-                <td colSpan="4" className="border p-4 text-center text-gray-500">
+                <td
+                  colSpan="4"
+                  className="border p-4 text-center text-gray-500"
+                >
                   No approved salary selected.
                 </td>
               </tr>
@@ -561,6 +640,10 @@ function BankAdvice({
         <div className="mt-5 border rounded-xl p-4 text-sm">
           <p>
             Salary Month: <b>{monthText(month)}</b>
+          </p>
+          <p>
+            Payment Mode:{" "}
+            <b>{sheetType === "cheque" ? "Cheque" : "Bank Transfer"}</b>
           </p>
           <p>
             Basic Salary: <b>{money(totalBasic)} BDT</b>

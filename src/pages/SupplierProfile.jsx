@@ -57,7 +57,6 @@ export default function SupplierProfile() {
   const [paymentFrom, setPaymentFrom] = useState("cash");
   const [bankId, setBankId] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("cash");
-  const [chequeNo, setChequeNo] = useState("");
   const [transactionId, setTransactionId] = useState("");
   const [note, setNote] = useState("");
   const [date, setDate] = useState(today());
@@ -75,7 +74,9 @@ export default function SupplierProfile() {
 
   const duePurchases = useMemo(
     () =>
-      purchases.filter((p) => Number(p.dueAmount || p.purchaseDueAmount || 0) > 0),
+      purchases.filter(
+        (p) => Number(p.dueAmount || p.purchaseDueAmount || 0) > 0
+      ),
     [purchases]
   );
 
@@ -197,7 +198,6 @@ export default function SupplierProfile() {
     setPaymentFrom("cash");
     setBankId("");
     setPaymentMethod("cash");
-    setChequeNo("");
     setTransactionId("");
     setNote("");
     setDate(today());
@@ -205,7 +205,6 @@ export default function SupplierProfile() {
 
   const savePayment = async () => {
     if (saving) return;
-
     if (!supplierId) return alert("Supplier missing");
 
     if (!amount || Number(amount) <= 0) {
@@ -237,7 +236,6 @@ export default function SupplierProfile() {
           paymentFrom,
           bankId: paymentFrom === "bank" ? bankId : null,
           paymentMethod: paymentFrom === "bank" ? paymentMethod : "cash",
-          chequeNo,
           transactionId,
         }),
       });
@@ -246,6 +244,23 @@ export default function SupplierProfile() {
 
       if (!res.ok || !data.success) {
         throw new Error(data.message || "Supplier payment failed");
+      }
+
+      if (
+        paymentMethod === "cheque" &&
+        data?.data?.transaction &&
+        data?.data?.chequeRegister
+      ) {
+        const ok = window.confirm(
+          `Cheque No ${data.data.chequeRegister.chequeNo} generated.\n\nPrint cheque now?`
+        );
+
+        if (ok) {
+          window.open(
+            `/cheque-print?transactionId=${data.data.transaction._id}&chequeNo=${data.data.chequeRegister.chequeNo}`,
+            "_blank"
+          );
+        }
       }
 
       window.dispatchEvent(new Event("dashboard:update"));
@@ -464,13 +479,10 @@ export default function SupplierProfile() {
                 </select>
 
                 {paymentMethod === "cheque" && (
-                  <input
-                    value={chequeNo}
-                    onChange={(e) => setChequeNo(e.target.value)}
-                    onKeyDown={keyHandler}
-                    placeholder="Cheque No"
-                    className="w-full border rounded-xl p-3 outline-none focus:ring-4 focus:ring-blue-100"
-                  />
+                  <div className="bg-blue-50 border border-blue-100 rounded-2xl p-3 text-sm text-blue-700">
+                    Cheque No will be generated automatically from active Cheque
+                    Book.
+                  </div>
                 )}
 
                 <input

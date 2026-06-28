@@ -18,6 +18,7 @@ import {
   ListChecks,
   Landmark,
   FileSignature,
+  BookOpen,
   BriefcaseBusiness,
   UserRound,
   Truck,
@@ -32,6 +33,7 @@ import {
 
 import { usePathname, useRouter } from "next/navigation";
 import { getFeatures } from "@/lib/features";
+
 
 export default function Sidebar({ open, setOpen }) {
   const pathname = usePathname();
@@ -385,6 +387,21 @@ export default function Sidebar({ open, setOpen }) {
           icon: Banknote,
           path: "/bank",
         },
+
+        features.bank && {
+  name: "Cheque Register",
+  bn: "চেক রেজিস্টার",
+  icon: FileSignature,
+  path: "/cheque-register",
+},
+
+    features.bank && {
+  name: "Cheque Book",
+  bn: "চেক বুক",
+  icon: BookOpen,
+  path: "/cheque-book",
+},
+
         features.accounts && {
           name: "Accounts Statement",
           bn: "হিসাব বিবরণী",
