@@ -5,11 +5,9 @@ import { useRouter } from "next/navigation";
 import {
   RefreshCcw,
   Search,
-  Lock,
-  Unlock,
-  CheckCircle,
   Archive,
   RotateCcw,
+  Trash2,
 } from "lucide-react";
 
 function money(value) {
@@ -119,6 +117,36 @@ export default function SaasAdminPage() {
     router.push(`/saas-admin/companies/${id}`);
   };
 
+  const deletePracticeCompanies = async () => {
+    const ok = confirm(
+      "Delete all practice companies?\n\nOnly Bismillah Enterprise and Kamal Enterprise will remain."
+    );
+
+    if (!ok) return;
+
+    try {
+      const res = await fetch("/api/saas-admin/cleanup-practice", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          confirm: "DELETE_PRACTICE_COMPANIES",
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        throw new Error(data.message || "Cleanup failed");
+      }
+
+      alert("Practice companies deleted successfully.");
+      await loadCompanies();
+    } catch (err) {
+      alert(err.message || "Cleanup failed");
+    }
+  };
+
   return (
     <div className="space-y-5">
       <div className="bg-white border rounded-[28px] p-5 shadow-sm">
@@ -130,13 +158,26 @@ export default function SaasAdminPage() {
             </p>
           </div>
 
-          <button
-            onClick={loadCompanies}
-            className="border px-4 py-2 rounded-xl flex items-center gap-2 hover:bg-gray-50"
-          >
-            <RefreshCcw size={16} className={loading ? "animate-spin" : ""} />
-            Refresh
-          </button>
+          <div className="flex gap-2 flex-wrap">
+            <button
+              onClick={loadCompanies}
+              className="border px-4 py-2 rounded-xl flex items-center gap-2 hover:bg-gray-50"
+            >
+              <RefreshCcw
+                size={16}
+                className={loading ? "animate-spin" : ""}
+              />
+              Refresh
+            </button>
+
+            <button
+              onClick={deletePracticeCompanies}
+              className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-xl flex items-center gap-2"
+            >
+              <Trash2 size={16} />
+              Delete Practice
+            </button>
+          </div>
         </div>
       </div>
 
@@ -188,9 +229,7 @@ export default function SaasAdminPage() {
                 {suggestions.map((c) => (
                   <button
                     key={c._id}
-                    onClick={() => {
-                      setQ(c.name);
-                    }}
+                    onClick={() => setQ(c.name)}
                     className="w-full text-left p-3 hover:bg-blue-50 border-b last:border-b-0"
                   >
                     <p className="font-bold">
@@ -476,7 +515,9 @@ function badge(status) {
   if (status === "active") return "bg-green-50 text-green-600";
   if (status === "due") return "bg-yellow-50 text-yellow-600";
   if (status === "warning") return "bg-orange-50 text-orange-600";
-  if (status === "expired" || status === "suspended")
+  if (status === "expired" || status === "suspended") {
     return "bg-red-50 text-red-600";
+  }
+
   return "bg-blue-50 text-blue-600";
 }

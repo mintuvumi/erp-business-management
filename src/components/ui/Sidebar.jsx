@@ -29,6 +29,7 @@ import {
   BadgeDollarSign,
   Bell,
   ShieldCheck,
+  DatabaseBackup,
 } from "lucide-react";
 
 import { usePathname, useRouter } from "next/navigation";
@@ -194,7 +195,11 @@ export default function Sidebar({ open, setOpen }) {
         path: "/saas-admin/payments",
       },
 
-      
+      {
+  name: "Backups",
+  path: "/backups",
+  icon: DatabaseBackup,
+},
 
       {
         name: "Login Logs",

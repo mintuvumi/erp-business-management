@@ -11,6 +11,7 @@ import {
   AlertTriangle,
   Archive,
   RotateCcw,
+  Trash2,
 } from "lucide-react";
 
 function money(value) {
@@ -25,7 +26,9 @@ export default function SaasCompanyDetailsPage() {
   const [company, setCompany] = useState(null);
   const [recentLogins, setRecentLogins] = useState([]);
   const [loading, setLoading] = useState(false);
-
+  const [deleteOpen, setDeleteOpen] = useState(false);
+const [deleteConfirm, setDeleteConfirm] = useState("");
+const [deleting, setDeleting] = useState(false);
   const [form, setForm] = useState({
     monthlyFee: "",
     subscriptionPlan: "free",
@@ -183,6 +186,43 @@ const loginAsCompany = async () => {
     window.location.href = "/dashboard";
   } catch (error) {
     alert(error.message);
+  }
+};
+
+const permanentDeleteCompany = async () => {
+  if (deleteConfirm !== "DELETE COMPANY DATA") {
+    return alert("Type DELETE COMPANY DATA to confirm");
+  }
+
+  try {
+    setDeleting(true);
+
+    const res = await fetch("/api/company/permanent-delete", {
+      method: "POST",
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        companyId,
+        confirm: deleteConfirm,
+      }),
+    });
+
+    const data = await res.json();
+
+    if (!res.ok || !data.success) {
+      throw new Error(data.message || "Permanent delete failed");
+    }
+
+    alert("Company permanently deleted.");
+
+    router.push("/saas-admin/companies");
+  } catch (error) {
+    alert(error.message || "Permanent delete failed");
+  } finally {
+    setDeleting(false);
+    setDeleteOpen(false);
   }
 };
 
@@ -438,7 +478,7 @@ const loginAsCompany = async () => {
             </button>
           )}
 
-          {company.isDeleted ? (
+                    {company.isDeleted ? (
             <button
               onClick={() => updateCompany("restore")}
               className="bg-emerald-600 text-white px-4 py-2 rounded-xl inline-flex items-center gap-2"
@@ -462,6 +502,26 @@ const loginAsCompany = async () => {
         </div>
       </div>
 
+      <div className="mt-8 border-2 border-red-200 bg-red-50 rounded-3xl p-6">
+        <h3 className="text-xl font-bold text-red-700 flex items-center gap-2">
+          <Trash2 size={22} />
+          Danger Zone
+        </h3>
+
+        <p className="text-sm text-red-600 mt-2">
+          Permanently delete this company and all related data. This action
+          cannot be undone.
+        </p>
+
+        <button
+          onClick={() => setDeleteOpen(true)}
+          className="mt-5 bg-red-600 hover:bg-red-700 text-white px-5 py-3 rounded-xl font-semibold flex items-center gap-2"
+        >
+          <Trash2 size={18} />
+          Permanent Delete Company
+        </button>
+      </div>
+
       <div className="bg-white border rounded-[28px] p-5 shadow-sm">
         <h2 className="font-bold text-lg mb-4">Recent Login Logs</h2>
 
@@ -481,9 +541,52 @@ const loginAsCompany = async () => {
           </div>
         )}
       </div>
+
+      {deleteOpen && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl shadow-xl max-w-lg w-full p-6">
+            <h2 className="text-2xl font-bold text-red-600">
+              Permanent Delete Company
+            </h2>
+
+            <p className="mt-3 text-sm text-gray-600">
+              This will permanently delete company and all related data.
+            </p>
+
+            <p className="mt-5 text-sm font-semibold">
+              Type: <span className="text-red-600">DELETE COMPANY DATA</span>
+            </p>
+
+            <input
+              value={deleteConfirm}
+              onChange={(e) => setDeleteConfirm(e.target.value)}
+              className="mt-2 w-full border rounded-xl p-3"
+              placeholder="DELETE COMPANY DATA"
+            />
+
+            <div className="flex justify-end gap-3 mt-6">
+              <button
+                onClick={() => setDeleteOpen(false)}
+                className="border px-5 py-2 rounded-xl"
+              >
+                Cancel
+              </button>
+
+              <button
+                disabled={deleting}
+                onClick={permanentDeleteCompany}
+                className="bg-red-600 text-white px-5 py-2 rounded-xl disabled:opacity-50"
+              >
+                {deleting ? "Deleting..." : "Permanent Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+
 
 function Card({ title, value, className = "" }) {
   return (

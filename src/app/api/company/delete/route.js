@@ -28,6 +28,7 @@ export async function POST(req) {
     await Company.findByIdAndUpdate(companyId, {
       isDeleted: true,
       deletedAt: new Date(),
+      deletedByUserId: tenant.user.id,
     });
 
     return NextResponse.json({
@@ -36,10 +37,7 @@ export async function POST(req) {
     });
   } catch (error) {
     return NextResponse.json(
-      {
-        success: false,
-        message: error.message,
-      },
+      { success: false, message: error.message },
       { status: 500 }
     );
   }
