@@ -5,15 +5,18 @@ import path from "path";
 import connectDB from "@/lib/db";
 import { getTenant } from "@/lib/tenant";
 import { backupDirectory } from "@/lib/backup";
+import { decryptFile } from "@/lib/backupEncryption";
 
 import BackupFile from "@/models/BackupFile";
 import CompanyBackup from "@/models/CompanyBackup";
+import { verifyBackupHash } from "@/lib/backupIntegrity";
 
 function contentTypeByFileName(fileName = "") {
   const lower = String(fileName).toLowerCase();
 
   if (lower.endsWith(".zip")) return "application/zip";
   if (lower.endsWith(".json")) return "application/json";
+  if (lower.endsWith(".enc")) return "application/octet-stream";
 
   return "application/octet-stream";
 }
@@ -30,10 +33,7 @@ function resolveBackupPath({ backupFile, backup }) {
     const fallbackPath = path.join(backupDirectory(), fileName);
 
     if (fs.existsSync(fallbackPath)) {
-      return {
-        filePath: fallbackPath,
-        fileName,
-      };
+      return { filePath: fallbackPath, fileName };
     }
   }
 
@@ -45,28 +45,40 @@ function resolveBackupPath({ backupFile, backup }) {
       .replace(/\s+/g, " ")
       .trim();
 
+    const encPath = path.join(backupDirectory(), `${safeBase}.zip.enc`);
     const zipPath = path.join(backupDirectory(), `${safeBase}.zip`);
     const jsonPath = path.join(backupDirectory(), `${safeBase}.json`);
 
+    if (fs.existsSync(encPath)) {
+      return { filePath: encPath, fileName: `${safeBase}.zip.enc` };
+    }
+
     if (fs.existsSync(zipPath)) {
-      return {
-        filePath: zipPath,
-        fileName: `${safeBase}.zip`,
-      };
+      return { filePath: zipPath, fileName: `${safeBase}.zip` };
     }
 
     if (fs.existsSync(jsonPath)) {
-      return {
-        filePath: jsonPath,
-        fileName: `${safeBase}.json`,
-      };
+      return { filePath: jsonPath, fileName: `${safeBase}.json` };
     }
   }
 
-  return {
-    filePath: "",
-    fileName: "",
-  };
+  return { filePath: "", fileName: "" };
+}
+
+function downloadName(fileName = "") {
+  if (fileName.toLowerCase().endsWith(".zip.enc")) {
+    return fileName.replace(/\.enc$/i, "");
+  }
+
+  return fileName;
+}
+
+function readDownloadBuffer(filePath, fileName) {
+  if (String(fileName).toLowerCase().endsWith(".zip.enc")) {
+    return decryptFile(filePath);
+  }
+
+  return fs.readFileSync(filePath);
 }
 
 export async function GET(req) {
@@ -131,10 +143,32 @@ export async function GET(req) {
       );
     }
 
-    const buffer = fs.readFileSync(resolved.filePath);
-    const fileName = resolved.fileName || path.basename(resolved.filePath);
-    const mimeType =
-      backupFile?.mimeType || contentTypeByFileName(fileName);
+    const verification = verifyBackupHash(
+  resolved.filePath,
+  backupFile?.hash
+);
+
+if (!verification.ok) {
+  return NextResponse.json(
+    {
+      success: false,
+      message: verification.message,
+      expectedHash: verification.expectedHash,
+      currentHash: verification.currentHash,
+    },
+    {
+      status: 409,
+    }
+  );
+}
+
+    const originalName =
+      resolved.fileName || path.basename(resolved.filePath);
+
+    const finalName = downloadName(originalName);
+    const buffer = readDownloadBuffer(resolved.filePath, originalName);
+
+    const mimeType = contentTypeByFileName(finalName);
 
     if (backupFile) {
       backupFile.downloadCount = Number(backupFile.downloadCount || 0) + 1;
@@ -145,7 +179,7 @@ export async function GET(req) {
       status: 200,
       headers: {
         "Content-Type": mimeType,
-        "Content-Disposition": `attachment; filename="${fileName}"`,
+        "Content-Disposition": `attachment; filename="${finalName}"`,
         "Content-Length": String(buffer.length),
         "Cache-Control": "no-store",
       },

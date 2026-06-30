@@ -31,6 +31,7 @@ import {
   ShieldCheck,
   DatabaseBackup,
   HistoryIcon,
+  GitCompare,
 } from "lucide-react";
 
 import { usePathname, useRouter } from "next/navigation";
@@ -203,6 +204,13 @@ export default function Sidebar({ open, setOpen }) {
 },
 
 {
+  name: "Backup Compare",
+  bn: "ব্যাকআপ তুলনা",
+  icon: GitCompare,
+  path: "/backup-compare",
+},
+
+{
   name: "Restore History",
   path: "/backup-restore-logs",
   icon: HistoryIcon,
@@ -213,6 +221,13 @@ export default function Sidebar({ open, setOpen }) {
   bn: "ব্যাকআপ শিডিউলার",
   icon: CalendarCheck,
   path: "/backup-schedule",
+},
+
+{
+  name: "Disaster Recovery",
+  bn: "ডিজাস্টার রিকভারি",
+  icon: ShieldCheck,
+  path: "/disaster-recovery",
 },
 
       {

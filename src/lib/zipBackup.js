@@ -1,34 +1,21 @@
 import fs from "fs";
-import archiver from "archiver";
+import AdmZip from "adm-zip";
 
-export function zipJsonBackup({ jsonFilePath, zipFilePath, entryName }) {
-  return new Promise((resolve, reject) => {
-    if (!fs.existsSync(jsonFilePath)) {
-      return reject(new Error("JSON backup file not found"));
-    }
+export async function zipJsonBackup({ jsonFilePath, zipFilePath, entryName }) {
+  if (!fs.existsSync(jsonFilePath)) {
+    throw new Error("JSON backup file not found");
+  }
 
-    const output = fs.createWriteStream(zipFilePath);
-    const archive = archiver("zip", {
-      zlib: { level: 9 },
-    });
+  const zip = new AdmZip();
 
-    output.on("close", () => {
-      resolve({
-        size: archive.pointer(),
-        zipFilePath,
-      });
-    });
+  zip.addLocalFile(jsonFilePath, "", entryName || "backup.json");
 
-    archive.on("error", (error) => {
-      reject(error);
-    });
+  zip.writeZip(zipFilePath);
 
-    archive.pipe(output);
+  const stats = fs.statSync(zipFilePath);
 
-    archive.file(jsonFilePath, {
-      name: entryName || "backup.json",
-    });
-
-    archive.finalize();
-  });
+  return {
+    size: stats.size,
+    zipFilePath,
+  };
 }

@@ -8,10 +8,12 @@ import connectDB from "@/lib/db";
 import { getTenant } from "@/lib/tenant";
 import { backupDirectory } from "@/lib/backup";
 import { zipJsonBackup } from "@/lib/zipBackup";
+import { encryptFile } from "@/lib/backupEncryption";
 
 import Company from "@/models/Company";
 import CompanyBackup from "@/models/CompanyBackup";
 import BackupFile from "@/models/BackupFile";
+import { cleanupOldBackups } from "@/lib/backupRetention";
 
 const COLLECTIONS = [
   "companysettings",
@@ -93,6 +95,8 @@ async function createCompanyBackup({ company, tenant, backupType, note }) {
       createdBy: tenant.user?.name || "",
       version: "1.0",
       compression: "zip",
+      encrypted: true,
+      encryption: "aes-256-gcm",
     },
     company,
     collections: {},
@@ -117,22 +121,27 @@ async function createCompanyBackup({ company, tenant, backupType, note }) {
   }
 
   const baseName = safeFileName(backupName);
+
   const jsonFileName = `${baseName}.json`;
   const zipFileName = `${baseName}.zip`;
+  const encFileName = `${baseName}.zip.enc`;
 
   const jsonFilePath = path.join(backupDirectory(), jsonFileName);
   const zipFilePath = path.join(backupDirectory(), zipFileName);
+  const encFilePath = path.join(backupDirectory(), encFileName);
 
   fs.writeFileSync(jsonFilePath, JSON.stringify(data, null, 2), "utf8");
 
-  const zipInfo = await zipJsonBackup({
+  await zipJsonBackup({
     jsonFilePath,
     zipFilePath,
     entryName: jsonFileName,
   });
 
-  const zipStats = fs.statSync(zipFilePath);
-  const zipHash = hashFile(zipFilePath);
+  const encrypted = encryptFile(zipFilePath, encFilePath);
+
+  const encStats = fs.statSync(encFilePath);
+  const encHash = hashFile(encFilePath);
 
   const backup = await CompanyBackup.create({
     companyId: company._id,
@@ -143,8 +152,8 @@ async function createCompanyBackup({ company, tenant, backupType, note }) {
     collections,
     status: "completed",
     storageType: "json",
-    fileName: zipFileName,
-    filePath: zipFilePath,
+    fileName: encFileName,
+    filePath: encFilePath,
     createdByUserId: tenant.user?.id || null,
     createdBy: tenant.user?.name || "",
     note: note || "",
@@ -154,12 +163,12 @@ async function createCompanyBackup({ company, tenant, backupType, note }) {
     companyId: company._id,
     companyName: company.name,
     backupId: backup._id,
-    fileName: zipFileName,
-    fileSize: zipStats.size || zipInfo.size || 0,
-    mimeType: "application/zip",
+    fileName: encFileName,
+    fileSize: encStats.size || encrypted.size || 0,
+    mimeType: "application/octet-stream",
     storage: "disk",
-    filePath: zipFilePath,
-    hash: zipHash,
+    filePath: encFilePath,
+    hash: encHash,
     createdBy: tenant.user?.name || "",
     createdByUserId: tenant.user?.id || null,
   });
@@ -205,15 +214,18 @@ export async function POST(req) {
       const backups = [];
 
       for (const company of companies) {
-        const result = await createCompanyBackup({
-          company,
-          tenant,
-          backupType,
-          note: note || "Backup all companies",
-        });
+  const result = await createCompanyBackup({
+    company,
+    tenant,
+    backupType,
+    note: note || "Backup all companies",
+  });
 
-        backups.push(result.backup);
-      }
+  backups.push(result.backup);
+
+  await cleanupOldBackups(company._id, 30);
+}
+
 
       return NextResponse.json({
         success: true,

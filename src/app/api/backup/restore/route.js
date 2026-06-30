@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
 import mongoose from "mongoose";
-import AdmZip from "adm-zip";
+
 
 import connectDB from "@/lib/db";
 import { getTenant } from "@/lib/tenant";
@@ -11,6 +11,9 @@ import CompanyBackup from "@/models/CompanyBackup";
 import BackupFile from "@/models/BackupFile";
 import BackupRestoreLog from "@/models/BackupRestoreLog";
 import Company from "@/models/Company";
+
+import { readBackupFile } from "@/lib/readBackupFile";
+import { verifyBackupHash } from "@/lib/backupIntegrity";
 
 const RESTORE_COLLECTIONS = [
   "companysettings",
@@ -50,26 +53,9 @@ async function collectionExists(name) {
   return mongoose.connection.db.listCollections({ name }).hasNext();
 }
 
-function readBackupJson(filePath) {
-  const ext = path.extname(filePath).toLowerCase();
 
-  if (ext === ".zip") {
-    const zip = new AdmZip(filePath);
 
-    const entry = zip
-      .getEntries()
-      .find((e) => e.entryName.toLowerCase().endsWith(".json"));
 
-    if (!entry) {
-      throw new Error("Backup JSON not found inside ZIP.");
-    }
-
-    return JSON.parse(entry.getData().toString("utf8"));
-  }
-
-  const json = fs.readFileSync(filePath, "utf8");
-  return JSON.parse(json);
-}
 
 function normalizeId(value) {
   try {
@@ -188,6 +174,25 @@ export async function POST(req) {
     const backupFile = await BackupFile.findOne({ backupId }).lean();
     const filePath = backupFile?.filePath || backup.filePath || "";
 
+    const verification = verifyBackupHash(
+  filePath,
+  backupFile?.hash
+);
+
+if (!verification.ok) {
+  return NextResponse.json(
+    {
+      success: false,
+      message: "Backup integrity verification failed.",
+      expectedHash: verification.expectedHash,
+      currentHash: verification.currentHash,
+    },
+    {
+      status: 409,
+    }
+  );
+}
+
     if (!filePath || !fs.existsSync(filePath)) {
       return NextResponse.json(
         { success: false, message: "Backup file missing on disk" },
@@ -195,7 +200,7 @@ export async function POST(req) {
       );
     }
 
-    const parsed = readBackupJson(filePath);
+    const parsed = readBackupFile(filePath);
 
     if (!parsed?.company?._id || !parsed?.collections) {
       return NextResponse.json(
