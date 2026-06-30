@@ -20,8 +20,11 @@ export default function BackupsPage() {
 
   const [restoreOpen, setRestoreOpen] = useState(false);
   const [restoreBackup, setRestoreBackup] = useState(null);
-  const [restoreConfirm, setRestoreConfirm] = useState("");
+  const [restoreAgree, setRestoreAgree] = useState(false);
   const [restoring, setRestoring] = useState(false);
+
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [restorePreview, setRestorePreview] = useState(null);
 
   const loadBackups = async () => {
     try {
@@ -116,60 +119,80 @@ export default function BackupsPage() {
     window.open(`/api/backup/download?backupId=${backupId}`, "_blank");
   };
 
-  const openRestore = (backup) => {
-    setRestoreBackup(backup);
-    setRestoreConfirm("");
-    setRestoreOpen(true);
+  const openRestore = async (backup) => {
+    if (!backup?._id) return alert("Backup not found");
+
+    try {
+      setPreviewLoading(true);
+      setRestoreBackup(backup);
+      setRestoreAgree(false);
+      setRestorePreview(null);
+
+      const res = await fetch(`/api/backup/preview?backupId=${backup._id}`, {
+        credentials: "include",
+        cache: "no-store",
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        throw new Error(data.message || "Preview failed");
+      }
+
+      setRestorePreview(data.data);
+      setRestoreOpen(true);
+    } catch (error) {
+      alert(error.message || "Preview failed");
+    } finally {
+      setPreviewLoading(false);
+    }
   };
 
   const restoreBackupNow = async () => {
-  if (!restoreBackup?._id) {
-    return alert("Backup not selected");
-  }
-
-  alert(`Value = "${restoreConfirm}"`);
-
-  if (restoreConfirm.trim() !== "RESTORE BACKUP") {
-    return alert("Type RESTORE BACKUP to confirm");
-  }
-
-  try {
-    setRestoring(true);
-
-    const res = await fetch("/api/backup/restore", {
-      method: "POST",
-      credentials: "include",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        backupId: restoreBackup._id,
-        mode: "replace",
-        confirm: restoreConfirm.trim(),
-      }),
-    });
-
-    const data = await res.json();
-
-    if (!res.ok || !data.success) {
-      throw new Error(data.message || "Restore failed");
+    if (!restoreBackup?._id) {
+      return alert("Backup not selected");
     }
 
-    alert("Backup restored successfully");
+    if (!restoreAgree) {
+      return alert("Please confirm restore warning first");
+    }
 
-    setRestoreOpen(false);
-    setRestoreBackup(null);
-    setRestoreConfirm("");
+    try {
+      setRestoring(true);
 
-    await loadBackups();
-  } catch (error) {
-    alert(error.message || "Restore failed");
-  } finally {
-    setRestoring(false);
-  }
-};
+      const res = await fetch("/api/backup/restore", {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          backupId: restoreBackup._id,
+          mode: "replace",
+          confirm: "RESTORE BACKUP",
+        }),
+      });
 
+      const data = await res.json();
 
+      if (!res.ok || !data.success) {
+        throw new Error(data.message || "Restore failed");
+      }
+
+      alert("Backup restored successfully");
+
+      setRestoreOpen(false);
+      setRestoreBackup(null);
+      setRestoreAgree(false);
+      setRestorePreview(null);
+
+      await loadBackups();
+    } catch (error) {
+      alert(error.message || "Restore failed");
+    } finally {
+      setRestoring(false);
+    }
+  };
 
   useEffect(() => {
     loadBackups();
@@ -269,11 +292,12 @@ export default function BackupsPage() {
                         </button>
 
                         <button
+                          disabled={previewLoading}
                           onClick={() => openRestore(b)}
-                          className="bg-emerald-600 text-white px-3 py-2 rounded-xl text-xs font-semibold inline-flex items-center gap-1"
+                          className="bg-emerald-600 text-white px-3 py-2 rounded-xl text-xs font-semibold inline-flex items-center gap-1 disabled:opacity-60"
                         >
                           <RotateCcw size={14} />
-                          Restore
+                          {previewLoading ? "Preview..." : "Restore"}
                         </button>
                       </div>
                     </td>
@@ -287,7 +311,7 @@ export default function BackupsPage() {
 
       {restoreOpen && (
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl shadow-xl max-w-lg w-full p-6">
+          <div className="bg-white rounded-3xl shadow-xl max-w-2xl w-full p-6">
             <h2 className="text-2xl font-bold text-emerald-700">
               Restore Backup
             </h2>
@@ -301,36 +325,73 @@ export default function BackupsPage() {
               <p className="text-gray-500">{restoreBackup?.companyName}</p>
             </div>
 
-            <p className="mt-4 text-sm text-red-600 font-semibold">
-              Replace mode will delete existing company data first, then restore
-              from this backup.
-            </p>
+            {restorePreview && (
+              <div className="mt-5 border rounded-2xl bg-slate-50 p-4">
+                <h3 className="font-bold mb-3">Restore Preview</h3>
 
-            <p className="mt-5 text-sm font-semibold">
-              Type: <span className="text-emerald-700">RESTORE BACKUP</span>
-            </p>
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div>
+                    <b>Company</b>
+                  </div>
+                  <div>{restorePreview.companyName || "-"}</div>
 
-            <input
-              value={restoreConfirm}
-              onChange={(e) => setRestoreConfirm(e.target.value)}
-              className="mt-2 w-full border rounded-xl p-3"
-              placeholder="RESTORE BACKUP"
-            />
+                  <div>
+                    <b>Collections</b>
+                  </div>
+                  <div>{restorePreview.totalCollections || 0}</div>
+
+                  <div>
+                    <b>Total Documents</b>
+                  </div>
+                  <div>{restorePreview.totalDocuments || 0}</div>
+                </div>
+
+                <div className="mt-4 max-h-48 overflow-y-auto border rounded-xl bg-white">
+                  {(restorePreview.collections || []).map((c) => (
+                    <div
+                      key={c.name}
+                      className="flex justify-between border-b last:border-b-0 px-3 py-2 text-sm"
+                    >
+                      <span>{c.name}</span>
+                      <span className="font-semibold">{c.documents}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <label className="mt-5 flex items-start gap-3 border rounded-2xl p-4 bg-red-50 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={restoreAgree}
+                onChange={(e) => setRestoreAgree(e.target.checked)}
+                className="mt-1"
+              />
+
+              <span className="text-sm text-red-700 font-semibold">
+                I understand this restore will replace existing company data
+                with this backup.
+              </span>
+            </label>
 
             <div className="flex justify-end gap-3 mt-6">
               <button
-                onClick={() => setRestoreOpen(false)}
+                onClick={() => {
+                  setRestoreOpen(false);
+                  setRestoreAgree(false);
+                  setRestorePreview(null);
+                }}
                 className="border px-5 py-2 rounded-xl"
               >
                 Cancel
               </button>
 
               <button
-                disabled={restoring}
+                disabled={restoring || !restoreAgree}
                 onClick={restoreBackupNow}
                 className="bg-emerald-600 text-white px-5 py-2 rounded-xl disabled:opacity-50"
               >
-                {restoring ? "Restoring..." : "Restore"}
+                {restoring ? "Restoring..." : "Restore Now"}
               </button>
             </div>
           </div>

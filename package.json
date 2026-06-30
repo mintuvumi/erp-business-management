@@ -9,6 +9,8 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "adm-zip": "^0.5.18",
+    "archiver": "^8.0.0",
     "axios": "^1.15.2",
     "bcryptjs": "^3.0.3",
     "daisyui": "^5.5.19",
@@ -40,4 +42,3 @@
     "postcss": "^8.5.10"
   }
 }
-

@@ -30,6 +30,7 @@ import {
   Bell,
   ShieldCheck,
   DatabaseBackup,
+  HistoryIcon,
 } from "lucide-react";
 
 import { usePathname, useRouter } from "next/navigation";
@@ -201,12 +202,26 @@ export default function Sidebar({ open, setOpen }) {
   icon: DatabaseBackup,
 },
 
+{
+  name: "Restore History",
+  path: "/backup-restore-logs",
+  icon: HistoryIcon,
+},
+
+{
+  name: "Backup Scheduler",
+  bn: "ব্যাকআপ শিডিউলার",
+  icon: CalendarCheck,
+  path: "/backup-schedule",
+},
+
       {
         name: "Login Logs",
         bn: "লগইন লগ",
         icon: ClipboardList,
         path: "/saas-admin/login-logs",
       },
+
     ],
   },
 

@@ -9,6 +9,66 @@ import { backupDirectory } from "@/lib/backup";
 import BackupFile from "@/models/BackupFile";
 import CompanyBackup from "@/models/CompanyBackup";
 
+function contentTypeByFileName(fileName = "") {
+  const lower = String(fileName).toLowerCase();
+
+  if (lower.endsWith(".zip")) return "application/zip";
+  if (lower.endsWith(".json")) return "application/json";
+
+  return "application/octet-stream";
+}
+
+function resolveBackupPath({ backupFile, backup }) {
+  let filePath = backupFile?.filePath || backup.filePath || "";
+  let fileName = backupFile?.fileName || backup.fileName || "";
+
+  if (filePath && fs.existsSync(filePath)) {
+    return { filePath, fileName };
+  }
+
+  if (fileName) {
+    const fallbackPath = path.join(backupDirectory(), fileName);
+
+    if (fs.existsSync(fallbackPath)) {
+      return {
+        filePath: fallbackPath,
+        fileName,
+      };
+    }
+  }
+
+  const backupName = String(backup.backupName || "").trim();
+
+  if (backupName) {
+    const safeBase = backupName
+      .replace(/[\\/:*?"<>|]/g, "-")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    const zipPath = path.join(backupDirectory(), `${safeBase}.zip`);
+    const jsonPath = path.join(backupDirectory(), `${safeBase}.json`);
+
+    if (fs.existsSync(zipPath)) {
+      return {
+        filePath: zipPath,
+        fileName: `${safeBase}.zip`,
+      };
+    }
+
+    if (fs.existsSync(jsonPath)) {
+      return {
+        filePath: jsonPath,
+        fileName: `${safeBase}.json`,
+      };
+    }
+  }
+
+  return {
+    filePath: "",
+    fileName: "",
+  };
+}
+
 export async function GET(req) {
   try {
     await connectDB();
@@ -53,16 +113,14 @@ export async function GET(req) {
       }
     }
 
-    let backupFile = await BackupFile.findOne({ backupId: backup._id });
+    const backupFile = await BackupFile.findOne({ backupId: backup._id });
 
-    let filePath = backupFile?.filePath || backup.filePath || "";
-    let fileName = backupFile?.fileName || backup.fileName || "";
+    const resolved = resolveBackupPath({
+      backupFile,
+      backup,
+    });
 
-    if (!filePath && fileName) {
-      filePath = path.join(backupDirectory(), fileName);
-    }
-
-    if (!filePath || !fs.existsSync(filePath)) {
+    if (!resolved.filePath || !fs.existsSync(resolved.filePath)) {
       return NextResponse.json(
         {
           success: false,
@@ -73,7 +131,10 @@ export async function GET(req) {
       );
     }
 
-    const buffer = fs.readFileSync(filePath);
+    const buffer = fs.readFileSync(resolved.filePath);
+    const fileName = resolved.fileName || path.basename(resolved.filePath);
+    const mimeType =
+      backupFile?.mimeType || contentTypeByFileName(fileName);
 
     if (backupFile) {
       backupFile.downloadCount = Number(backupFile.downloadCount || 0) + 1;
@@ -83,9 +144,10 @@ export async function GET(req) {
     return new NextResponse(buffer, {
       status: 200,
       headers: {
-        "Content-Type": backupFile?.mimeType || "application/json",
+        "Content-Type": mimeType,
         "Content-Disposition": `attachment; filename="${fileName}"`,
         "Content-Length": String(buffer.length),
+        "Cache-Control": "no-store",
       },
     });
   } catch (error) {
